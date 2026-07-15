@@ -28,11 +28,19 @@ traceable list):
 
 ## Status
 
-Problem-space research and spec groundwork. Nothing built yet.
+Problem-space research complete; spec groundwork under way. Nothing built yet.
+Headline findings: **no existing tool occupies this quadrant** (narrative ordering is becoming
+table stakes at CodeRabbit/Devin/cubic, but nobody does coverage-guaranteed queues + local
+BYO-agent verifiable-patch threads); recommended shape is a **local daemon + browser "book" UI**
+with a hybrid ACP-client / MCP-server / headless-CLI agent layer. See
+[docs/research/00-synthesis.md](docs/research/00-synthesis.md) and
+[ADR 0001](docs/decisions/0001-architecture.md) (proposed).
 
 ## Repository layout
 
 - `docs/vision/` — the vision, including the [original prompt persisted verbatim](docs/vision/original-prompt.md) for traceability passes.
-- `docs/requirements/` — numbered requirements inventory extracted from the vision.
-- `docs/research/` — landscape, protocol, platform, and review-science research reports.
-- `docs/decisions/` — architecture/product decisions as they get made.
+- `docs/requirements/` — numbered requirements inventory (R-001…R-030) extracted from the vision.
+- `docs/research/` — [synthesis](docs/research/00-synthesis.md), landscape (+4 appendices), agent protocols, platform, review science.
+- `docs/design/` — design sketches (core primitives: chunks, occurrences, book, patch ledger).
+- `docs/decisions/` — ADRs.
+- `docs/process/` — [build process](docs/process/build-process.md): spec pipeline, model economy, dogfooding.
