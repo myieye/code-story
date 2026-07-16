@@ -76,6 +76,9 @@ markdown export; zero AI. Spec: `docs/spec/00-chunker-and-naive-book.md` (includ
 ux-expert pass on the book UI). **ADR 0002**: book UI is React (Tim's call). Issue policy
 (Tim-ratified): just-in-time — 5–8 vertical-slice GitHub issues per milestone, filed when that
 milestone's spec lands; never a full backlog. Milestone-0 slices are issues #1–#8 (blocking
-edges in bodies). **#1 (scaffold) done**: pnpm monorepo (core/server/web), TS strict (TS 7),
-vitest, React 19 + Vite, hono daemon serving the built web app, CI. Next: #2 diff ingestion.
+edges in bodies). **#1 (scaffold) + #2 (diff ingestion) done**: pnpm monorepo (core/server/web), TS strict
+(TS 7), vitest, React 19 + Vite, hono daemon serving the built web app, CI; `parseGitDiff`
+(-U0, ranges only — contents come from `git show`) in core, git plumbing + `/api/diff` +
+`--dump-diff` in server, demoed against a real lexbox diff. Next: #3 tree-sitter chunker (the
+critical-path slice, R-034).
 Dogfood target: languageforge/lexbox (C# + Svelte/TS); repo-agnostic (R-025).

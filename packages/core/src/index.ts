@@ -1,5 +1,7 @@
 export const CORE_VERSION = '0.0.1';
 
+export * from './diff.js';
+
 // The book/chunk model from docs/design/core-primitives-sketch.md, restricted to the
 // milestone-0 subset (spec 00).
 

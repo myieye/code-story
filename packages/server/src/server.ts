@@ -3,10 +3,16 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { serve } from '@hono/node-server';
 import { serveStatic } from '@hono/node-server/serve-static';
-import { CORE_VERSION } from '@code-story/core';
+import { CORE_VERSION, type FileDiff } from '@code-story/core';
 import { Hono } from 'hono';
+import { diffRange, type ResolvedRange } from './git.js';
 
 const webDist = fileURLToPath(new URL('../../web/dist', import.meta.url));
+
+export interface ServerOptions {
+  repo: string;
+  range: ResolvedRange;
+}
 
 export interface RunningServer {
   port: number;
@@ -14,10 +20,16 @@ export interface RunningServer {
   close: () => void;
 }
 
-export function startServer(requestedPort = 0): Promise<RunningServer> {
+export function startServer(options: ServerOptions, requestedPort = 0): Promise<RunningServer> {
   const app = new Hono();
+  let diffCache: Promise<FileDiff[]> | undefined;
 
   app.get('/api/health', (c) => c.json({ ok: true, name: 'code-story', core: CORE_VERSION }));
+
+  app.get('/api/diff', async (c) => {
+    diffCache ??= diffRange(options.repo, options.range);
+    return c.json({ ...options.range, files: await diffCache });
+  });
 
   if (existsSync(webDist)) {
     // serveStatic resolves root relative to cwd, which is the reviewed repo — not our install

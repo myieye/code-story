@@ -1,0 +1,35 @@
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+import { type FileDiff, parseGitDiff } from '@code-story/core';
+
+const execFileAsync = promisify(execFile);
+
+async function git(repo: string, args: string[]): Promise<string> {
+  const { stdout } = await execFileAsync('git', ['-C', repo, ...args], {
+    maxBuffer: 256 * 1024 * 1024,
+  });
+  return stdout;
+}
+
+export interface ResolvedRange {
+  base: string;
+  head: string;
+}
+
+/** Accepts `<base>..<head>` or `<base>` (head defaults to HEAD); resolves both to SHAs. */
+export async function resolveRange(repo: string, range: string): Promise<ResolvedRange> {
+  const [baseRef, headRef = 'HEAD'] = range.split('..').filter(Boolean) as [string, string?];
+  if (!baseRef) throw new Error(`Invalid range: "${range}"`);
+  const base = (await git(repo, ['rev-parse', '--verify', `${baseRef}^{commit}`])).trim();
+  const head = (await git(repo, ['rev-parse', '--verify', `${headRef}^{commit}`])).trim();
+  return { base, head };
+}
+
+export async function diffRange(repo: string, { base, head }: ResolvedRange): Promise<FileDiff[]> {
+  const out = await git(repo, ['diff', '-U0', '--no-color', '--find-renames', base, head]);
+  return parseGitDiff(out);
+}
+
+export async function fileAt(repo: string, sha: string, path: string): Promise<string> {
+  return git(repo, ['show', `${sha}:${path}`]);
+}
