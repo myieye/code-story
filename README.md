@@ -38,8 +38,11 @@ with a hybrid ACP-client / MCP-server / headless-CLI agent layer. See
 
 ## Repository layout
 
-- `docs/vision/` — the vision, including the [original prompt persisted verbatim](docs/vision/original-prompt.md) for traceability passes.
-- `docs/requirements/` — numbered requirements inventory (R-001…R-030) extracted from the vision.
+- `CLAUDE.md` — orientation + standing learnings for AI sessions working on this repo.
+- `docs/vision/` — the vision: [original prompt](docs/vision/original-prompt.md) and
+  [addendum](docs/vision/addendum-2026-07-16.md) persisted verbatim for traceability passes,
+  plus the [distillation](docs/vision/vision.md).
+- `docs/requirements/` — numbered requirements inventory (R-001…R-036) extracted from the vision.
 - `docs/research/` — [synthesis](docs/research/00-synthesis.md), landscape (+4 appendices), agent protocols, platform, review science.
 - `docs/design/` — design sketches (core primitives: chunks, occurrences, book, patch ledger).
 - `docs/decisions/` — ADRs.

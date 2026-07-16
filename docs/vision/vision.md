@@ -1,6 +1,7 @@
 # Vision (distilled)
 
-Source of truth: [original-prompt.md](original-prompt.md) (verbatim). Requirements are traced in
+Sources of truth: [original-prompt.md](original-prompt.md) and
+[addendum-2026-07-16.md](addendum-2026-07-16.md) (both verbatim). Requirements are traced in
 [../requirements/inventory.md](../requirements/inventory.md). This document is the readable
 distillation.
 
@@ -62,6 +63,23 @@ Depth of explanation calibrates to code complexity and to the reviewer's knowled
 packages, codebase areas) — including relative to the author. Posture calibrates to authorship:
 own/agent-authored code gets every wrinkle worked out; someone else's code gets real bugs and
 clear, objective improvements.
+
+Posture also calibrates to **merge pragmatism**: getting a PR merged is itself valuable. The tool
+weighs how old and large the PR is and how critical the change is (dev-only feature, quick
+prototype meant to ship, genuinely critical path) — and the story actively helps the reviewer
+find the shortest path to a *responsibly mergeable* state instead of iterating forever. Nitpicks,
+refactors, and optimizations are surfaced with that trade-off in view: sometimes valuable,
+sometimes a real pain to be skipped.
+
+## The narration register
+
+The story must read like a well-written novel reads: light, flowing, easily accessible — roughly
+high-school English, written for developers but never dense. AI explanations habitually
+overwhelm; this tool's narration must not. Two quality bars are critical path, proven hard by
+weak early experiments: **chunking** (hunks broken into truly manageable pieces, so the reviewer
+thinks as little as possible and just reads) and **prose register** (simple language, no
+terminology showers). Both are measured, not assumed: the exported book is scored for
+readability, and dogfood sessions log every moment the story felt dense or a chunk felt too big.
 
 ## Constraints
 

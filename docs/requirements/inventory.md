@@ -1,8 +1,8 @@
 # Requirements inventory
 
-Every requirement extracted from the [original prompt](../vision/original-prompt.md), numbered for
-traceability. Future passes over the prompt should check each tidbit against this list and against
-the implementation. Each entry: the requirement, its source in the prompt (paraphrased quote), and
+Every requirement extracted from the [original prompt](../vision/original-prompt.md) and its
+[addenda](../vision/addendum-2026-07-16.md), numbered for traceability. Future passes over the
+prompts should check each tidbit against this list and against the implementation. Each entry: the requirement, its source in the prompt (paraphrased quote), and
 open questions to resolve during spec work.
 
 Status legend: `captured` (in this doc only), `specced`, `built`, `validated`.
@@ -202,3 +202,54 @@ building.
 Choose tooling so the product can be built iteratively: creating issues, recording bugs, trying it
 on real PRs, evaluating results, improving, noting limitations.
 > "creating issues, recording bugs, trying it out on real PRs, evaluating the results, improving it, noting limitations"
+
+## I. Addendum, 2026-07-16 ([verbatim source](../vision/addendum-2026-07-16.md))
+
+### R-031 — Merge-pragmatism: PR age & size awareness
+The tool considers how old and how large the PR is — and more generally has a keen sense of when
+to suggest/apply changes vs stop iterating, because getting the PR merged is itself very valuable.
+> "consider how old and large the PR is… how to most wisely suggest/apply changes vs not iterating forever, because it's very valuable to get the PR merge[d]"
+
+Relates to: R-020 (posture). Open: which signals (age, size, review rounds, staleness risk) and
+how they surface (a "merge pressure" indicator? suppressing low-value suggestions?).
+
+### R-032 — Criticality calibration
+Posture also calibrates to how critical the change is: a dev-only feature, a quick vibe-coded
+prototype that should ship, or something really critical each deserve different rigor.
+> "how critical the change is (e.g. a dev-feature, a quick vibe-code of a prototype we want to get out, something really critical etc.)"
+
+Relates to: R-020, R-031. Open: is criticality declared by the reviewer, inferred, or both?
+
+### R-033 — The story steers toward "responsibly mergeable"
+The narration actively helps the reviewer weigh R-031/R-032 trade-offs and find the best path to a
+*responsibly mergeable* state — rather than perfecting every detail. Applies to nitpicks and
+equally to refactors and optimizations: sometimes valuable, sometimes a real pain.
+> "help my find the best way to get a PR to a responsibly mergeable state rather than perfecting every detail. Nitpicks are sometimes good, sometimes just a real pain. (not just nitpicks: refactors, optimizations etc.)"
+
+### R-034 — Chunking quality bar: truly manageable pieces
+Breaking hunks into genuinely manageable pieces is *critical path*, not a nice-to-have: the
+reviewer should have to think as little as possible and just read a thorough story of the code.
+Evidence this is hard: initial attempts to get AI to generate such a story were rather weak — so
+chunking/story quality needs its own evaluation loop (see R-005's machine-scored readability and
+the dogfood evals in [build-process](../process/build-process.md)).
+> "Initial attempts to get AI to generate a story for me were rather weak. It's really critical that the AI breaks hunks up into truly manageable pieces. I want to think as little as possible…"
+
+Sharpens: R-003, R-005.
+
+### R-035 — Manual edits at the point of display
+Manual changes happen directly where the code is shown — either editing the code in place, or (if
+easier) a script-generated git patch that is applied and then lives in the review/thread history
+like any other ledger entry.
+> "I can make manual changes directly where the code is shown (either directly to the code or if easier, a git patch could be generated - hopefully via script - and applied (also then living in the history of the review/thread))"
+
+Sharpens: R-011, R-012 — in-place editing is required, not just editor handoff; manual patches
+join the same ledger as AI patches.
+
+### R-036 — Narration register: light, accessible, never dense
+AI explanations are habitually too dense. The story must read really well — think an exciting
+novel's ease, roughly high-school English, written for devs but light and easily accessible.
+Avoid overly complex terminology; not dense.
+> "I'm constantly overwhelmed with how dense AI generated explanations are… it's incredibly important that the story/narration reads really well… maybe think high-school english… Not too dense, light, easily accessible etc."
+
+Sharpens: R-005, R-008 (`narrative` payloads), R-009. This is a hard acceptance criterion for
+every AI-written string in the product — and belongs in the readability eval (R-034).

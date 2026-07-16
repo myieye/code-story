@@ -85,7 +85,10 @@ Invariants:
   (or rejects it if `baseStateId` no longer matches), records the result hash, and links the
   record to the thread. What the UI renders for an entry **is** the stored patch — there is no
   separate "what actually happened" to drift from it.
-- Manual edits (R-012) are unrestricted; the tool detects them as anonymous state transitions
+- Manual edits (R-012, R-035) are unrestricted and first-class at the point of display: editing
+  the code where it's shown produces a script-generated patch applied through the same ledger
+  channel as agent patches, attributed `appliedBy: human` and living in the thread history.
+  Edits made outside the tool (user's own editor) are detected as anonymous state transitions
   (file watcher + hashing) so the ledger stays a truthful chain: every head state is either a
   named patch or a "manual edit" delta the tool computed itself.
 - Viewing any entry's version = checking out its `resultStateId` chunk snapshot (cheap: content-
@@ -108,12 +111,19 @@ after `reviewedAtStateId`. Progress = f(chunks), never f(files).
 ## 7. Posture & profile
 
 ```
-ReviewPosture { authorKind: mine | my-agent | other-human | other-agent, mode: nitpick | substantive }  // R-020
-ReviewerProfile { languages, frameworks, codebaseAreas, comparedToAuthor? }                              // R-017
+ReviewPosture {
+  authorKind: mine | my-agent | other-human | other-agent   // R-020
+  mode: nitpick | substantive
+  criticality: dev-only | prototype-to-ship | normal | critical   // R-032, declared by reviewer
+  mergePressure   // derived: PR age, size, review rounds, staleness risk (R-031)
+}
+ReviewerProfile { languages, frameworks, codebaseAreas, comparedToAuthor? }   // R-017
 ```
 
-Both are inputs to context-payload depth and to what the agent is told to flag. Profile capture
-mechanism is an open question (explicit config first; inference later, if ever).
+All of these are inputs to context-payload depth, to what the agent is told to flag, and to how
+the story frames suggestions — steering toward "responsibly mergeable" rather than exhaustive
+polish when pressure is high and criticality is low (R-033). Profile capture mechanism is an open
+question (explicit config first; inference later, if ever).
 
 ## Open questions carried forward
 
