@@ -11,4 +11,5 @@ export * from './import-graph.js';
 export * from './model.js';
 export * from './render.js';
 export * from './review.js';
+export * from './roles.js';
 export * from './symbols.js';
