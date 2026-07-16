@@ -265,7 +265,7 @@ export function BookPage({ data, initialReview }: { data: BookResponse; initialR
   };
 
   const cursorRowIndex = flat.chunkRowIndexes[cursor];
-  const done = reviewedCount === totalChunks;
+  const done = totalChunks > 0 && reviewedCount === totalChunks;
 
   return (
     <div className="app">
@@ -275,9 +275,15 @@ export function BookPage({ data, initialReview }: { data: BookResponse; initialR
           {data.base.slice(0, 8)}..{data.head.slice(0, 8)}
         </span>
         <span className="progress-cluster">
-          <span className="progress-text">
-            {reviewedCount} / {totalChunks} reviewed
-            {pendingStubs > 0 && ` · ${pendingStubs} pending stub${pendingStubs === 1 ? '' : 's'}`}
+          <span className={done ? 'progress-text done' : 'progress-text'}>
+            {done ? (
+              `All ${totalChunks} reviewed ✓`
+            ) : (
+              <>
+                {reviewedCount} / {totalChunks} reviewed
+                {pendingStubs > 0 && ` · ${pendingStubs} pending stub${pendingStubs === 1 ? '' : 's'}`}
+              </>
+            )}
           </span>
           <span className="progress-bar">
             <span className="progress-fill" style={{ width: `${totalChunks ? (reviewedCount / totalChunks) * 100 : 0}%` }} />
@@ -289,9 +295,15 @@ export function BookPage({ data, initialReview }: { data: BookResponse; initialR
             Undo batch ({lastBatch.prior.length})
           </button>
         )}
-        <button className="bar-button" title="n" onClick={() => jumpUnreviewed(1)} disabled={done}>
-          Next unreviewed
-        </button>
+        {done ? (
+          <button className="bar-button" title="End of book" onClick={() => scrollToRow(flat.rows.length - 1)}>
+            View summary
+          </button>
+        ) : (
+          <button className="bar-button" title="n" onClick={() => jumpUnreviewed(1)}>
+            Next unreviewed
+          </button>
+        )}
         <label className="bar-toggle">
           <input
             type="checkbox"
