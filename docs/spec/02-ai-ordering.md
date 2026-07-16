@@ -1,10 +1,16 @@
 # Spec 02 — Milestone 2: tier-1 AI ordering
 
-Status: proposed — scoped by the standing gradual-auto-pick rule (Tim 2026-07-16); each scoping
-call below records the deferred ambitious path. Tim can veto any pick. Grilled 2026-07-16
-(13 findings folded in: bookFingerprint defined, marks-started semantics pinned, overlay
-persistence named, judge-bias + blind-read-through + provisional-gate caveats, tool-less
-sandboxed subprocess, orphan-job semantics, concurrency rule, token-based size guard).
+Status: built and dogfooded — slices #22–#25 done 2026-07-16 (same day); grilled before
+implementation (13 findings folded in: bookFingerprint defined, marks-started semantics pinned,
+overlay persistence named, judge-bias + blind-read-through + provisional-gate caveats, tool-less
+sandboxed subprocess, orphan-job semantics, concurrency rule, token-based size guard). Scoped by
+the standing gradual-auto-pick rule; Tim can veto any pick.
+**Dogfood-2 verdict (#26): HOLD at opt-in, evidence points to ship.** The blind model judge
+prefers the AI order on both subjects (2/3 mixed-stack, 3/3 C#-only — where it fixed the
+2-cycle git-order fallback `--check-order` can't see; `docs/evals/dogfood-0-baseline.md`
+Dogfood 2). The gate's other half — a *blind* human A/B read-through — can't be satisfied by
+the session that generated the orders; it stays open for Tim. Until then `--ai-order` stays
+explicit opt-in, exactly as scoped.
 Date: 2026-07-16
 Satisfies: R-042 (the AI half of the ladder — this is the milestone where AI must *earn* its
 tokens), R-005 (narrative ordering + "an AI can score the readability of the generated book"),
