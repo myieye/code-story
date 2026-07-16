@@ -1,4 +1,4 @@
-import type { Chunk, ChunkReviewState } from '@code-story/core';
+import { type Chunk, type ChunkReviewState, isLowSignal, lowSignalReason } from '@code-story/core';
 import type { FlatBook, Row } from './rows.js';
 
 export type StateOf = (chunkId: string) => ChunkReviewState;
@@ -6,15 +6,6 @@ export type StateOf = (chunkId: string) => ChunkReviewState;
 export function chunkAt(flat: FlatBook, cursorIndex: number): Chunk {
   const row = flat.rows[flat.chunkRowIndexes[cursorIndex]!] as Extract<Row, { kind: 'chunk' }>;
   return row.chunk;
-}
-
-/** Low-signal chunks render as collapsed stubs and are batch-acknowledgeable (R-002). */
-export function isLowSignal(chunk: Chunk): boolean {
-  return chunk.changeTypes.length > 0;
-}
-
-export function stubReason(chunk: Chunk): string {
-  return chunk.generatedReason ?? chunk.changeTypes[0] ?? 'generated';
 }
 
 /** Next/previous not-reviewed chunk starting at `from` (cursor space), wrapping. */
@@ -63,7 +54,7 @@ export function batchableSections(flat: FlatBook, stateOf: StateOf): Map<string,
     if (!entry.allStubs || entry.unreviewed.length === 0) continue;
     result.set(sectionId, {
       ids: entry.unreviewed.map((c) => c.id),
-      reason: [...new Set(entry.unreviewed.map(stubReason))].join(', '),
+      reason: [...new Set(entry.unreviewed.map(lowSignalReason))].join(', '),
     });
   }
   return result;

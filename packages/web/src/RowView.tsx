@@ -1,7 +1,6 @@
-import type { Chunk, ChunkReviewState } from '@code-story/core';
+import { type Chunk, type ChunkReviewState, isLowSignal, lowSignalReason } from '@code-story/core';
 import type { BookResponse } from './api.js';
 import { DiffView } from './DiffView.js';
-import { isLowSignal, stubReason } from './review-logic.js';
 import { chunkSize, chunkTitle, type Row } from './rows.js';
 
 /** Section-header action: batch-mark the remaining stubs, or undo the batch just made. */
@@ -117,7 +116,7 @@ export function RowView({
             {state === 'reviewed' && <span className="check" aria-hidden="true">✓</span>}
             <span className="chunk-title">{chunkTitle(chunk)}</span>
             <span className={`badge kind-${chunk.kind}`}>{chunk.kind}</span>
-            {lowSignal && <span className="badge generated">{stubReason(chunk)}</span>}
+            {lowSignal && <span className="badge generated">{lowSignalReason(chunk)}</span>}
             <span className="chunk-size">
               <span className="added">+{size.added}</span> <span className="removed">−{size.removed}</span>
             </span>
@@ -126,7 +125,7 @@ export function RowView({
             <div className="chunk-collapsed-note">
               {lowSignal ? (
                 <>
-                  collapsed ({stubReason(chunk)}) —{' '}
+                  collapsed ({lowSignalReason(chunk)}) —{' '}
                   <button className="link-button" onClick={() => onExpand(chunk)}>
                     Show diff
                   </button>{' '}

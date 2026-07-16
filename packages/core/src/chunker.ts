@@ -212,22 +212,13 @@ function makeChunk(
     }
   }
 
-  // Submodule bumps also have blank content lines but are real pointer changes, not whitespace.
-  const whitespaceOnly =
-    input.generatedReason === undefined &&
-    input.diff.submodule !== true &&
-    changed.length > 0 &&
-    changed.every((line) => line === '');
-  const changeTypes: ChangeType[] =
-    input.generatedReason !== undefined ? ['generated'] : whitespaceOnly ? ['whitespace'] : [];
-
   return {
     id: chunkId(input.diff.path, idPath, fnv1a(changed.join('\n'))),
     file: input.diff.path,
     symbolPath,
     displayPath: idPath,
     kind,
-    changeTypes,
+    changeTypes: detectChangeTypes(input, changed),
     ...(input.generatedReason !== undefined ? { generatedReason: input.generatedReason } : {}),
     hunks,
     headRange: deleted
@@ -235,6 +226,19 @@ function makeChunk(
       : spanOf(headHunks.map((h) => [h.headStart, h.headStart + h.headCount - 1])),
     baseRange: spanOf(baseHunks.map((h) => [h.baseStart, h.baseStart + h.baseCount - 1])),
   };
+}
+
+/**
+ * Chunk-level change-type detection — the one place new detectors plug in. `changed` is the
+ * chunk's trimmed changed lines from both sides. File-level classification wins.
+ */
+function detectChangeTypes(input: FileToChunk, changed: string[]): ChangeType[] {
+  if (input.generatedReason !== undefined) return ['generated'];
+  // Submodule bumps also have blank content lines but are real pointer changes, not whitespace.
+  const whitespaceOnly =
+    input.diff.submodule !== true && changed.length > 0 && changed.every((line) => line === '');
+  if (whitespaceOnly) return ['whitespace'];
+  return [];
 }
 
 function spanOf(ranges: [number, number][]): { start: number; end: number } | undefined {

@@ -1,9 +1,9 @@
-import type { Chunk, ChunkReviewState, ReviewFile } from '@code-story/core';
+import { type Chunk, type ChunkReviewState, isLowSignal, type ReviewFile } from '@code-story/core';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { BookResponse } from './api.js';
 import { OutlineSidebar } from './OutlineSidebar.js';
-import { batchableSections, findUnreviewed, isLowSignal, pendingStubCount } from './review-logic.js';
+import { batchableSections, findUnreviewed, pendingStubCount } from './review-logic.js';
 import { estimateRowHeight, RowView, type SectionAck } from './RowView.js';
 import { flattenBook, type Row } from './rows.js';
 import { ShortcutOverlay } from './ShortcutOverlay.js';

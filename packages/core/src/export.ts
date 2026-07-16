@@ -1,4 +1,4 @@
-import { type Book, type Chunk, chunkTitle } from './model.js';
+import { type Book, type Chunk, chunkTitle, isLowSignal, lowSignalReason } from './model.js';
 
 export interface FileContents {
   /** Head-side lines (1-based indexing via line - 1); absent for deleted files. */
@@ -36,11 +36,7 @@ export function exportBookMarkdown(input: ExportBookInput): string {
     for (const occurrence of section.occurrences) {
       const chunk = byId.get(occurrence.chunkId);
       if (!chunk) continue;
-      const lowSignal = chunk.changeTypes.includes('generated')
-        ? ` · generated (${chunk.generatedReason ?? 'generated'})`
-        : chunk.changeTypes.includes('whitespace')
-          ? ' · whitespace-only'
-          : '';
+      const lowSignal = isLowSignal(chunk) ? ` · low-signal (${lowSignalReason(chunk)})` : '';
       out.push(`### ${chunkTitle(chunk)}`, '', `${chunk.kind} · ${sizeLabel(chunk)}${lowSignal}`, '');
       out.push(...diffBlock(chunk, input.contents.get(chunk.file)), '');
     }

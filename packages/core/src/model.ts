@@ -61,6 +61,16 @@ export function chunkId(file: string, symbolPath: string[], fingerprint: string)
   return [file, symbolPath.join('.'), fingerprint].join('::');
 }
 
+/** Low-signal chunks render as collapsed stubs and are batch-acknowledgeable (R-002). */
+export function isLowSignal(chunk: Chunk): boolean {
+  return chunk.changeTypes.length > 0;
+}
+
+/** Stub badge / export label, e.g. "lockfile", "translations", "whitespace". */
+export function lowSignalReason(chunk: Chunk): string {
+  return chunk.generatedReason ?? chunk.changeTypes[0] ?? 'generated';
+}
+
 /** The chunk's display title, with a line-range fallback for label-less chunks. */
 export function chunkTitle(chunk: Chunk): string {
   if (chunk.displayPath.length > 0) return chunk.displayPath.join('.');
