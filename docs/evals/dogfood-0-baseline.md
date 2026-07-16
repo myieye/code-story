@@ -106,3 +106,13 @@ Dogfood issues filed: [#9](https://github.com/myieye/code-story/issues/9)
 [#12](https://github.com/myieye/code-story/issues/12)
 [#13](https://github.com/myieye/code-story/issues/13)
 [#14](https://github.com/myieye/code-story/issues/14)
+
+## Addendum (same day) — noise bar met
+
+After bb7919d/e6d1f02 (#9 #10 #11 #12 #14 fixed), the same range re-measures: **28/125 chunks
+stubbed** (12 generated, 14 translations, 2 whitespace), coverage OK, batch-ack exercised on
+real generated/locale sections, fragments open on statement boundaries. Remaining "noise" is
+deliberate: en.po (2 chunks, source catalog carries translator comments) and almost-blank
+chunks (strictness guard — real code never gets stubbed). Regression-checked on the dep-bump
+commit 78806fe4: lockfile stubs and coverage intact. The ordering-inversion bar (2 → 0) is
+[spec 01](../spec/01-story-ordering.md)'s job — #13 stays open as its evidence.

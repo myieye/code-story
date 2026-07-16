@@ -134,5 +134,8 @@ strictly-blank only); fragment cuts snap to blank/statement-end lines within 8 a
 "View summary", reverts on unmark — ux-expert pass on #14). Re-verified on PR 2357: 28/125
 stubs (12 generated / 14 translations / 2 whitespace), coverage OK, batch-ack works on real
 sections, fragments open on statement boundaries. Remaining noise is deliberate: en.po (2) +
-almost-blank chunks. Only #13 (M1 ordering) left from dogfood 0. Dogfood target: languageforge/lexbox (C# + Svelte/TS); repo-agnostic
+almost-blank chunks. Only #13 (M1 ordering) left from dogfood 0; **spec 01 drafted**
+(`docs/spec/01-story-ordering.md`: deterministic roles + changed-file import graph → topo
+order, AI tier gated, occurrence-keyed web rows ride along) — awaiting Tim's answers to its
+four open questions before filing M1 slices. Dogfood target: languageforge/lexbox (C# + Svelte/TS); repo-agnostic
 (R-025).
