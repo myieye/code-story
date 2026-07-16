@@ -116,3 +116,41 @@ deliberate: en.po (2 chunks, source catalog carries translator comments) and alm
 chunks (strictness guard — real code never gets stubbed). Regression-checked on the dep-bump
 commit 78806fe4: lockfile stubs and coverage intact. The ordering-inversion bar (2 → 0) is
 [spec 01](../spec/01-story-ordering.md)'s job — #13 stays open as its evidence.
+
+## Dogfood 1 (2026-07-16, post spec-01 tier 0) — the v1 column
+
+Ordering slices #15–#18 landed (import graph → roles → deterministic order → `--check-order`).
+Re-measured on the same range (`277e418d8~1..277e418d8`) plus a second, differently-shaped
+subject per spec 01: [PR 2379](https://github.com/sillsdev/languageforge-lexbox/pull/2379)
+(`8dd70ba~1..8dd70ba`, 9 files, backend/C#-only, 34 chunks).
+
+| Measure | Dogfood 0 (baseline) | Dogfood 1 (tier 0) |
+| --- | --- | --- |
+| Measured inversions (PR 2357) | 2 major (utils-after-consumer, tests-before-impl) | **0** — both fixed; `--check-order` reports 1 residual pair from a genuine 2-cycle (below) |
+| Test placement | HistoryServiceActivityTests 24 chunks before its impl | directly after HistoryService.cs |
+| Noise position | generated/locale interleaved mid-story | low-signal tail block; en.po correctly stays in the body (periphery) |
+| j/k latency | 27.5 ms median (ad-hoc script) | 4 ms median / 29 ms p90 over 40 steps (`tools/dogfood-walk.mjs`) |
+| Coverage | OK | OK on both subjects (243/243 lines on PR 2379) |
+
+**Subject 2 read-through (PR 2379, C#-only):** the order genuinely reads as a story — FW API
+impl first, shared test-base specs next, the CRDT pair, each concrete test section directly
+after the impl it exercises, snapshot `.verified.txt` artifacts (~2 lines each, correctly not
+stubs) at the tail. One whitespace stub caught. Nothing to file from the read itself.
+
+**The one recurring artifact — 2-cycles.** On both subjects `--check-order` exits 1 with
+exactly one import inversion, each a genuine mutual dependency (`ActivityItem.svelte ↔
+HistoryView.svelte`; `EntryQueryHelpers.cs ↔ LcmCrdtKernel.cs`). Any linear order of a 2-cycle
+inverts one edge, so this is the eval surfacing reality, not a compiler bug. Two observations:
+1. The eval should report cycle-internal inversions separately so acyclic inversions can gate
+   at 0 (filed as a follow-up).
+2. The C# cycle's back-edge (`EntryQueryHelpers → LcmCrdtKernel`) comes from the
+   ancestor-namespace heuristic, not an explicit `using` — the #15 watch item now has a
+   concrete instance. If more C# cycles appear, tightening that rule is the move.
+
+**Tool caveat (self-note):** `tools/dogfood-walk.mjs`'s mark/restore round-trip nets to zero
+only on fresh review state — Enter on an already-reviewed chunk is a no-op but the paired `u`
+still unmarks. Run it against a fresh head or expect the progress count to dip.
+
+**Verdict:** the R-034 bar set by dogfood 0 (2 inversions → 0) is met, measured by the
+instrument (`--check-order`) rather than vibes, and confirmed on a second diff shape. Tier-1
+AI ordering (M2) now has an honest eval to beat.

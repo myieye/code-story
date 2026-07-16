@@ -144,10 +144,23 @@ almost-blank chunks. Only #13 (M1 ordering) left from dogfood 0; **spec 01 scope
 (`docs/spec/01-story-ordering.md`: section-level deterministic ordering, impl-then-its-tests,
 flat list, M1 zero-AI — AI ordering opens M2, gated by the `--check-order` eval; Tim's rider =
 **R-042**: don't waste tokens on script work, but never fail to use AI where it truly earns
-intuition/readability — verbatim in `docs/vision/addendum-2026-07-16.md`). **M1 slices filed:
-issues #15 (import graph) → #16 (file roles) → #17 (ordering in compileBook) → #18
-(--check-order + CI fixture) → #19 (dogfood 1: PR 2357 v1 column + second subject, closes
-#13)**. **Maintainability pass done** (`docs/reviews/2026-07-16-maintainability-pass.md` — the
+intuition/readability — verbatim in `docs/vision/addendum-2026-07-16.md`). **M1 tier 0 complete (#15–#19 done, #13 closed)**: core `buildImportGraph` (changed-files-only
+resolution: TS/Svelte relative + unique ≥2-segment $-alias suffix; C# using↔namespace +
+ancestor-namespace rule), `fileRoles` (precedence low-signal > test > periphery > impl),
+`compileBook` orders sections impl-topo→tests-after-their-impl→periphery→low-signal-tail
+(greedy Kahn, ties/cycles = git order, deterministic; leftovers stay last), `checkOrder` +
+CLI `--check-order` (exit 0/1) with a PR-2357-shaped synthetic CI fixture; `--dump-graph`.
+Dogfood 1 (baseline doc "Dogfood 1" section): both dogfood-0 inversions **0** on PR 2357 AND
+on second subject sillsdev PR 2379 (`8dd70ba~1..8dd70ba`, C#-only); j/k median 4ms via new
+`tools/dogfood-walk.mjs` (root devDep playwright-core, channel:'chrome'; restore nets zero
+only on fresh review state). Recurring artifact = genuine 2-cycles (one per subject) → **#20**
+(cycle-aware check-order split, gateable) and **#21** (C# ancestor-namespace back-edge
+evidence, fix after #20 re-measure). Server vitest pinned to src (stale dist/*.test.js were
+double-counted; true counts now core 110 / server 13 / web 11 = 134). BookPage slimmed:
+keymap + seen-scan live in web `useBookKeymap.ts`/`useSeenTracking.ts` (no-dep-array
+re-register is intentional). Subagent ops note: resuming a 529-killed worktree agent loses
+isolation — it lands in the MAIN worktree; keep the tree clean while resumed agents run.
+**Maintainability pass done** (`docs/reviews/2026-07-16-maintainability-pass.md` — the
 pick-up-here doc): low-signal helpers + `checkCoverage` consolidated in core,
 `detectChangeTypes` seam in chunker, and web rows now occurrence-keyed (`chunkId#ordinal` —
 the R-004/M1 blocker cleared; walk stops = occurrences, progress = distinct chunks). Its two

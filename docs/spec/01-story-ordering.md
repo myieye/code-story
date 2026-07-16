@@ -1,7 +1,9 @@
 # Spec 01 — Milestone 1: story ordering
 
-Status: scoped — Tim answered all four open questions 2026-07-16 (see the resolutions inline
-at the end); M1 slices filed.
+Status: tier 0 built and dogfooded — slices #15–#19 done 2026-07-16; both measured inversions
+are 0 on the dogfood-0 subject and a second C#-only subject (dogfood 1 section of the
+[baseline doc](../evals/dogfood-0-baseline.md)). Residual cycle artifacts: #20/#21.
+Tier 1 (AI ordering) opens M2, gated by `--check-order`.
 Date: 2026-07-16
 Satisfies: R-034 (ordering eval loop on real diffs), R-005 (partial: reading-order intelligence,
 deterministic tier), R-024 (scripts before AI — tier 0 is zero-AI), R-042 (the tier ladder is
