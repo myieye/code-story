@@ -81,7 +81,7 @@ ux-expert pass on the book UI). **ADR 0002**: book UI is React (Tim's call). Iss
 (Tim-ratified): just-in-time — 5–8 vertical-slice GitHub issues per milestone, filed when that
 milestone's spec lands; never a full backlog. Milestone-0 slices are issues #1–#8 (blocking
 edges in bodies). **#1 scaffold, #2 diff ingestion, #3 chunker, #4 naive book + export, #5 book
-UI, #6 review loop done.** Stack: pnpm monorepo (core/server/web),
+UI, #6 review loop, #7 low-signal collapse done.** Stack: pnpm monorepo (core/server/web),
 TS strict (TS 7), vitest, React 19 + Vite, hono daemon, CI. Core: `parseGitDiff` (-U0, ranges
 only), pure `chunkFile` (hunk∩symbol intersection, fragments >40 lines, fnv1a fingerprints,
 R-001 coverage invariant property-tested with fast-check). Server: tree-sitter via
@@ -112,5 +112,13 @@ deliberate M0 constraints and where they must be revisited, notably occurrence-v
 in the web layer and the monolithic `/api/book` payload). All packages are `@code-story/*` now
 (server renamed; bin still `code-story`); API contract types live in `core/src/api.ts`;
 `pnpm test` type-checks test files via `tsconfig.check.json`; dev loop = daemon `--port 7357` +
-`CODE_STORY_PORT` Vite proxy. Next: #7 low-signal collapse + batch acknowledgment.
+`CODE_STORY_PORT` Vite proxy. Low-signal (#7): core `classifyGenerated` (path patterns +
+first-5-lines auto-generated sniff) → `changeTypes: ['generated']` + `generatedReason`; stubs
+start collapsed (CM unmounted), Enter marks without expanding, expansion persists
+(`ChunkReview.expanded`, per-field patch merge); section "Mark all N reviewed (reason)" only
+when all remaining chunks in the section are stubs, single announce, undo restores exact prior
+states (section button morphs so focus survives); "N pending stubs" in progress cluster. Pure
+review logic lives in web `review-logic.ts` (vitest, no jsdom) — extend tests there, not in
+BookPage. Verified on lexbox dep-bump commit 78806fe4: 44 chunks / 25 lockfile stubs,
+batch+undo+persistence all keyboard-checked (16/16). Next: #8 dogfood 0 + eval baseline.
 Dogfood target: languageforge/lexbox (C# + Svelte/TS); repo-agnostic (R-025).
