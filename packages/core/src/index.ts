@@ -6,4 +6,5 @@ export * from './export.js';
 export * from './diff.js';
 export * from './model.js';
 export * from './render.js';
+export * from './review.js';
 export * from './symbols.js';

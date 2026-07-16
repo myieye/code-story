@@ -1,18 +1,19 @@
+import type { ReviewFile } from '@code-story/core';
 import { useEffect, useState } from 'react';
-import { type BookResponse, fetchBook } from './api.js';
+import { type BookResponse, fetchBook, fetchReview } from './api.js';
 import { BookPage } from './BookPage.js';
 
 type State =
   | { phase: 'loading' }
   | { phase: 'error'; message: string }
-  | { phase: 'ready'; data: BookResponse };
+  | { phase: 'ready'; data: BookResponse; review: ReviewFile };
 
 export function App() {
   const [state, setState] = useState<State>({ phase: 'loading' });
 
   useEffect(() => {
-    fetchBook()
-      .then((data) => setState({ phase: 'ready', data }))
+    Promise.all([fetchBook(), fetchReview()])
+      .then(([data, review]) => setState({ phase: 'ready', data, review }))
       .catch((e: unknown) => setState({ phase: 'error', message: e instanceof Error ? e.message : String(e) }));
   }, []);
 
@@ -39,5 +40,5 @@ export function App() {
       </main>
     );
   }
-  return <BookPage data={state.data} />;
+  return <BookPage data={state.data} initialReview={state.review} />;
 }

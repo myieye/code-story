@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { serve } from '@hono/node-server';
 import { serveStatic } from '@hono/node-server/serve-static';
 import {
+  applyReviewPatch,
   type Book,
   type Chunk,
   CORE_VERSION,
@@ -11,17 +12,22 @@ import {
   exportBookMarkdown,
   type FileContents,
   type FileDiff,
+  type ReviewFile,
+  type ReviewPatch,
   unifiedChunkLines,
 } from '@code-story/core';
 import { Hono } from 'hono';
 import { computeChunks } from './chunks.js';
-import { diffRange, type ResolvedRange } from './git.js';
+import { diffRange, type ResolvedRange, rootCommit } from './git.js';
+import { defaultDataHome, loadReview, repoIdFrom, reviewFilePath, saveReview } from './review-store.js';
 
 const webDist = fileURLToPath(new URL('../../web/dist', import.meta.url));
 
 export interface ServerOptions {
   repo: string;
   range: ResolvedRange;
+  /** Override of `~/.code-story` for tests. */
+  dataHome?: string;
 }
 
 export interface RunningServer {
@@ -44,6 +50,16 @@ export function startServer(options: ServerOptions, requestedPort = 0): Promise<
       return { ...compiled, contents };
     })());
 
+  let reviewCache: Promise<{ file: string; review: ReviewFile }> | undefined;
+  const getReview = () =>
+    (reviewCache ??= (async () => {
+      const repoId = repoIdFrom(options.repo, await rootCommit(options.repo));
+      const file = reviewFilePath(options.dataHome ?? defaultDataHome(), repoId, options.range);
+      return { file, review: await loadReview(file, options.range) };
+    })());
+  // Serializes saves so concurrent PATCHes never interleave the write-temp/rename pair.
+  let saveChain = Promise.resolve();
+
   app.get('/api/health', (c) => c.json({ ok: true, name: 'code-story', core: CORE_VERSION }));
 
   app.get('/api/diff', async (c) => {
@@ -56,6 +72,20 @@ export function startServer(options: ServerOptions, requestedPort = 0): Promise<
       chunks.map((chunk) => [chunk.id, unifiedChunkLines(chunk, contents.get(chunk.file))]),
     );
     return c.json({ ...options.range, book, chunks, diffs });
+  });
+
+  app.get('/api/review', async (c) => {
+    const { review } = await getReview();
+    return c.json(review);
+  });
+
+  app.patch('/api/review', async (c) => {
+    const patch = (await c.req.json()) as ReviewPatch;
+    const { file, review } = await getReview();
+    applyReviewPatch(review, patch);
+    saveChain = saveChain.then(() => saveReview(file, review));
+    await saveChain;
+    return c.json({ ok: true });
   });
 
   app.get('/api/export.md', async (c) => {

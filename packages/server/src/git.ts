@@ -33,3 +33,11 @@ export async function diffRange(repo: string, { base, head }: ResolvedRange): Pr
 export async function fileAt(repo: string, sha: string, path: string): Promise<string> {
   return git(repo, ['show', `${sha}:${path}`]);
 }
+
+/** First root commit — a repo identity stable across clones, branches, and directory moves. */
+export async function rootCommit(repo: string): Promise<string> {
+  const out = await git(repo, ['rev-list', '--max-parents=0', '--first-parent', 'HEAD']);
+  const sha = out.trim().split('\n').at(-1);
+  if (!sha) throw new Error('Could not determine root commit');
+  return sha;
+}
