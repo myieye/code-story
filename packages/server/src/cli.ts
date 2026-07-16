@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { writeFile } from 'node:fs/promises';
-import { checkCoverage, compileBook, exportBookMarkdown, isLowSignal, lowSignalReason } from '@code-story/core';
+import { checkCoverage, checkOrder, compileBook, exportBookMarkdown, isLowSignal, lowSignalReason } from '@code-story/core';
 import open from 'open';
 import { computeChunks } from './chunks.js';
 import { diffRange, resolveRange } from './git.js';
@@ -11,6 +11,7 @@ const noOpen = args.includes('--no-open');
 const dumpDiff = args.includes('--dump-diff');
 const dumpChunks = args.includes('--dump-chunks');
 const dumpGraph = args.includes('--dump-graph');
+const checkOrderFlag = args.includes('--check-order');
 const exportIndex = args.indexOf('--export');
 const exportPath = exportIndex >= 0 ? args[exportIndex + 1] : undefined;
 const portIndex = args.indexOf('--port');
@@ -21,7 +22,7 @@ const repo = process.cwd();
 
 if (!range || (exportIndex >= 0 && !exportPath) || Number.isNaN(port)) {
   console.error(
-    'Usage: code-story <base>..<head> [--export book.md] [--port <n>] [--dump-diff] [--dump-chunks] [--dump-graph] [--no-open]',
+    'Usage: code-story <base>..<head> [--export book.md] [--port <n>] [--dump-diff] [--dump-chunks] [--dump-graph] [--check-order] [--no-open]',
   );
   process.exit(1);
 }
@@ -61,6 +62,22 @@ if (dumpGraph) {
   for (const edge of graph.edges) console.log(`${edge.from} -> ${edge.to}`);
   console.log(`\n${graph.edges.length} edges, ${graph.unresolved} unresolved specifiers`);
   process.exit(0);
+}
+
+if (checkOrderFlag) {
+  const files = await diffRange(repo, resolved);
+  const { chunks, graph } = await computeChunks(repo, resolved, files);
+  const { book } = compileBook({ files, chunks, graph, headSha: resolved.head });
+  const report = checkOrder(book, graph, chunks);
+
+  for (const inv of report.importInversions) console.log(`import inversion: ${inv.earlier} reads before ${inv.later}`);
+  for (const inv of report.testBeforeImpl) console.log(`test before impl: ${inv.test} reads before ${inv.impl}`);
+  console.log(
+    report.ok
+      ? `order: OK (${book.sections.length} sections, 0 inversions)`
+      : `order: FAILED — ${report.importInversions.length} import inversions, ${report.testBeforeImpl.length} test-before-impl`,
+  );
+  process.exit(report.ok ? 0 : 1);
 }
 
 if (exportPath) {
