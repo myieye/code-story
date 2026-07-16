@@ -51,6 +51,19 @@ describe('chunkFile', () => {
     expect(chunks[0]!.hunks).toHaveLength(2);
   });
 
+  it('marks every chunk of a generated file with the changeType and reason', () => {
+    const chunks = chunkFile(
+      input(file([{ baseStart: 25, baseCount: 20, headStart: 25, headCount: 20 }]), classWithMethods, {
+        generatedReason: 'lockfile',
+      }),
+    );
+    expect(chunks.length).toBeGreaterThan(1);
+    for (const c of chunks) {
+      expect(c.changeTypes).toEqual(['generated']);
+      expect(c.generatedReason).toBe('lockfile');
+    }
+  });
+
   it('anchors a pure deletion to the symbol at its anchor line', () => {
     const chunks = chunkFile(input(file([{ baseStart: 50, baseCount: 3, headStart: 45, headCount: 0 }]), classWithMethods));
     expect(chunks[0]!.symbolPath).toEqual(['Foo', 'baz']);

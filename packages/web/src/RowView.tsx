@@ -1,7 +1,11 @@
 import type { Chunk, ChunkReviewState } from '@code-story/core';
 import type { BookResponse } from './api.js';
 import { DiffView } from './DiffView.js';
+import { isLowSignal, stubReason } from './review-logic.js';
 import { chunkSize, chunkTitle, type Row } from './rows.js';
+
+/** Section-header action: batch-mark the remaining stubs, or undo the batch just made. */
+export type SectionAck = { kind: 'mark'; count: number; reason: string } | { kind: 'undo'; count: number };
 
 export function RowView({
   row,
@@ -9,24 +13,32 @@ export function RowView({
   total,
   reviewedCount,
   sectionStats,
+  sectionAck,
+  onMarkSection,
+  onUndoBatch,
   state,
   collapsed,
   isCursor,
   registerEl,
   onSelect,
   onJumpNext,
+  onExpand,
 }: {
   row: Row;
   data: BookResponse;
   total: number;
   reviewedCount: number;
   sectionStats: Map<string, { done: number; total: number }>;
+  sectionAck: SectionAck | undefined;
+  onMarkSection: (sectionId: string) => void;
+  onUndoBatch: () => void;
   state: ChunkReviewState;
   collapsed: boolean;
   isCursor: boolean;
   registerEl: (el: HTMLElement | null) => void;
   onSelect: () => void;
   onJumpNext: () => void;
+  onExpand: (chunk: Chunk) => void;
 }) {
   if (row.kind === 'section') {
     const stats = sectionStats.get(row.id);
@@ -34,6 +46,17 @@ export function RowView({
       <div className="section-header">
         <span className="section-path">{row.title}</span>
         <span className="section-count">{stats ? `${stats.done}/${stats.total} reviewed` : `${row.chunkCount} chunks`}</span>
+        {/* One element for both labels so focus survives the mark → undo morph (spec 00a). */}
+        {sectionAck && (
+          <button
+            className="bar-button section-ack"
+            onClick={() => (sectionAck.kind === 'mark' ? onMarkSection(row.id) : onUndoBatch())}
+          >
+            {sectionAck.kind === 'mark'
+              ? `Mark all ${sectionAck.count} reviewed (${sectionAck.reason})`
+              : `Undo mark all (${sectionAck.count})`}
+          </button>
+        )}
       </div>
     );
   }
@@ -74,6 +97,7 @@ export function RowView({
 
   const { chunk } = row;
   const size = chunkSize(chunk);
+  const lowSignal = isLowSignal(chunk);
   const classes = ['chunk', `state-${state}`];
   if (isCursor) classes.push('cursor');
   if (collapsed) classes.push('collapsed');
@@ -93,12 +117,25 @@ export function RowView({
             {state === 'reviewed' && <span className="check" aria-hidden="true">✓</span>}
             <span className="chunk-title">{chunkTitle(chunk)}</span>
             <span className={`badge kind-${chunk.kind}`}>{chunk.kind}</span>
+            {lowSignal && <span className="badge generated">{stubReason(chunk)}</span>}
             <span className="chunk-size">
               <span className="added">+{size.added}</span> <span className="removed">−{size.removed}</span>
             </span>
           </div>
           {collapsed ? (
-            <div className="chunk-collapsed-note">collapsed — press x to expand</div>
+            <div className="chunk-collapsed-note">
+              {lowSignal ? (
+                <>
+                  collapsed ({stubReason(chunk)}) —{' '}
+                  <button className="link-button" onClick={() => onExpand(chunk)}>
+                    Show diff
+                  </button>{' '}
+                  or press x
+                </>
+              ) : (
+                'collapsed — press x to expand'
+              )}
+            </div>
           ) : (
             <DiffView file={chunk.file} lines={data.diffs[chunk.id] ?? []} />
           )}

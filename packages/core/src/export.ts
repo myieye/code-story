@@ -36,7 +36,8 @@ export function exportBookMarkdown(input: ExportBookInput): string {
     for (const occurrence of section.occurrences) {
       const chunk = byId.get(occurrence.chunkId);
       if (!chunk) continue;
-      out.push(`### ${chunkTitle(chunk)}`, '', `${chunk.kind} · ${sizeLabel(chunk)}`, '');
+      const generated = chunk.changeTypes.includes('generated') ? ` · generated (${chunk.generatedReason ?? 'generated'})` : '';
+      out.push(`### ${chunkTitle(chunk)}`, '', `${chunk.kind} · ${sizeLabel(chunk)}${generated}`, '');
       out.push(...diffBlock(chunk, input.contents.get(chunk.file)), '');
     }
   }

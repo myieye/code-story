@@ -1,0 +1,86 @@
+import type { Book, Chunk, ChunkReviewState } from '@code-story/core';
+import { describe, expect, it } from 'vitest';
+import { batchableSections, findUnreviewed, pendingStubCount } from './review-logic.js';
+import { flattenBook } from './rows.js';
+
+function chunk(id: string, generatedReason?: string): Chunk {
+  return {
+    id,
+    file: 'f',
+    symbolPath: [],
+    displayPath: [id],
+    kind: 'other',
+    changeTypes: generatedReason !== undefined ? ['generated'] : [],
+    ...(generatedReason !== undefined ? { generatedReason } : {}),
+    hunks: [],
+  };
+}
+
+function book(sections: Record<string, Chunk[]>): { flat: ReturnType<typeof flattenBook>; chunks: Chunk[] } {
+  const chunks = Object.values(sections).flat();
+  const b: Book = {
+    headSha: 'head',
+    sections: Object.entries(sections).map(([id, cs]) => ({
+      id,
+      title: id,
+      occurrences: cs.map((c) => ({ chunkId: c.id, ordinal: 0, role: 'primary' as const })),
+    })),
+  };
+  return { flat: flattenBook(b, chunks), chunks };
+}
+
+const states = (map: Record<string, ChunkReviewState>) => (id: string) => map[id] ?? 'unseen';
+
+describe('findUnreviewed', () => {
+  const { flat } = book({ s1: [chunk('a'), chunk('b'), chunk('c')] });
+
+  it('skips reviewed chunks and reports wrapping', () => {
+    const stateOf = states({ b: 'reviewed', c: 'reviewed' });
+    expect(findUnreviewed(flat, stateOf, 1, 1)).toEqual({ index: 0, wrapped: true });
+    expect(findUnreviewed(flat, stateOf, 0, 1)).toEqual({ index: 0, wrapped: false });
+  });
+
+  it('treats alsoReviewed as reviewed and returns undefined when nothing remains', () => {
+    const stateOf = states({ a: 'reviewed', b: 'reviewed' });
+    expect(findUnreviewed(flat, stateOf, 0, 1, 'c')).toBeUndefined();
+    expect(findUnreviewed(flat, stateOf, 0, 1)).toEqual({ index: 2, wrapped: false });
+  });
+
+  it('searches backwards with wrap', () => {
+    expect(findUnreviewed(flat, states({ a: 'reviewed' }), 0, -1)).toEqual({ index: 2, wrapped: true });
+  });
+});
+
+describe('batchableSections', () => {
+  it('offers a batch only for sections whose remaining chunks are all low-signal', () => {
+    const { flat } = book({
+      lockfile: [chunk('l1', 'lockfile'), chunk('l2', 'lockfile')],
+      mixed: [chunk('m1', 'lockfile'), chunk('m2')],
+      code: [chunk('c1')],
+    });
+    const batches = batchableSections(flat, states({}));
+    expect([...batches.keys()]).toEqual(['lockfile']);
+    expect(batches.get('lockfile')).toEqual({ ids: ['l1', 'l2'], reason: 'lockfile' });
+  });
+
+  it('becomes batchable once the non-stub chunks are reviewed, and lists unique reasons', () => {
+    const { flat } = book({ mixed: [chunk('m1', 'lockfile'), chunk('m2'), chunk('m3', 'minified')] });
+    expect(batchableSections(flat, states({})).size).toBe(0);
+    const batches = batchableSections(flat, states({ m2: 'reviewed' }));
+    expect(batches.get('mixed')).toEqual({ ids: ['m1', 'm3'], reason: 'lockfile, minified' });
+  });
+
+  it('offers nothing for fully reviewed sections', () => {
+    const { flat } = book({ lockfile: [chunk('l1', 'lockfile')] });
+    expect(batchableSections(flat, states({ l1: 'reviewed' })).size).toBe(0);
+  });
+});
+
+describe('pendingStubCount', () => {
+  it('counts unreviewed low-signal chunks only', () => {
+    const { flat } = book({ s: [chunk('a', 'lockfile'), chunk('b', 'lockfile'), chunk('c')] });
+    expect(pendingStubCount(flat, states({}))).toBe(2);
+    expect(pendingStubCount(flat, states({ a: 'reviewed' }))).toBe(1);
+    expect(pendingStubCount(flat, states({ a: 'reviewed', b: 'seen' }))).toBe(1);
+  });
+});

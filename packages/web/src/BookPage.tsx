@@ -1,9 +1,10 @@
-import type { Chunk, ReviewFile } from '@code-story/core';
+import type { Chunk, ChunkReviewState, ReviewFile } from '@code-story/core';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { BookResponse } from './api.js';
 import { OutlineSidebar } from './OutlineSidebar.js';
-import { estimateRowHeight, RowView } from './RowView.js';
+import { batchableSections, findUnreviewed, isLowSignal, pendingStubCount } from './review-logic.js';
+import { estimateRowHeight, RowView, type SectionAck } from './RowView.js';
 import { flattenBook, type Row } from './rows.js';
 import { ShortcutOverlay } from './ShortcutOverlay.js';
 import { useReview } from './useReview.js';
@@ -21,10 +22,18 @@ export function BookPage({ data, initialReview }: { data: BookResponse; initialR
     return resumed ?? 0;
   });
   const [hideReviewed, setHideReviewed] = useState(false);
-  const [collapsedOverride, setCollapsedOverride] = useState<ReadonlyMap<string, boolean>>(new Map());
+  // Persisted stub expansions (review.expanded) seed the overrides so reloads keep them open.
+  const [collapsedOverride, setCollapsedOverride] = useState<ReadonlyMap<string, boolean>>(() => {
+    const seeded = new Map<string, boolean>();
+    for (const [id, entry] of Object.entries(initialReview.chunks)) {
+      if (entry.expanded) seeded.set(id, false);
+    }
+    return seeded;
+  });
   const [overlayOpen, setOverlayOpen] = useState(false);
   const [announce, setAnnounce] = useState({ msg: '', seq: 0 });
   const [toastVisible, setToastVisible] = useState(false);
+  const [lastBatch, setLastBatch] = useState<{ sectionId: string; prior: { chunkId: string; state: ChunkReviewState }[] } | null>(null);
 
   const totalChunks = flat.chunkRowIndexes.length;
   const chunkRowAt = (i: number): Extract<Row, { kind: 'chunk' }> | undefined => {
@@ -50,8 +59,16 @@ export function BookPage({ data, initialReview }: { data: BookResponse; initialR
     return stats;
   }, [flat, review.states]);
 
+  const batches = useMemo(() => batchableSections(flat, review.stateOf), [flat, review.states]);
+  const pendingStubs = useMemo(() => pendingStubCount(flat, review.stateOf), [flat, review.states]);
+
   const isCollapsed = (chunk: Chunk) =>
-    collapsedOverride.get(chunk.id) ?? (hideReviewed && review.stateOf(chunk.id) === 'reviewed');
+    collapsedOverride.get(chunk.id) ?? (isLowSignal(chunk) || (hideReviewed && review.stateOf(chunk.id) === 'reviewed'));
+
+  const setCollapsed = (chunk: Chunk, collapsed: boolean) => {
+    setCollapsedOverride((prev) => new Map(prev).set(chunk.id, collapsed));
+    if (isLowSignal(chunk)) review.setExpanded(chunk.id, !collapsed);
+  };
 
   const virtualizer = useVirtualizer({
     count: flat.rows.length,
@@ -96,26 +113,13 @@ export function BookPage({ data, initialReview }: { data: BookResponse; initialR
     say(`Resumed — ${totalChunks - reviewedCount} remaining.`);
   }, []);
 
-  /** Next/previous not-reviewed chunk starting at `from` (cursor space), wrapping. */
-  const findUnreviewed = (from: number, dir: 1 | -1, alsoReviewed?: string) => {
-    for (let step = 0; step < totalChunks; step++) {
-      const raw = from + dir * step;
-      const i = ((raw % totalChunks) + totalChunks) % totalChunks;
-      const id = chunkRowAt(i)!.chunk.id;
-      if (id !== alsoReviewed && review.stateOf(id) !== 'reviewed') {
-        return { index: i, wrapped: raw < 0 || raw >= totalChunks };
-      }
-    }
-    return undefined;
-  };
-
   const markCurrent = () => {
     const row = chunkRowAt(cursor);
     if (!row) return;
     const prior = review.stateOf(row.chunk.id);
     if (prior !== 'reviewed') review.setState(row.chunk.id, 'reviewed', prior === 'unseen' || undefined);
     const remaining = totalChunks - reviewedCount - (prior !== 'reviewed' ? 1 : 0);
-    const next = findUnreviewed(cursor + 1, 1, row.chunk.id);
+    const next = findUnreviewed(flat, review.stateOf, cursor + 1, 1, row.chunk.id);
     if (next) {
       say(next.wrapped ? `Reviewed. ${remaining} remaining. Wrapped to start of book.` : `Reviewed. ${remaining} remaining.`);
       moveCursor(next.index);
@@ -133,7 +137,7 @@ export function BookPage({ data, initialReview }: { data: BookResponse; initialR
   };
 
   const jumpUnreviewed = (dir: 1 | -1) => {
-    const found = findUnreviewed(cursor + dir, dir);
+    const found = findUnreviewed(flat, review.stateOf, cursor + dir, dir);
     if (!found) {
       say('All chunks reviewed.');
       return;
@@ -145,7 +149,29 @@ export function BookPage({ data, initialReview }: { data: BookResponse; initialR
   const toggleCollapseCurrent = () => {
     const row = chunkRowAt(cursor);
     if (!row) return;
-    setCollapsedOverride((prev) => new Map(prev).set(row.chunk.id, !isCollapsed(row.chunk)));
+    setCollapsed(row.chunk, !isCollapsed(row.chunk));
+  };
+
+  const markSection = (sectionId: string) => {
+    const batch = batches.get(sectionId);
+    if (!batch) return;
+    setLastBatch({ sectionId, prior: batch.ids.map((id) => ({ chunkId: id, state: review.stateOf(id) })) });
+    review.setMany(
+      batch.ids.map((id) => ({
+        chunkId: id,
+        state: 'reviewed' as const,
+        ...(review.stateOf(id) === 'unseen' ? { markedUnseen: true } : {}),
+      })),
+    );
+    const remaining = totalChunks - reviewedCount - batch.ids.length;
+    say(remaining === 0 ? `${batch.ids.length} chunks marked reviewed. All chunks reviewed.` : `${batch.ids.length} chunks marked reviewed. ${remaining} remaining.`);
+  };
+
+  const undoBatch = () => {
+    if (!lastBatch) return;
+    review.setMany(lastBatch.prior);
+    say(`Batch undone. ${totalChunks - reviewedCount + lastBatch.prior.length} remaining.`);
+    setLastBatch(null);
   };
 
   useEffect(() => {
@@ -221,7 +247,9 @@ export function BookPage({ data, initialReview }: { data: BookResponse; initialR
 
   const items = virtualizer.getVirtualItems();
   const currentSection = useMemo(() => {
-    const first = items[0]?.index ?? 0;
+    // Skip overscan rows above the viewport — the bar must name the section actually on screen.
+    const top = virtualizer.scrollOffset ?? 0;
+    const first = (items.find((it) => it.end > top) ?? items[0])?.index ?? 0;
     for (let i = first; i >= 0; i--) {
       const row = flat.rows[i];
       if (row?.kind === 'section') return row.title;
@@ -229,6 +257,12 @@ export function BookPage({ data, initialReview }: { data: BookResponse; initialR
     }
     return undefined;
   }, [items, flat]);
+
+  const sectionAckFor = (sectionId: string): SectionAck | undefined => {
+    if (lastBatch?.sectionId === sectionId) return { kind: 'undo', count: lastBatch.prior.length };
+    const batch = batches.get(sectionId);
+    return batch ? { kind: 'mark', count: batch.ids.length, reason: batch.reason } : undefined;
+  };
 
   const cursorRowIndex = flat.chunkRowIndexes[cursor];
   const done = reviewedCount === totalChunks;
@@ -243,12 +277,18 @@ export function BookPage({ data, initialReview }: { data: BookResponse; initialR
         <span className="progress-cluster">
           <span className="progress-text">
             {reviewedCount} / {totalChunks} reviewed
+            {pendingStubs > 0 && ` · ${pendingStubs} pending stub${pendingStubs === 1 ? '' : 's'}`}
           </span>
           <span className="progress-bar">
             <span className="progress-fill" style={{ width: `${totalChunks ? (reviewedCount / totalChunks) * 100 : 0}%` }} />
           </span>
         </span>
         <span className="spacer" />
+        {lastBatch && (
+          <button className="bar-button" onClick={undoBatch}>
+            Undo batch ({lastBatch.prior.length})
+          </button>
+        )}
         <button className="bar-button" title="n" onClick={() => jumpUnreviewed(1)} disabled={done}>
           Next unreviewed
         </button>
@@ -258,7 +298,16 @@ export function BookPage({ data, initialReview }: { data: BookResponse; initialR
             checked={hideReviewed}
             onChange={(e) => {
               setHideReviewed(e.currentTarget.checked);
-              setCollapsedOverride(new Map());
+              // Reset overrides, but keep stub expansions — they are persisted review state.
+              setCollapsedOverride((prev) => {
+                const kept = new Map<string, boolean>();
+                for (const [id, collapsed] of prev) {
+                  const index = flat.chunkIndexById.get(id);
+                  const chunk = index === undefined ? undefined : chunkRowAt(index)?.chunk;
+                  if (chunk && isLowSignal(chunk) && !collapsed) kept.set(id, collapsed);
+                }
+                return kept;
+              });
               e.currentTarget.blur();
             }}
           />
@@ -305,6 +354,9 @@ export function BookPage({ data, initialReview }: { data: BookResponse; initialR
                       total={totalChunks}
                       reviewedCount={reviewedCount}
                       sectionStats={sectionStats}
+                      sectionAck={row.kind === 'section' ? sectionAckFor(row.id) : undefined}
+                      onMarkSection={markSection}
+                      onUndoBatch={undoBatch}
                       state={row.kind === 'chunk' ? review.stateOf(row.chunk.id) : 'unseen'}
                       collapsed={row.kind === 'chunk' && isCollapsed(row.chunk)}
                       isCursor={item.index === cursorRowIndex}
@@ -317,6 +369,7 @@ export function BookPage({ data, initialReview }: { data: BookResponse; initialR
                         if (i >= 0) setCursor(i);
                       }}
                       onJumpNext={() => jumpUnreviewed(1)}
+                      onExpand={(chunk) => setCollapsed(chunk, false)}
                     />
                   </div>
                 );

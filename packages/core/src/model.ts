@@ -24,6 +24,8 @@ export interface Chunk {
   headRange?: LineRange;
   kind: ChunkKind;
   changeTypes: ChangeType[];
+  /** Stub badge label when `generated` ∈ changeTypes, e.g. "lockfile" (R-002). */
+  generatedReason?: string;
   /** The diff hunks (or sub-hunks after boundary splits) this chunk owns — its exact coverage. */
   hunks: Hunk[];
 }

@@ -2,15 +2,27 @@ import type { ChunkReview, ChunkReviewState, ReviewFile } from '@code-story/core
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { sendReviewPatch } from './api.js';
 
+export interface MarkEntry {
+  chunkId: string;
+  state: ChunkReviewState;
+  markedUnseen?: boolean;
+}
+
 export interface Review {
   states: Record<string, ChunkReview>;
   stateOf: (chunkId: string) => ChunkReviewState;
   /** Explicit mark/unmark — persisted immediately. */
   setState: (chunkId: string, state: ChunkReviewState, markedUnseen?: boolean) => void;
+  /** Batch acknowledgment / undo — one local update and one immediate flush for the group. */
+  setMany: (entries: MarkEntry[]) => void;
   /** Automatic seen-tracking — batched and persisted on a debounce. */
   setSeen: (chunkIds: string[]) => void;
+  /** Stub expand/collapse (low-signal chunks only) — persisted on a debounce. */
+  setExpanded: (chunkId: string, expanded: boolean) => void;
   setCursor: (chunkId: string) => void;
 }
+
+type PendingEntry = { state?: ChunkReviewState; markedUnseen?: boolean; expanded?: boolean };
 
 const FLUSH_DELAY_MS = 800;
 
@@ -18,7 +30,7 @@ export function useReview(initial: ReviewFile): Review {
   const [states, setStates] = useState<Record<string, ChunkReview>>(initial.chunks);
   const statesRef = useRef(states);
   statesRef.current = states;
-  const pendingSet = useRef(new Map<string, { state: ChunkReviewState; markedUnseen?: boolean }>());
+  const pendingSet = useRef(new Map<string, PendingEntry>());
   const pendingCursor = useRef<string | undefined>(undefined);
   const timer = useRef<number | undefined>(undefined);
 
@@ -26,6 +38,10 @@ export function useReview(initial: ReviewFile): Review {
     timer.current ??= window.setTimeout(() => flushRef.current(), FLUSH_DELAY_MS);
   }, []);
   const flushRef = useRef(() => {});
+
+  const queue = useCallback((chunkId: string, fields: PendingEntry) => {
+    pendingSet.current.set(chunkId, { ...pendingSet.current.get(chunkId), ...fields });
+  }, []);
 
   const flush = useCallback(() => {
     window.clearTimeout(timer.current);
@@ -40,10 +56,10 @@ export function useReview(initial: ReviewFile): Review {
     pendingSet.current = new Map();
     pendingCursor.current = undefined;
     void sendReviewPatch(patch).catch((e: unknown) => {
-      // Re-queue what failed (newer pending entries win) and retry — marks must not be lost.
+      // Re-queue what failed (newer pending fields win) and retry — marks must not be lost.
       console.error('code-story: review save failed, retrying', e);
       for (const [id, v] of sent) {
-        if (!pendingSet.current.has(id)) pendingSet.current.set(id, v);
+        pendingSet.current.set(id, { ...v, ...pendingSet.current.get(id) });
       }
       pendingCursor.current ??= sentCursor;
       scheduleFlush();
@@ -59,11 +75,15 @@ export function useReview(initial: ReviewFile): Review {
     };
   }, [flush]);
 
-  const applyLocal = useCallback((chunkId: string, state: ChunkReviewState, markedUnseen?: boolean) => {
+  const applyLocal = useCallback((updates: MarkEntry[]) => {
     setStates((prev) => {
-      const entry: ChunkReview = { state };
-      if (markedUnseen ?? prev[chunkId]?.markedUnseen) entry.markedUnseen = true;
-      return { ...prev, [chunkId]: entry };
+      const next = { ...prev };
+      for (const { chunkId, state, markedUnseen } of updates) {
+        const entry: ChunkReview = { state };
+        if (markedUnseen ?? prev[chunkId]?.markedUnseen) entry.markedUnseen = true;
+        next[chunkId] = entry;
+      }
+      return next;
     });
   }, []);
 
@@ -71,18 +91,27 @@ export function useReview(initial: ReviewFile): Review {
     states,
     stateOf: (chunkId) => states[chunkId]?.state ?? 'unseen',
     setState: (chunkId, state, markedUnseen) => {
-      applyLocal(chunkId, state, markedUnseen);
-      pendingSet.current.set(chunkId, { state, ...(markedUnseen ? { markedUnseen } : {}) });
+      applyLocal([{ chunkId, state, ...(markedUnseen ? { markedUnseen } : {}) }]);
+      queue(chunkId, { state, ...(markedUnseen ? { markedUnseen } : {}) });
+      flush();
+    },
+    setMany: (entries) => {
+      applyLocal(entries);
+      for (const { chunkId, ...fields } of entries) queue(chunkId, fields);
       flush();
     },
     setSeen: (chunkIds) => {
       // seen only ever upgrades unseen — callers may hold stale state, so re-check here
       const fresh = chunkIds.filter((id) => (statesRef.current[id]?.state ?? 'unseen') === 'unseen');
       for (const id of fresh) {
-        applyLocal(id, 'seen');
-        pendingSet.current.set(id, { state: 'seen' });
+        applyLocal([{ chunkId: id, state: 'seen' }]);
+        queue(id, { state: 'seen' });
       }
       if (fresh.length > 0) scheduleFlush();
+    },
+    setExpanded: (chunkId, expanded) => {
+      queue(chunkId, { expanded });
+      scheduleFlush();
     },
     setCursor: (chunkId) => {
       pendingCursor.current = chunkId;

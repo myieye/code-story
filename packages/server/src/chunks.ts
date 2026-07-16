@@ -1,5 +1,5 @@
 import path from 'node:path';
-import { type Chunk, chunkFile, type FileContents, type FileDiff } from '@code-story/core';
+import { type Chunk, chunkFile, classifyGenerated, type FileContents, type FileDiff } from '@code-story/core';
 import { fileAt, type ResolvedRange } from './git.js';
 import { extractSymbols } from './treesitter.js';
 
@@ -38,6 +38,7 @@ export async function computeChunks(repo: string, range: ResolvedRange, files: F
 
     const symbols = noContent ? undefined : await extractSymbols(file.path, primary);
     const ext = path.extname(file.path).slice(1).toLowerCase();
+    const generatedReason = classifyGenerated(file.path, noContent ? [] : lines);
 
     chunks.push(
       ...chunkFile({
@@ -46,6 +47,7 @@ export async function computeChunks(repo: string, range: ResolvedRange, files: F
         baseLines,
         symbols,
         configLike: CONFIG_EXTENSIONS.has(ext),
+        ...(generatedReason !== undefined ? { generatedReason } : {}),
       }),
     );
   }

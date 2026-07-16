@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "build": "tsc -p . --noEmit && vite build",
-    "dev": "vite"
+    "dev": "vite",
+    "test": "tsc -p . --noEmit && vitest run"
   },
   "dependencies": {
     "@code-story/core": "workspace:*",
@@ -23,6 +24,7 @@
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.3",
     "typescript": "^7.0.2",
-    "vite": "^8.1.5"
+    "vite": "^8.1.5",
+    "vitest": "^4.1.10"
   }
 }

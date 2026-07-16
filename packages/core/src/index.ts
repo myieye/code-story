@@ -3,6 +3,7 @@ export const CORE_VERSION = '0.0.1';
 export * from './api.js';
 export * from './book.js';
 export * from './chunker.js';
+export * from './classify.js';
 export * from './export.js';
 export * from './diff.js';
 export * from './model.js';

@@ -12,6 +12,8 @@ export interface FileToChunk {
   symbols?: SymbolSpan[];
   /** Marks lockfiles/config formats so their chunks get kind `config`. */
   configLike?: boolean;
+  /** Low-signal reason from `classifyGenerated`; marks every chunk of the file `generated`. */
+  generatedReason?: string;
 }
 
 export interface ChunkOptions {
@@ -193,7 +195,8 @@ function makeChunk(
     symbolPath,
     displayPath: idPath,
     kind,
-    changeTypes: [],
+    changeTypes: input.generatedReason !== undefined ? ['generated'] : [],
+    ...(input.generatedReason !== undefined ? { generatedReason: input.generatedReason } : {}),
     hunks,
     headRange: deleted
       ? undefined
