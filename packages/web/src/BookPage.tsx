@@ -5,7 +5,7 @@ import type { BookResponse } from './api.js';
 import { OutlineSidebar } from './OutlineSidebar.js';
 import { batchableSections, findUnreviewed, pendingStubCount } from './review-logic.js';
 import { estimateRowHeight, RowView, type SectionAck } from './RowView.js';
-import { flattenBook, type Row } from './rows.js';
+import { flattenBook, occurrenceKey, type Row } from './rows.js';
 import { ShortcutOverlay } from './ShortcutOverlay.js';
 import { useReview } from './useReview.js';
 
@@ -18,7 +18,7 @@ export function BookPage({ data, initialReview }: { data: BookResponse; initialR
   const seenTimer = useRef<number | undefined>(undefined);
 
   const [cursor, setCursor] = useState(() => {
-    const resumed = initialReview.cursor ? flat.chunkIndexById.get(initialReview.cursor) : undefined;
+    const resumed = initialReview.cursor ? flat.firstIndexByChunkId.get(initialReview.cursor) : undefined;
     return resumed ?? 0;
   });
   const [hideReviewed, setHideReviewed] = useState(false);
@@ -35,7 +35,8 @@ export function BookPage({ data, initialReview }: { data: BookResponse; initialR
   const [toastVisible, setToastVisible] = useState(false);
   const [lastBatch, setLastBatch] = useState<{ sectionId: string; prior: { chunkId: string; state: ChunkReviewState }[] } | null>(null);
 
-  const totalChunks = flat.chunkRowIndexes.length;
+  // Two sizes: occurrences are walk stops (cursor space); distinct chunks carry review state.
+  const { totalOccurrences, distinctChunks } = flat;
   const chunkRowAt = (i: number): Extract<Row, { kind: 'chunk' }> | undefined => {
     const rowIndex = flat.chunkRowIndexes[i];
     const row = rowIndex === undefined ? undefined : flat.rows[rowIndex];
@@ -43,17 +44,20 @@ export function BookPage({ data, initialReview }: { data: BookResponse; initialR
   };
 
   const reviewedCount = useMemo(
-    () => flat.chunkRowIndexes.reduce((n, _, i) => n + (review.stateOf(chunkRowAt(i)!.chunk.id) === 'reviewed' ? 1 : 0), 0),
+    () => [...flat.firstIndexByChunkId.keys()].reduce((n, id) => n + (review.stateOf(id) === 'reviewed' ? 1 : 0), 0),
     [flat, review.states],
   );
 
   const sectionStats = useMemo(() => {
-    const stats = new Map<string, { done: number; total: number }>();
+    const stats = new Map<string, { done: number; total: number; counted: Set<string> }>();
     for (const row of flat.rows) {
       if (row.kind !== 'chunk') continue;
-      const s = stats.get(row.sectionId) ?? { done: 0, total: 0 };
-      s.total++;
-      if (review.stateOf(row.chunk.id) === 'reviewed') s.done++;
+      const s = stats.get(row.sectionId) ?? { done: 0, total: 0, counted: new Set<string>() };
+      if (!s.counted.has(row.chunk.id)) {
+        s.counted.add(row.chunk.id);
+        s.total++;
+        if (review.stateOf(row.chunk.id) === 'reviewed') s.done++;
+      }
       stats.set(row.sectionId, s);
     }
     return stats;
@@ -94,7 +98,7 @@ export function BookPage({ data, initialReview }: { data: BookResponse; initialR
   }, [announce]);
 
   const moveCursor = (next: number) => {
-    const clamped = Math.max(0, Math.min(totalChunks - 1, next));
+    const clamped = Math.max(0, Math.min(totalOccurrences - 1, next));
     setCursor(clamped);
     const rowIndex = flat.chunkRowIndexes[clamped]!;
     scrollToRow(rowIndex);
@@ -110,7 +114,7 @@ export function BookPage({ data, initialReview }: { data: BookResponse; initialR
   useEffect(() => {
     if (!initialReview.cursor || cursor === 0) return;
     scrollToRow(flat.chunkRowIndexes[cursor]!);
-    say(`Resumed — ${totalChunks - reviewedCount} remaining.`);
+    say(`Resumed — ${distinctChunks - reviewedCount} remaining.`);
   }, []);
 
   const markCurrent = () => {
@@ -118,7 +122,7 @@ export function BookPage({ data, initialReview }: { data: BookResponse; initialR
     if (!row) return;
     const prior = review.stateOf(row.chunk.id);
     if (prior !== 'reviewed') review.setState(row.chunk.id, 'reviewed', prior === 'unseen' || undefined);
-    const remaining = totalChunks - reviewedCount - (prior !== 'reviewed' ? 1 : 0);
+    const remaining = distinctChunks - reviewedCount - (prior !== 'reviewed' ? 1 : 0);
     const next = findUnreviewed(flat, review.stateOf, cursor + 1, 1, row.chunk.id);
     if (next) {
       say(next.wrapped ? `Reviewed. ${remaining} remaining. Wrapped to start of book.` : `Reviewed. ${remaining} remaining.`);
@@ -163,14 +167,14 @@ export function BookPage({ data, initialReview }: { data: BookResponse; initialR
         ...(review.stateOf(id) === 'unseen' ? { markedUnseen: true } : {}),
       })),
     );
-    const remaining = totalChunks - reviewedCount - batch.ids.length;
+    const remaining = distinctChunks - reviewedCount - batch.ids.length;
     say(remaining === 0 ? `${batch.ids.length} chunks marked reviewed. All chunks reviewed.` : `${batch.ids.length} chunks marked reviewed. ${remaining} remaining.`);
   };
 
   const undoBatch = () => {
     if (!lastBatch) return;
     review.setMany(lastBatch.prior);
-    say(`Batch undone. ${totalChunks - reviewedCount + lastBatch.prior.length} remaining.`);
+    say(`Batch undone. ${distinctChunks - reviewedCount + lastBatch.prior.length} remaining.`);
     setLastBatch(null);
   };
 
@@ -205,7 +209,7 @@ export function BookPage({ data, initialReview }: { data: BookResponse; initialR
       else if (plain && e.key === 'x') toggleCollapseCurrent();
       else if (plain && e.key === '?') setOverlayOpen(true);
       else if (e.ctrlKey && e.key === 'Home') moveCursor(0);
-      else if (e.ctrlKey && e.key === 'End') moveCursor(totalChunks - 1);
+      else if (e.ctrlKey && e.key === 'End') moveCursor(totalOccurrences - 1);
       else return;
       e.preventDefault();
     };
@@ -265,7 +269,8 @@ export function BookPage({ data, initialReview }: { data: BookResponse; initialR
   };
 
   const cursorRowIndex = flat.chunkRowIndexes[cursor];
-  const done = totalChunks > 0 && reviewedCount === totalChunks;
+  const cursorRow = chunkRowAt(cursor);
+  const done = distinctChunks > 0 && reviewedCount === distinctChunks;
 
   return (
     <div className="app">
@@ -277,16 +282,16 @@ export function BookPage({ data, initialReview }: { data: BookResponse; initialR
         <span className="progress-cluster">
           <span className={done ? 'progress-text done' : 'progress-text'}>
             {done ? (
-              `All ${totalChunks} reviewed ✓`
+              `All ${distinctChunks} reviewed ✓`
             ) : (
               <>
-                {reviewedCount} / {totalChunks} reviewed
+                {reviewedCount} / {distinctChunks} reviewed
                 {pendingStubs > 0 && ` · ${pendingStubs} pending stub${pendingStubs === 1 ? '' : 's'}`}
               </>
             )}
           </span>
           <span className="progress-bar">
-            <span className="progress-fill" style={{ width: `${totalChunks ? (reviewedCount / totalChunks) * 100 : 0}%` }} />
+            <span className="progress-fill" style={{ width: `${distinctChunks ? (reviewedCount / distinctChunks) * 100 : 0}%` }} />
           </span>
         </span>
         <span className="spacer" />
@@ -314,7 +319,7 @@ export function BookPage({ data, initialReview }: { data: BookResponse; initialR
               setCollapsedOverride((prev) => {
                 const kept = new Map<string, boolean>();
                 for (const [id, collapsed] of prev) {
-                  const index = flat.chunkIndexById.get(id);
+                  const index = flat.firstIndexByChunkId.get(id);
                   const chunk = index === undefined ? undefined : chunkRowAt(index)?.chunk;
                   if (chunk && isLowSignal(chunk) && !collapsed) kept.set(id, collapsed);
                 }
@@ -339,7 +344,7 @@ export function BookPage({ data, initialReview }: { data: BookResponse; initialR
           stateOf={review.stateOf}
           sectionStats={sectionStats}
           currentSection={currentSection}
-          cursorChunkId={chunkRowAt(cursor)?.chunk.id}
+          cursorOccurrence={cursorRow ? occurrenceKey(cursorRow.occurrence) : undefined}
           onJump={moveCursor}
         />
         <div className="feed-wrap">
@@ -363,7 +368,8 @@ export function BookPage({ data, initialReview }: { data: BookResponse; initialR
                     <RowView
                       row={row}
                       data={data}
-                      total={totalChunks}
+                      totalOccurrences={totalOccurrences}
+                      distinctChunks={distinctChunks}
                       reviewedCount={reviewedCount}
                       sectionStats={sectionStats}
                       sectionAck={row.kind === 'section' ? sectionAckFor(row.id) : undefined}

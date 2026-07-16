@@ -8,7 +8,7 @@ export function chunkAt(flat: FlatBook, cursorIndex: number): Chunk {
   return row.chunk;
 }
 
-/** Next/previous not-reviewed chunk starting at `from` (cursor space), wrapping. */
+/** Next/previous occurrence of a not-reviewed chunk starting at `from` (cursor space), wrapping. */
 export function findUnreviewed(
   flat: FlatBook,
   stateOf: StateOf,
@@ -16,7 +16,7 @@ export function findUnreviewed(
   dir: 1 | -1,
   alsoReviewed?: string,
 ): { index: number; wrapped: boolean } | undefined {
-  const total = flat.totalChunks;
+  const total = flat.totalOccurrences;
   for (let step = 0; step < total; step++) {
     const raw = from + dir * step;
     const i = ((raw % total) + total) % total;
@@ -39,11 +39,13 @@ export interface SectionBatch {
  * batch acknowledgment is offered (spec 00a: stub ≠ handled, but no per-stub click-through).
  */
 export function batchableSections(flat: FlatBook, stateOf: StateOf): Map<string, SectionBatch> {
-  const bySection = new Map<string, { unreviewed: Chunk[]; allStubs: boolean }>();
+  const bySection = new Map<string, { unreviewed: Chunk[]; seen: Set<string>; allStubs: boolean }>();
   for (const row of flat.rows) {
     if (row.kind !== 'chunk') continue;
-    const entry = bySection.get(row.sectionId) ?? { unreviewed: [], allStubs: true };
-    if (stateOf(row.chunk.id) !== 'reviewed') {
+    const entry = bySection.get(row.sectionId) ?? { unreviewed: [], seen: new Set<string>(), allStubs: true };
+    // A chunk occurring twice in a section is still one mark (state lives on the chunk).
+    if (stateOf(row.chunk.id) !== 'reviewed' && !entry.seen.has(row.chunk.id)) {
+      entry.seen.add(row.chunk.id);
       entry.unreviewed.push(row.chunk);
       if (!isLowSignal(row.chunk)) entry.allStubs = false;
     }
@@ -61,9 +63,9 @@ export function batchableSections(flat: FlatBook, stateOf: StateOf): Map<string,
 }
 
 export function pendingStubCount(flat: FlatBook, stateOf: StateOf): number {
-  let count = 0;
+  const pending = new Set<string>();
   for (const row of flat.rows) {
-    if (row.kind === 'chunk' && isLowSignal(row.chunk) && stateOf(row.chunk.id) !== 'reviewed') count++;
+    if (row.kind === 'chunk' && isLowSignal(row.chunk) && stateOf(row.chunk.id) !== 'reviewed') pending.add(row.chunk.id);
   }
-  return count;
+  return pending.size;
 }

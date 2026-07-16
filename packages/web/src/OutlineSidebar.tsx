@@ -1,7 +1,7 @@
 import type { ChunkReviewState } from '@code-story/core';
 import { useMemo, useState } from 'react';
 import type { BookResponse } from './api.js';
-import { chunkTitle, type FlatBook } from './rows.js';
+import { chunkTitle, type FlatBook, occurrenceKey } from './rows.js';
 
 export function OutlineSidebar({
   data,
@@ -9,7 +9,7 @@ export function OutlineSidebar({
   stateOf,
   sectionStats,
   currentSection,
-  cursorChunkId,
+  cursorOccurrence,
   onJump,
 }: {
   data: BookResponse;
@@ -17,7 +17,7 @@ export function OutlineSidebar({
   stateOf: (chunkId: string) => ChunkReviewState;
   sectionStats: Map<string, { done: number; total: number }>;
   currentSection: string | undefined;
-  cursorChunkId: string | undefined;
+  cursorOccurrence: string | undefined;
   onJump: (cursorIndex: number) => void;
 }) {
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
@@ -48,7 +48,7 @@ export function OutlineSidebar({
                 className="outline-row"
                 title={section.title}
                 onClick={() => {
-                  const first = section.occurrences[0] && flat.chunkIndexById.get(section.occurrences[0].chunkId);
+                  const first = section.occurrences[0] && flat.indexByOccurrence.get(occurrenceKey(section.occurrences[0]));
                   if (first !== undefined) onJump(first);
                 }}
               >
@@ -60,13 +60,14 @@ export function OutlineSidebar({
             </div>
             {isOpen &&
               section.occurrences.map((occurrence) => {
+                const key = occurrenceKey(occurrence);
                 const chunk = byId.get(occurrence.chunkId);
-                const index = flat.chunkIndexById.get(occurrence.chunkId);
+                const index = flat.indexByOccurrence.get(key);
                 if (!chunk || index === undefined) return null;
                 return (
                   <button
-                    key={occurrence.chunkId}
-                    className={occurrence.chunkId === cursorChunkId ? 'outline-chunk current' : 'outline-chunk'}
+                    key={key}
+                    className={key === cursorOccurrence ? 'outline-chunk current' : 'outline-chunk'}
                     title={chunkTitle(chunk)}
                     onClick={() => onJump(index)}
                   >

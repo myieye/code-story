@@ -22,15 +22,20 @@ function whitespaceChunk(id: string): Chunk {
 
 function book(sections: Record<string, Chunk[]>): { flat: ReturnType<typeof flattenBook>; chunks: Chunk[] } {
   const chunks = Object.values(sections).flat();
+  const ordinals = new Map<string, number>();
   const b: Book = {
     headSha: 'head',
     sections: Object.entries(sections).map(([id, cs]) => ({
       id,
       title: id,
-      occurrences: cs.map((c) => ({ chunkId: c.id, ordinal: 0, role: 'primary' as const })),
+      occurrences: cs.map((c) => {
+        const ordinal = ordinals.get(c.id) ?? 0;
+        ordinals.set(c.id, ordinal + 1);
+        return { chunkId: c.id, ordinal, role: 'primary' as const };
+      }),
     })),
   };
-  return { flat: flattenBook(b, chunks), chunks };
+  return { flat: flattenBook(b, [...new Map(chunks.map((c) => [c.id, c])).values()]), chunks };
 }
 
 const states = (map: Record<string, ChunkReviewState>) => (id: string) => map[id] ?? 'unseen';
@@ -92,5 +97,29 @@ describe('pendingStubCount', () => {
     expect(pendingStubCount(flat, states({}))).toBe(2);
     expect(pendingStubCount(flat, states({ a: 'reviewed' }))).toBe(1);
     expect(pendingStubCount(flat, states({ a: 'reviewed', b: 'seen' }))).toBe(1);
+  });
+});
+
+// A chunk may occur in the book more than once (R-004); review state stays on the chunk.
+describe('multi-occurrence books', () => {
+  const { flat } = book({ s1: [chunk('a'), chunk('b')], s2: [chunk('a'), chunk('c')] });
+
+  it('separates walk stops (occurrences) from review progress (distinct chunks)', () => {
+    expect(flat.totalOccurrences).toBe(4);
+    expect(flat.distinctChunks).toBe(3);
+    expect(flat.firstIndexByChunkId.get('a')).toBe(0);
+    expect(flat.indexByOccurrence.get('a#0')).toBe(0);
+    expect(flat.indexByOccurrence.get('a#1')).toBe(2);
+  });
+
+  it('skips every occurrence of a reviewed chunk', () => {
+    const stateOf = states({ a: 'reviewed', b: 'reviewed' });
+    expect(findUnreviewed(flat, stateOf, 0, 1)).toEqual({ index: 3, wrapped: false });
+  });
+
+  it('counts a twice-occurring stub chunk once', () => {
+    const { flat: stubs } = book({ s1: [whitespaceChunk('w')], s2: [whitespaceChunk('w')] });
+    expect(pendingStubCount(stubs, states({}))).toBe(1);
+    expect(batchableSections(stubs, states({})).get('s1')).toEqual({ ids: ['w'], reason: 'whitespace' });
   });
 });

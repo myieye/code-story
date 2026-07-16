@@ -9,7 +9,8 @@ export type SectionAck = { kind: 'mark'; count: number; reason: string } | { kin
 export function RowView({
   row,
   data,
-  total,
+  totalOccurrences,
+  distinctChunks,
   reviewedCount,
   sectionStats,
   sectionAck,
@@ -25,7 +26,10 @@ export function RowView({
 }: {
   row: Row;
   data: BookResponse;
-  total: number;
+  /** aria-setsize — walk stops, one per occurrence. */
+  totalOccurrences: number;
+  /** Review-progress denominator — state lives on the chunk. */
+  distinctChunks: number;
   reviewedCount: number;
   sectionStats: Map<string, { done: number; total: number }>;
   sectionAck: SectionAck | undefined;
@@ -60,10 +64,10 @@ export function RowView({
     );
   }
   if (row.kind === 'end') {
-    if (reviewedCount === total) {
+    if (reviewedCount === distinctChunks) {
       return (
         <div className="end-of-book done">
-          <p className="done-headline">All {total} chunks reviewed.</p>
+          <p className="done-headline">All {distinctChunks} chunks reviewed.</p>
           <p>Nothing was skipped — every chunk required your mark.</p>
           <table className="done-table">
             <tbody>
@@ -86,7 +90,7 @@ export function RowView({
     }
     return (
       <div className="end-of-book">
-        End of book — {total - reviewedCount} of {total} chunks remaining.{' '}
+        End of book — {distinctChunks - reviewedCount} of {distinctChunks} chunks remaining.{' '}
         <button className="bar-button" onClick={onJumpNext}>
           Jump to next unreviewed
         </button>
@@ -104,7 +108,7 @@ export function RowView({
     <article
       className={classes.join(' ')}
       aria-posinset={row.posinset}
-      aria-setsize={total}
+      aria-setsize={totalOccurrences}
       tabIndex={-1}
       ref={registerEl}
       onClick={onSelect}
