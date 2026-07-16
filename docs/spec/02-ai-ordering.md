@@ -1,7 +1,10 @@
 # Spec 02 — Milestone 2: tier-1 AI ordering
 
 Status: proposed — scoped by the standing gradual-auto-pick rule (Tim 2026-07-16); each scoping
-call below records the deferred ambitious path. Tim can veto any pick.
+call below records the deferred ambitious path. Tim can veto any pick. Grilled 2026-07-16
+(13 findings folded in: bookFingerprint defined, marks-started semantics pinned, overlay
+persistence named, judge-bias + blind-read-through + provisional-gate caveats, tool-less
+sandboxed subprocess, orphan-job semantics, concurrency rule, token-based size guard).
 Date: 2026-07-16
 Satisfies: R-042 (the AI half of the ladder — this is the milestone where AI must *earn* its
 tokens), R-005 (narrative ordering + "an AI can score the readability of the generated book"),
@@ -45,16 +48,35 @@ built it and it didn't beat the script" is an acceptable — and per R-024 a *go
   - Only the **story block** (impl + test + periphery) is permutable. The low-signal tail and
     the R-001 leftovers backstop stay pinned at the end (scoping call 3).
   - Coverage is untouched by construction: ordering is an overlay, chunks never change.
-- One retry on invalid output; then **fail open to tier 0**. The book is never blocked or
-  degraded by a failed AI job.
+- Failure handling distinguishes two classes: schema-invalid output gets exactly one retry
+  (deterministic failures don't improve with hammering); transient infra errors (429, timeout)
+  get bounded exponential backoff (2 retries). After that, **fail open to tier 0**. The book is
+  never blocked or degraded by a failed AI job.
+- The subprocess is sandboxed by design, not trust: `claude -p` runs with **all tools
+  disabled**, cwd set to the code-story data home (never the reviewed repo), manifest on stdin.
+  It is a pure text→JSON call; the ADR's patch-only guarantee (R-011) covers agent threads, and
+  this job must not become an unreviewed side channel into the repo.
 
 ### The overlay model (door-stays-open, R-038–R-041)
 
 The AI order is a persisted `OrderOverlay { bookFingerprint, permutation, rationales, model,
-createdAt }` stored beside the review state — never inside the book compile, which stays a pure
-function. If the book recompiles to a different fingerprint (new head, chunker change), the
-overlay is stale and silently discarded. This preserves all three door-stays-open invariants
-(derived+fingerprinted, occurrence-based, append-only review state — the overlay is additive).
+promptVersion, createdAt, appliedAt?, dismissedAt? }` stored at
+`<repo-id>/reviews/<base12>..<head12>.order.json` (versioned like `ReviewFile`, same atomic
+tmp+rename write) — never inside the book compile, which stays a pure function. If the book
+recompiles to a different fingerprint, the overlay is stale and silently discarded. This
+preserves all three door-stays-open invariants (derived+fingerprinted, occurrence-based,
+append-only review state — the overlay is additive).
+
+**`bookFingerprint` is a new core primitive this milestone defines** (nothing book-level exists
+today — `Book` only carries `headSha`, which stays constant across chunker changes on the same
+head): a digest over `headSha + CORE_VERSION + each section id with its chunk ids in order`.
+Chunk ids already embed content fingerprints, so this captures membership and content, not just
+the head. Discipline rider: **`CORE_VERSION` must bump whenever chunking or ordering logic
+changes** — it is what invalidates persisted overlays on a same-head recompile.
+
+`appliedAt`/`dismissedAt` record the reviewer's banner decision so it never re-asks on reload.
+`promptVersion` records which version of the checked-in ordering prompt produced the overlay —
+without it a prompt edit is indistinguishable from a model change when judging stale trust.
 
 ## The readability eval (the core of this milestone)
 
@@ -66,9 +88,14 @@ readability. Design:
   chunks, different section order, labeled A/B with randomized assignment per trial (position
   bias is real). Rationales are stripped — the judge scores the *order*, not the sales pitch
   (R-026 applied to ourselves).
-- **K independent trials** (default 3) per subject, top-tier model, fixed rubric: which order
-  lets a reviewer meet definitions before uses, read one concern at a time, and build toward
-  the point of the PR — with a forced choice plus a one-line reason.
+- **K independent trials** (default 3) per subject, fixed rubric: which order lets a reviewer
+  meet definitions before uses, read one concern at a time, and build toward the point of the
+  PR — with a forced choice plus a one-line reason.
+- **Judge ≠ generator where possible**: self-preference bias is a documented LLM-judge failure
+  mode. The subscription rule limits both roles to Claude models, so full independence is
+  unavailable; mitigation is (a) a different Claude model id for the judge than the generator,
+  (b) both ids recorded verbatim in the eval report with an explicit self-preference caveat,
+  and (c) the blind human read-through below as the non-model check.
 - **Mechanical pre-gate**: before any judging, the tier-1 order must itself pass
   `--check-order` with zero acyclic inversions and zero test-before-impl regressions.
   A "creative" order that re-breaks dependencies loses before a judge ever sees it.
@@ -77,8 +104,15 @@ readability. Design:
 
 **Shipping gate**: tier 1 becomes worth recommending only if it wins a clear majority of trials
 on **both** existing dogfood subjects (PR 2357 mixed-stack, PR 2379 C#-only) *and* a human
-read-through of the winning order agrees. Anything less: tier 1 stays opt-in, documented as
-"built, gated, script wins for now" (R-042's both halves, honestly reported).
+read-through agrees — and the read-through is **blind the same way the judge is**: both orders
+labeled A/B, AI authorship revealed only after the reader picks (R-026 applied to ourselves;
+confirming a pre-announced "winner" is exactly the anchoring pattern this project treats as a
+design gate). Anything less: tier 1 stays opt-in, documented as "built, gated, script wins for
+now" (R-042's both halves, honestly reported).
+
+The gate is **provisional and directional, not statistically confident** — K=3 on two subjects
+decides "is this worth keeping switched on for dogfooding", not "does this generalize"
+(R-025). Dogfood 3+ subjects accumulate before any stronger claim.
 
 The eval harness is itself AI-spending; it runs on demand (a tool script), never in CI. CI keeps
 the free mechanical gate only.
@@ -88,17 +122,29 @@ the free mechanical gate only.
 - **Trigger**: explicit only — `code-story <range> --ai-order` or `POST /api/order-job`. No
   automatic spend on every compile (scoping call 4).
 - **Job**: the daemon spawns `claude -p` (Agent SDK path deferred) with the manifest and a
-  strict JSON output contract; job record persisted under the review state dir with status
-  `pending/running/done/failed`, model tier, and timings — survives daemon restarts
-  (session-limits agreement); a crashed job is re-runnable, never half-applied.
+  strict JSON output contract; job record persisted next to the overlay with status
+  `running/done/failed`, model id, and timings. A `running` status is only trusted while the
+  owning daemon process holds the child handle: a record loaded without a live handle (daemon
+  restarted, job orphaned) reads as `failed` and is re-runnable — never half-applied, since
+  the overlay is written once, atomically, only on validated success.
+- **Concurrency**: one in-flight job per range. A second `POST /api/order-job` while one runs
+  returns the existing job's status instead of spawning a sibling (the ADR's queue stays
+  future work; one range = one book = nothing to queue yet).
 - **Model tier**: top-tier by default (this is judgment work per the model economy); the job
-  record carries the tier so cheaper experiments are possible.
-- **Size guard**: if the story block exceeds 100 sections, the job refuses with a reason
-  (nobody story-reads a 5k-chunk range; the manifest would be wasteful tokens against R-024).
+  record carries the model id so cheaper experiments are possible.
+- **Size guard**: gate on estimated manifest size, not section count (a 100-file PR with 3
+  chunks/file and one with 500 chunks/file are different jobs): refuse with a reason when the
+  rendered manifest exceeds ~8k estimated tokens (nobody story-reads a 5k-chunk range; the
+  manifest would be wasteful tokens against R-024).
 - **UI**: the book renders tier 0 immediately, always. When an overlay lands: if the review has
-  no marks yet, apply it on next load; if the review has started, never reorder underfoot —
-  show a dismissible "AI reading order ready — apply?" affordance. Rationales render as a
-  one-liner under the section header, visibly labeled AI (R-026), register per R-036.
+  no explicit marks yet — defined precisely as **no chunk with `state === 'reviewed'`**;
+  `seen` and `cursor` don't count, because seen-tracking writes within a second of merely
+  opening the book — apply it on next load; if the review has started, never reorder underfoot
+  — show a dismissible "AI reading order ready — apply?" affordance whose outcome persists
+  (`appliedAt`/`dismissedAt`; never re-ask on reload). Either path shows a persistent "AI
+  reading order" indicator while an overlay is active — silent auto-apply without a cue would
+  violate R-026's labeling spirit. Rationales render as a one-liner under the section header,
+  visibly labeled AI (R-026), register per R-036.
 
 ## Scoping calls (gradual auto-picked; ambitious path recorded)
 
@@ -131,9 +177,10 @@ the free mechanical gate only.
 
 ## Slices (filed just-in-time as GitHub issues when this spec lands)
 
-1. **Core: order manifest + overlay primitives** — `buildOrderManifest(book, graph)`,
-   `validatePermutation`, `applyOrderOverlay` (pure; property tests: permutation validity,
-   pinned tail, coverage untouched, stale-fingerprint discard).
+1. **Core: order manifest + overlay primitives** — `bookFingerprint(book, chunks)`,
+   `buildOrderManifest(book, graph, chunks)`, `validatePermutation`, `applyOrderOverlay`
+   (pure; property tests: permutation validity, pinned tail, coverage untouched,
+   stale-fingerprint discard).
 2. **Server: AI order job** — `claude -p` runner with JSON contract + retry + fail-open,
    persisted job record, `POST/GET /api/order-job`, CLI `--ai-order` (waits, then serves).
 3. **Web: overlay application + rationales** — apply-on-load vs "apply?" affordance rules,
