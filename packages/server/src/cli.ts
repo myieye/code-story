@@ -1,9 +1,24 @@
 #!/usr/bin/env node
 import { writeFile } from 'node:fs/promises';
-import { checkCoverage, checkOrder, compileBook, exportBookMarkdown, isLowSignal, lowSignalReason } from '@code-story/core';
+import {
+  applyOrderOverlay,
+  buildOrderManifest,
+  checkCoverage,
+  checkOrder,
+  chunkLineCount,
+  compileBook,
+  exportBookMarkdown,
+  isLowSignal,
+  lowSignalReason,
+  renderOrderManifest,
+} from '@code-story/core';
 import open from 'open';
 import { computeChunks } from './chunks.js';
-import { diffRange, resolveRange } from './git.js';
+import { diffRange, originUrl, resolveRange, rootCommit } from './git.js';
+import { runOrderJob } from './order-job.js';
+import { ORDER_PROMPT_VERSION } from './order-prompt.js';
+import { loadOverlay, orderFilePath, orderJobFilePath, type OrderJobRecord, saveJson } from './order-store.js';
+import { defaultDataHome, repoIdFrom } from './review-store.js';
 import { startServer } from './server.js';
 
 const args = process.argv.slice(2);
@@ -12,17 +27,29 @@ const dumpDiff = args.includes('--dump-diff');
 const dumpChunks = args.includes('--dump-chunks');
 const dumpGraph = args.includes('--dump-graph');
 const checkOrderFlag = args.includes('--check-order');
+const dumpManifest = args.includes('--dump-manifest');
+const aiOrder = args.includes('--ai-order');
 const exportIndex = args.indexOf('--export');
 const exportPath = exportIndex >= 0 ? args[exportIndex + 1] : undefined;
 const portIndex = args.indexOf('--port');
 const port = portIndex >= 0 ? Number(args[portIndex + 1]) : 0;
-const valueIndexes = new Set([exportIndex + 1, portIndex + 1].filter((i) => i > 0));
+const modelIndex = args.indexOf('--model');
+const model = modelIndex >= 0 ? args[modelIndex + 1] : 'opus';
+const orderIndex = args.indexOf('--order');
+const orderChoice = orderIndex >= 0 ? args[orderIndex + 1] : 'tier0';
+const valueIndexes = new Set([exportIndex + 1, portIndex + 1, modelIndex + 1, orderIndex + 1].filter((i) => i > 0));
 const range = args.find((a, i) => !a.startsWith('--') && !valueIndexes.has(i));
 const repo = process.cwd();
 
-if (!range || (exportIndex >= 0 && !exportPath) || Number.isNaN(port)) {
+if (
+  !range ||
+  (exportIndex >= 0 && !exportPath) ||
+  Number.isNaN(port) ||
+  !model ||
+  (orderChoice !== 'tier0' && orderChoice !== 'ai')
+) {
   console.error(
-    'Usage: code-story <base>..<head> [--export book.md] [--port <n>] [--dump-diff] [--dump-chunks] [--dump-graph] [--check-order] [--no-open]',
+    'Usage: code-story <base>..<head> [--export book.md] [--order tier0|ai] [--ai-order] [--model <id>] [--port <n>] [--dump-diff] [--dump-chunks] [--dump-graph] [--check-order] [--dump-manifest] [--no-open]',
   );
   process.exit(1);
 }
@@ -40,7 +67,7 @@ if (dumpChunks) {
   const { chunks } = await computeChunks(repo, resolved, files);
 
   for (const c of chunks) {
-    const lines = c.hunks.reduce((n, h) => n + Math.max(h.headCount, h.baseCount), 0);
+    const lines = chunkLineCount(c);
     const stub = isLowSignal(c) ? ` [stub: ${lowSignalReason(c)}]` : '';
     console.log(
       `${c.kind.padEnd(15)} ${c.file}${c.symbolPath.length ? ' :: ' + c.symbolPath.join('.') : ''} (~${lines} lines)${stub}`,
@@ -78,18 +105,76 @@ if (checkOrderFlag) {
   process.exit(report.ok ? 0 : 1);
 }
 
-if (exportPath) {
+if (dumpManifest) {
+  const files = await diffRange(repo, resolved);
+  const { chunks, graph } = await computeChunks(repo, resolved, files);
+  const { book } = compileBook({ files, chunks, graph, headSha: resolved.head });
+  const manifest = buildOrderManifest(book, graph, chunks);
+
+  console.log(renderOrderManifest(manifest));
+  console.log(
+    `\nmanifest: ${manifest.sections.length} story sections, ${manifest.pinnedTail.length} pinned, ~${manifest.estimatedTokens} tokens`,
+  );
+  process.exit(0);
+}
+
+// One compile pass serves both --ai-order and --export (the natural one-shot invocation
+// combines them; a second tree-sitter pass costs ~30s on very large ranges).
+if (aiOrder || exportPath) {
   const files = await diffRange(repo, resolved);
   const { chunks, contents, graph } = await computeChunks(repo, resolved, files);
   const compiled = compileBook({ files, chunks, graph, headSha: resolved.head });
-  await writeFile(exportPath, exportBookMarkdown({ ...compiled, contents, title: range }));
+  const dataHome = defaultDataHome();
+  const repoId = repoIdFrom(repo, await rootCommit(repo), await originUrl(repo));
+  const orderFile = orderFilePath(dataHome, repoId, resolved);
 
-  const leftovers = compiled.chunks.length - chunks.length;
-  console.log(
-    `wrote ${exportPath}: ${compiled.chunks.length} chunks, ${compiled.book.sections.length} sections` +
-      (leftovers > 0 ? ` — WARNING: ${leftovers} leftover chunks (chunker gaps)` : ''),
-  );
-  process.exit(0);
+  if (aiOrder) {
+    const jobFile = orderJobFilePath(dataHome, repoId, resolved);
+    const record: OrderJobRecord = {
+      version: 1,
+      status: 'running',
+      model,
+      promptVersion: ORDER_PROMPT_VERSION,
+      startedAt: new Date().toISOString(),
+    };
+    await saveJson(jobFile, record);
+    console.log(`code-story: running the AI ordering job (${model})…`);
+    try {
+      const overlay = await runOrderJob({ book: compiled.book, graph, chunks: compiled.chunks, model, cwd: dataHome });
+      await saveJson(orderFile, overlay);
+      await saveJson(jobFile, { ...record, status: 'done', finishedAt: new Date().toISOString() });
+      console.log(`code-story: AI order saved (${overlay.permutation.length} story sections)`);
+    } catch (e) {
+      await saveJson(jobFile, {
+        ...record,
+        status: 'failed',
+        finishedAt: new Date().toISOString(),
+        error: (e as Error).message,
+      });
+      throw e;
+    }
+  }
+
+  if (exportPath) {
+    let book = compiled.book;
+    if (orderChoice === 'ai') {
+      const overlay = await loadOverlay(orderFile);
+      const applied = overlay === null ? book : applyOrderOverlay(book, graph, compiled.chunks, overlay);
+      if (applied === book) {
+        console.error('code-story: no fresh AI order overlay for this range (run --ai-order first)');
+        process.exit(1);
+      }
+      book = applied;
+    }
+    await writeFile(exportPath, exportBookMarkdown({ book, chunks: compiled.chunks, contents, title: range }));
+
+    const leftovers = compiled.chunks.length - chunks.length;
+    console.log(
+      `wrote ${exportPath}: ${compiled.chunks.length} chunks, ${compiled.book.sections.length} sections` +
+        (leftovers > 0 ? ` — WARNING: ${leftovers} leftover chunks (chunker gaps)` : ''),
+    );
+    process.exit(0);
+  }
 }
 
 const { url } = await startServer({ repo, range: resolved }, port);

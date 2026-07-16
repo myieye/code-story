@@ -154,3 +154,37 @@ still unmarks. Run it against a fresh head or expect the progress count to dip.
 **Verdict:** the R-034 bar set by dogfood 0 (2 inversions → 0) is met, measured by the
 instrument (`--check-order`) rather than vibes, and confirmed on a second diff shape. Tier-1
 AI ordering (M2) now has an honest eval to beat.
+
+## Dogfood 2 (2026-07-16, spec 02 tier 1) — the AI order vs the script order
+
+Both subjects re-run with the tier-1 job (`--ai-order`, generator **opus**, prompt `order-1`,
+~1 min/job) and judged blind with `tools/order-eval.mjs` (judge **sonnet** — different id per
+the self-preference rule, K=3, A/B randomized, rationales stripped). Both AI orders passed the
+mechanical pre-gate by construction (a persisted overlay exists only after `checkOrder` says 0
+acyclic inversions, 0 test-before-impl).
+
+| Subject | Judge verdict | What the AI changed |
+| --- | --- | --- |
+| PR 2357 (mixed-stack) | **AI 2 / tier-0 1** | Three surgical moves: `history-service.ts` before its consumers; preview before item; `HistoryView` before `ActivityView`. C# opening and pinned tail untouched. |
+| PR 2379 (C#-only) | **AI 3 / tier-0 0** | Led with the `EntryQueryHelpers`/`LcmCrdtKernel` core pair + their unit tests; consumers (`FwDataMiniLcmApi`) and integration/snapshot tests after. |
+
+**The headline: the AI fixed a blind spot the mechanical eval cannot see.** PR 2379's tier-0
+order scores a perfect 0 on `--check-order`, but inside the known 2-cycle the topo sort falls
+back to git order — which happened to lead with call-site tweaks before the underlying
+implementation. All three judge trials independently named exactly this ("Book A leads with
+consumer-side tweaks before the underlying implementation is shown"). This is the R-042 claim
+("AI where it truly earns intuition") with a measured instance.
+
+**The dissent is a real finding, not noise.** PR 2357 trial 3 preferred tier 0 because the AI
+wedged `HistoryView` between `ActivityFilter` and `ActivityView`, breaking the Activity
+component cluster's locality. Dependency-purity and concern-locality can pull in opposite
+directions; the ordering prompt currently names both without ranking them. Dogfood harvest for
+the next prompt iteration (`order-2`), not a blocker.
+
+**Caveats, per the spec's own gate language:** K=3 on 2 subjects is directional, not
+statistical; the judge is single-family (Claude) with the self-preference caveat recorded in
+each report (`eval-2357.json`/`eval-2379.json` archived in the session scratchpad, reasons
+quoted verbatim above in trial order); and the in-session read-through was **not blind** (the
+session that generated the orders also read them) — the blind A/B human read-through the spec
+requires stays open for Tim. Ship/hold verdict lands in spec 02's status line once the UI walk
+(#24) and that read-through happen.

@@ -3,6 +3,9 @@ import { type Hunk } from './diff.js';
 // The book/chunk model from docs/design/core-primitives-sketch.md, restricted to the
 // milestone-0 subset (spec 00).
 
+/** Bump whenever chunking or ordering logic changes — bookFingerprint bakes it in, so a bump invalidates persisted order overlays. */
+export const CORE_VERSION = '0.0.1';
+
 export type ChunkKind = 'method' | 'method-fragment' | 'markup-region' | 'config' | 'other';
 
 export type ChangeType = 'generated' | 'whitespace';
@@ -61,9 +64,17 @@ export function chunkId(file: string, symbolPath: string[], fingerprint: string)
   return [file, symbolPath.join('.'), fingerprint].join('::');
 }
 
+/** Id of the synthesized section holding changed lines no chunk claimed (the R-001 backstop). */
+export const LEFTOVERS_SECTION_ID = '(leftovers)';
+
 /** Low-signal chunks render as collapsed stubs and are batch-acknowledgeable (R-002). */
 export function isLowSignal(chunk: Chunk): boolean {
   return chunk.changeTypes.length > 0;
+}
+
+/** Changed-line count a chunk owns — the "~N lines" shown in dumps and manifests. */
+export function chunkLineCount(chunk: Chunk): number {
+  return chunk.hunks.reduce((n, h) => n + Math.max(h.headCount, h.baseCount), 0);
 }
 
 /** Stub badge / export label, e.g. "lockfile", "translations", "whitespace". */

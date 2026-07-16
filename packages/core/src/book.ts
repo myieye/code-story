@@ -1,6 +1,6 @@
 import { type FileDiff, type Hunk } from './diff.js';
 import { type ImportGraph } from './import-graph.js';
-import { type Book, type Chunk, chunkId, type Occurrence, type Section } from './model.js';
+import { type Book, type Chunk, chunkId, LEFTOVERS_SECTION_ID, type Occurrence, type Section } from './model.js';
 import { type FileRole, fileRoles } from './roles.js';
 
 export interface CompileBookInput {
@@ -46,7 +46,7 @@ export function compileBook(input: CompileBookInput): CompiledBook {
   const roles = fileRoles(gitOrder, input.chunks, input.graph);
   const sections = orderFiles(gitOrder, roles, input.graph).map((f) => sectionsByFile.get(f)!);
   if (leftovers.length > 0) {
-    sections.push({ id: '(leftovers)', title: 'Leftovers', occurrences: leftovers.map(primary) });
+    sections.push({ id: LEFTOVERS_SECTION_ID, title: 'Leftovers', occurrences: leftovers.map(primary) });
   }
 
   return { book: { sections, headSha: input.headSha }, chunks: [...input.chunks, ...leftovers] };

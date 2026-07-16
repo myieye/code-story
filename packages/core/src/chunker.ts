@@ -249,7 +249,8 @@ function spanOf(ranges: [number, number][]): { start: number; end: number } | un
   };
 }
 
-function fnv1a(text: string): string {
+/** Deterministic 32-bit content digest, base36-encoded. Reused wherever core needs a stable hash. */
+export function fnv1a(text: string): string {
   let hash = 0x811c9dc5;
   for (let i = 0; i < text.length; i++) {
     hash ^= text.charCodeAt(i);

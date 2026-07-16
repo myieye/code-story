@@ -1,19 +1,32 @@
 import { type Chunk, type ChunkReviewState, isLowSignal, type ReviewFile } from '@code-story/core';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { useEffect, useMemo, useRef, useState } from 'react';
-import type { BookResponse } from './api.js';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { BookResponse, OrderResponse } from './api.js';
 import { OutlineSidebar } from './OutlineSidebar.js';
 import { batchableSections, findUnreviewed, pendingStubCount } from './review-logic.js';
 import { estimateRowHeight, RowView, type SectionAck } from './RowView.js';
 import { flattenBook, occurrenceKey, type Row } from './rows.js';
 import { ShortcutOverlay } from './ShortcutOverlay.js';
 import { useBookKeymap } from './useBookKeymap.js';
+import { useOrderOverlay } from './useOrderOverlay.js';
 import { useReview } from './useReview.js';
 import { useSeenTracking } from './useSeenTracking.js';
 
-export function BookPage({ data, initialReview }: { data: BookResponse; initialReview: ReviewFile }) {
-  const flat = useMemo(() => flattenBook(data.book, data.chunks), [data]);
+export function BookPage({
+  data,
+  initialReview,
+  initialOrder,
+}: {
+  data: BookResponse;
+  initialReview: ReviewFile;
+  initialOrder: OrderResponse;
+}) {
   const review = useReview(initialReview);
+  const order = useOrderOverlay(data, initialOrder, review.states);
+  const { bookData, orderApplied, rationales: sectionRationales } = order;
+  const hasRationale = useCallback((id: string) => Boolean(sectionRationales?.[id]), [sectionRationales]);
+
+  const flat = useMemo(() => flattenBook(bookData.book, bookData.chunks), [bookData]);
   const scrollRef = useRef<HTMLDivElement>(null);
   const rowEls = useRef(new Map<number, HTMLElement>());
 
@@ -77,7 +90,7 @@ export function BookPage({ data, initialReview }: { data: BookResponse; initialR
   const virtualizer = useVirtualizer({
     count: flat.rows.length,
     getScrollElement: () => scrollRef.current,
-    estimateSize: (i) => estimateRowHeight(flat.rows[i]!, data, isCollapsed),
+    estimateSize: (i) => estimateRowHeight(flat.rows[i]!, bookData, isCollapsed, hasRationale),
     overscan: 8,
   });
 
@@ -238,6 +251,11 @@ export function BookPage({ data, initialReview }: { data: BookResponse; initialR
           <span className="progress-bar">
             <span className="progress-fill" style={{ width: `${distinctChunks ? (reviewedCount / distinctChunks) * 100 : 0}%` }} />
           </span>
+          {orderApplied && (
+            <span className="ai-order-indicator" title="The section order was proposed by AI">
+              AI reading order
+            </span>
+          )}
         </span>
         <span className="spacer" />
         {lastBatch && (
@@ -282,9 +300,20 @@ export function BookPage({ data, initialReview }: { data: BookResponse; initialR
           ?
         </button>
       </header>
+      {order.offer && (
+        <div className="order-banner" role="region" aria-label="AI reading order">
+          <span>AI reading order ready — apply?</span>
+          <button className="bar-button" onClick={order.applyOrder}>
+            Apply
+          </button>
+          <button className="bar-button" onClick={order.dismissOrder}>
+            Dismiss
+          </button>
+        </div>
+      )}
       <div className="body">
         <OutlineSidebar
-          data={data}
+          data={bookData}
           flat={flat}
           stateOf={review.stateOf}
           sectionStats={sectionStats}
@@ -312,12 +341,13 @@ export function BookPage({ data, initialReview }: { data: BookResponse; initialR
                   >
                     <RowView
                       row={row}
-                      data={data}
+                      data={bookData}
                       totalOccurrences={totalOccurrences}
                       distinctChunks={distinctChunks}
                       reviewedCount={reviewedCount}
                       sectionStats={sectionStats}
                       sectionAck={row.kind === 'section' ? sectionAckFor(row.id) : undefined}
+                      sectionRationale={row.kind === 'section' ? sectionRationales?.[row.id] : undefined}
                       onMarkSection={markSection}
                       onUndoBatch={undoBatch}
                       state={row.kind === 'chunk' ? review.stateOf(row.chunk.id) : 'unseen'}

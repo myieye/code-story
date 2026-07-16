@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { serve } from '@hono/node-server';
 import { serveStatic } from '@hono/node-server/serve-static';
 import {
+  applyOrderOverlay,
   applyReviewPatch,
   type Book,
   type BookResponse,
@@ -13,6 +14,10 @@ import {
   exportBookMarkdown,
   type FileContents,
   type FileDiff,
+  type ImportGraph,
+  isOverlayFresh,
+  type OrderPatch,
+  type OrderResponse,
   type ReviewFile,
   type ReviewPatch,
   unifiedChunkLines,
@@ -20,9 +25,24 @@ import {
 import { Hono } from 'hono';
 import { computeChunks } from './chunks.js';
 import { diffRange, originUrl, type ResolvedRange, rootCommit } from './git.js';
+import { runOrderJob } from './order-job.js';
+import { ORDER_PROMPT_VERSION } from './order-prompt.js';
+import { loadJobRecord, loadOverlay, orderFilePath, orderJobFilePath, type OrderJobRecord, saveJson } from './order-store.js';
 import { defaultDataHome, loadReview, repoIdFrom, reviewFilePath, saveReview } from './review-store.js';
 
 const webDist = fileURLToPath(new URL('../../web/dist', import.meta.url));
+
+function jobSummary(record: OrderJobRecord): NonNullable<OrderResponse['job']> {
+  const { status, model, promptVersion, startedAt, finishedAt, error } = record;
+  return {
+    status,
+    model,
+    promptVersion,
+    startedAt,
+    ...(finishedAt ? { finishedAt } : {}),
+    ...(error ? { error } : {}),
+  };
+}
 
 export interface ServerOptions {
   repo: string;
@@ -40,7 +60,9 @@ export interface RunningServer {
 export function startServer(options: ServerOptions, requestedPort = 0): Promise<RunningServer> {
   const app = new Hono();
   let diffCache: Promise<FileDiff[]> | undefined;
-  let bookCache: Promise<{ book: Book; chunks: Chunk[]; contents: Map<string, FileContents> }> | undefined;
+  let bookCache:
+    | Promise<{ book: Book; chunks: Chunk[]; contents: Map<string, FileContents>; graph: ImportGraph }>
+    | undefined;
 
   // A rejected promise must not stay cached, or one transient git failure bricks the daemon.
   const uncacheOnError = <T>(promise: Promise<T>, clear: () => void): Promise<T> =>
@@ -57,17 +79,32 @@ export function startServer(options: ServerOptions, requestedPort = 0): Promise<
         const files = await getDiff();
         const { chunks, contents, graph } = await computeChunks(options.repo, options.range, files);
         const compiled = compileBook({ files, chunks, graph, headSha: options.range.head });
-        return { ...compiled, contents };
+        return { ...compiled, contents, graph };
       })(),
       () => (bookCache = undefined),
+    ));
+
+  let storeCache: Promise<{ dataHome: string; reviewFile: string; orderFile: string; jobFile: string }> | undefined;
+  const getStore = () =>
+    (storeCache ??= uncacheOnError(
+      (async () => {
+        const dataHome = options.dataHome ?? defaultDataHome();
+        const repoId = repoIdFrom(options.repo, await rootCommit(options.repo), await originUrl(options.repo));
+        return {
+          dataHome,
+          reviewFile: reviewFilePath(dataHome, repoId, options.range),
+          orderFile: orderFilePath(dataHome, repoId, options.range),
+          jobFile: orderJobFilePath(dataHome, repoId, options.range),
+        };
+      })(),
+      () => (storeCache = undefined),
     ));
 
   let reviewCache: Promise<{ file: string; review: ReviewFile }> | undefined;
   const getReview = () =>
     (reviewCache ??= uncacheOnError(
       (async () => {
-        const repoId = repoIdFrom(options.repo, await rootCommit(options.repo), await originUrl(options.repo));
-        const file = reviewFilePath(options.dataHome ?? defaultDataHome(), repoId, options.range);
+        const file = (await getStore()).reviewFile;
         return { file, review: await loadReview(file, options.range) };
       })(),
       () => (reviewCache = undefined),
@@ -82,12 +119,91 @@ export function startServer(options: ServerOptions, requestedPort = 0): Promise<
   });
 
   app.get('/api/book', async (c) => {
-    const { book, chunks, contents } = await getBook();
+    const { book, chunks, contents, graph } = await getBook();
     const diffs = Object.fromEntries(
       chunks.map((chunk) => [chunk.id, unifiedChunkLines(chunk, contents.get(chunk.file))]),
     );
-    const response: BookResponse = { ...options.range, book, chunks, diffs };
+    const response: BookResponse = { ...options.range, book, chunks, diffs, graph };
     return c.json(response);
+  });
+
+  // The in-flight ordering job. A persisted `running` record without this handle is an orphan
+  // from a dead daemon and reads as failed. liveRecord mirrors what the running job will
+  // persist, so GET never misreads the window before the record file lands.
+  let liveJob: Promise<void> | undefined;
+  let liveRecord: OrderJobRecord | undefined;
+
+  app.get('/api/order', async (c) => {
+    const { orderFile, jobFile } = await getStore();
+    const [overlay, stored, { book }] = await Promise.all([loadOverlay(orderFile), loadJobRecord(jobFile), getBook()]);
+    const fresh = overlay !== null && isOverlayFresh(book, overlay) ? overlay : null;
+    const record = liveRecord ?? stored;
+    const job =
+      record?.status === 'running' && liveJob === undefined
+        ? { ...record, status: 'failed' as const, error: 'job orphaned by a daemon restart — re-run it' }
+        : record;
+    const response: OrderResponse = { overlay: fresh, job: job && jobSummary(job) };
+    return c.json(response);
+  });
+
+  app.post('/api/order-job', async (c) => {
+    const body = (await c.req.json().catch(() => ({}))) as { model?: string };
+    const { dataHome, orderFile, jobFile } = await getStore();
+    // No awaits between this guard and the liveJob assignment — a second concurrent POST must
+    // see the first one's handle, or two paid model calls race on the same overlay file.
+    if (liveJob !== undefined) {
+      return c.json({ job: liveRecord && jobSummary(liveRecord) }, 200);
+    }
+    const record: OrderJobRecord = {
+      version: 1,
+      status: 'running',
+      model: body.model ?? 'opus',
+      promptVersion: ORDER_PROMPT_VERSION,
+      startedAt: new Date().toISOString(),
+    };
+    liveRecord = record;
+    liveJob = (async () => {
+      try {
+        await saveJson(jobFile, record);
+        const { book, chunks, graph } = await getBook();
+        const overlay = await runOrderJob({ book, graph, chunks, model: record.model, cwd: dataHome });
+        await saveJson(orderFile, overlay);
+        await saveJson(jobFile, { ...record, status: 'done', finishedAt: new Date().toISOString() });
+      } catch (e) {
+        await saveJson(jobFile, {
+          ...record,
+          status: 'failed',
+          finishedAt: new Date().toISOString(),
+          error: (e as Error).message,
+        });
+      } finally {
+        liveJob = undefined;
+        liveRecord = undefined;
+      }
+    })();
+    return c.json({ job: jobSummary(record) }, 202);
+  });
+
+  // Serialized like review saves: concurrent PATCHes (auto-apply vs dismiss, two tabs) must not
+  // interleave their read-modify-write and drop each other's sticky flag.
+  let orderPatchChain = Promise.resolve();
+  app.patch('/api/order', async (c) => {
+    const patch = (await c.req.json()) as OrderPatch;
+    const { orderFile } = await getStore();
+    const op = orderPatchChain.then(async () => {
+      const overlay = await loadOverlay(orderFile);
+      if (overlay === null) return false;
+      if (patch.applied) overlay.appliedAt = new Date().toISOString();
+      if (patch.dismissed) overlay.dismissedAt = new Date().toISOString();
+      await saveJson(orderFile, overlay);
+      return true;
+    });
+    orderPatchChain = op.then(
+      () => undefined,
+      () => undefined,
+    );
+    const found = await op;
+    return found ? c.json({ ok: true }) : c.json({ error: 'no order overlay' }, 404);
   });
 
   app.get('/api/review', async (c) => {
@@ -106,10 +222,20 @@ export function startServer(options: ServerOptions, requestedPort = 0): Promise<
     return c.json({ ok: true });
   });
 
+  // `?order=ai` must never silently fall back to tier 0 — an eval comparing "both orders"
+  // would then confidently judge two identical books.
   app.get('/api/export.md', async (c) => {
-    const { book, chunks, contents } = await getBook();
+    const { book, chunks, contents, graph } = await getBook();
+    let exported = book;
+    if (c.req.query('order') === 'ai') {
+      const overlay = await loadOverlay((await getStore()).orderFile);
+      if (overlay === null || !isOverlayFresh(book, overlay)) {
+        return c.text('no fresh AI order overlay for this range (run the order job first)', 409);
+      }
+      exported = applyOrderOverlay(book, graph, chunks, overlay);
+    }
     const title = `${options.range.base.slice(0, 8)}..${options.range.head.slice(0, 8)}`;
-    return c.text(exportBookMarkdown({ book, chunks, contents, title }));
+    return c.text(exportBookMarkdown({ book: exported, chunks, contents, title }));
   });
 
   if (existsSync(webDist)) {

@@ -165,12 +165,37 @@ isolation — it lands in the MAIN worktree; keep the tree clean while resumed a
 pick-up-here doc): low-signal helpers + `checkCoverage` consolidated in core,
 `detectChangeTypes` seam in chunker, and web rows now occurrence-keyed (`chunkId#ordinal` —
 the R-004/M1 blocker cleared; walk stops = occurrences, progress = distinct chunks). Its two
-listed leftovers are done (tools/dogfood-walk.mjs; the BookPage hooks). **Next up (M2 opening
-move): draft spec 02 — tier-1 AI ordering.** Spec 01's tier-1 section is the sketch
-(permutation-only, coverage untouchable, top-tier model, async daemon job, book renders tier 0
-immediately). The real design question is the *readability eval*: tier 0 already scores 0 on
-`--check-order`, so the AI tier must be judged on story quality (R-042: AI only where it truly
-earns intuition/readability; R-034 eval-first; R-036 register). Draft the spec, grill it, get
-Tim's scoping (auto-pick the gradual option), then file M2 slices just-in-time. Evidence
-inputs: baseline doc dogfood-1 section; #21 stays evidence-gated. Dogfood target: languageforge/lexbox (C# + Svelte/TS); repo-agnostic
-(R-025).
+listed leftovers are done (tools/dogfood-walk.mjs; the BookPage hooks). **M2 (tier-1 AI
+ordering) built and dogfooded** — spec `docs/spec/02-ai-ordering.md` (grilled pre-code, 13
+findings folded; all scoping auto-picked gradual), slices #22–#25 done same-day on branch
+`claude/extended-build-subagents-jc6uv1`: core `bookFingerprint` (headSha + CORE_VERSION —
+**bump CORE_VERSION on any chunking/ordering change**, it invalidates persisted overlays —
++ per-section chunk ids), `buildOrderManifest`/`renderOrderManifest` (story block only,
+low-signal tail + leftovers pinned, ~8k-token guard), `validatePermutation`,
+fail-open `applyOrderOverlay`; server `runOrderJob` (tool-less `claude -p --tools ''` in the
+data home — cwd must exist or spawn ENOENTs; invalid-output retried once, transient backoff,
+checkOrder pre-gate before persist), overlay at `reviews/<b12>..<h12>.order.json` +
+`.order-job.json` sibling (orphaned `running` = failed), `GET/PATCH /api/order`,
+`POST /api/order-job` (one in-flight per range), `export.md?order=ai`, `graph` now in
+BookResponse; CLI `--ai-order --model <id> --order tier0|ai --dump-manifest`; web
+`order-logic.ts` (`orderDecision`: appliedAt sticky, dismissedAt never re-asks, only explicit
+`reviewed` marks count as started — auto-apply PATCHes appliedAt immediately so a late mark
+can't reorder underfoot), AI-labeled rationale lines + persistent indicator (R-026).
+Eval `tools/order-eval.mjs`: blind pairwise, A/B randomized per trial, rationales stripped,
+judge id ≠ generator id (self-preference caveat in every report). **Dogfood 2** (baseline doc):
+judge sonnet vs generator opus — AI order wins 2/3 (PR 2357) and 3/3 (PR 2379, where it fixed
+the 2-cycle git-order fallback that `--check-order` structurally can't see — the measured
+R-042 instance). Verdict in spec status: **HOLD at opt-in; Tim's blind A/B read-through is the
+open gate half** (a session that generated the orders can't self-blind) — **prepared as #28**
+(`docs/evals/blind-read-2026-07-16/`: sealed-mapping A/B pairs + README). **M2 review pass
+done same-day** (`docs/reviews/2026-07-16-m2-review.md` — read its "deliberately not fixed"
+list before touching M2 code): races fixed (order-job POST guard, PATCH serialization),
+export?order=ai now 409s instead of silently serving tier 0, `claude-cli.ts` owns the
+tool-less spawn + brace-balanced JSON extraction (order-eval imports it from dist — needs
+`pnpm build`), web overlay state lives in `useOrderOverlay.ts`, indicator only claims AI order
+when the applier actually reordered. Test counts now core 124 / server 25 / web 18 = 167.
+#26 closed with the verdict; #27 filed (order-2 prompt: locality-vs-purity rank,
+evidence-gated like #21). Next: #28 decides ship/default; then M3 scoping (narration/context
+payloads — R-036 becomes the gate) or the ambitious paths spec 02 defers (chunk-level
+interleave, code excerpts in manifest, auto-run).
+Dogfood target: languageforge/lexbox (C# + Svelte/TS); repo-agnostic (R-025).
