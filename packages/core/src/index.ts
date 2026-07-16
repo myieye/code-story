@@ -8,6 +8,7 @@ export * from './export.js';
 export * from './diff.js';
 export * from './import-graph.js';
 export * from './model.js';
+export * from './narration.js';
 export * from './order.js';
 export * from './render.js';
 export * from './review.js';
