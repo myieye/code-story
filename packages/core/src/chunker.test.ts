@@ -80,6 +80,41 @@ describe('chunkFile', () => {
     expect(new Set(chunks.map((c) => c.id)).size).toBe(chunks.length);
   });
 
+  it('marks a chunk whose changed lines are all blank as whitespace-only', () => {
+    const blankAt12 = lines100.map((l, i) => (i >= 11 && i <= 13 ? '  ' : l));
+    const chunks = chunkFile(
+      input(file([{ baseStart: 12, baseCount: 0, headStart: 12, headCount: 3 }]), classWithMethods, {
+        lines: blankAt12,
+        baseLines: blankAt12,
+      }),
+    );
+    expect(chunks).toHaveLength(1);
+    expect(chunks[0]!.changeTypes).toEqual(['whitespace']);
+  });
+
+  it('does not mark submodule pointer bumps as whitespace', () => {
+    const chunks = chunkFile({
+      diff: file([{ baseStart: 1, baseCount: 1, headStart: 1, headCount: 1 }], { path: 'vendor/lib', submodule: true }),
+      lines: [''],
+      baseLines: [''],
+    });
+    expect(chunks[0]!.changeTypes).toEqual([]);
+  });
+
+  it('snaps fragment cuts to a blank line near the cap instead of mid-statement', () => {
+    const lines = lines100.map((l, i) => (i === 16 ? '' : l));
+    const chunks = chunkFile(
+      input(file([{ baseStart: 10, baseCount: 21, headStart: 10, headCount: 21 }]), classWithMethods, {
+        lines,
+        baseLines: lines,
+      }),
+      { maxLines: 10 },
+    );
+    // ideal cut after head line 19; blank line 17 within the window → fragment 1 ends there
+    expect(chunks[0]!.headRange).toMatchObject({ start: 10, end: 17 });
+    expect(chunks[1]!.headRange?.start).toBe(18);
+  });
+
   it('treats symbol-less files as single whole-file chunks', () => {
     const chunks = chunkFile(
       input(file([{ baseStart: 1, baseCount: 2, headStart: 1, headCount: 2 }], { path: 'pnpm-lock.yaml' }), undefined, {

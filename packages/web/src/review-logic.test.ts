@@ -16,6 +16,10 @@ function chunk(id: string, generatedReason?: string): Chunk {
   };
 }
 
+function whitespaceChunk(id: string): Chunk {
+  return { ...chunk(id), changeTypes: ['whitespace'] };
+}
+
 function book(sections: Record<string, Chunk[]>): { flat: ReturnType<typeof flattenBook>; chunks: Chunk[] } {
   const chunks = Object.values(sections).flat();
   const b: Book = {
@@ -73,6 +77,12 @@ describe('batchableSections', () => {
   it('offers nothing for fully reviewed sections', () => {
     const { flat } = book({ lockfile: [chunk('l1', 'lockfile')] });
     expect(batchableSections(flat, states({ l1: 'reviewed' })).size).toBe(0);
+  });
+
+  it('treats whitespace-only chunks as stubs with reason "whitespace"', () => {
+    const { flat } = book({ s: [whitespaceChunk('w1'), whitespaceChunk('w2')] });
+    expect(batchableSections(flat, states({})).get('s')).toEqual({ ids: ['w1', 'w2'], reason: 'whitespace' });
+    expect(pendingStubCount(flat, states({}))).toBe(2);
   });
 });
 

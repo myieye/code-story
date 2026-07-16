@@ -1,5 +1,5 @@
 import { type FileDiff, type Hunk } from './diff.js';
-import { type Chunk, type ChunkKind, chunkId } from './model.js';
+import { type ChangeType, type Chunk, type ChunkKind, chunkId } from './model.js';
 import { type SymbolSpan, symbolPathAt } from './symbols.js';
 
 export interface FileToChunk {
@@ -64,7 +64,7 @@ export function chunkFile(input: FileToChunk, options?: ChunkOptions): Chunk[] {
             : 'other';
     const symbolPath = [...path].reverse().map((s) => s.name);
 
-    const fragments = fragment(hunks, maxLines, deleted);
+    const fragments = fragment(hunks, maxLines, deleted, input.lines);
     fragments.forEach((fragHunks, i) => {
       chunks.push(
         makeChunk(
@@ -138,18 +138,41 @@ function subHunk(hunk: Hunk, start: number, count: number, deleted: boolean, isF
 }
 
 /** Splits a group's hunks into buckets of ≤ maxLines changed lines (oversize hunks split too). */
-function fragment(hunks: Hunk[], maxLines: number, deleted: boolean): Hunk[][] {
+function fragment(hunks: Hunk[], maxLines: number, deleted: boolean, lines: string[]): Hunk[][] {
   const flat: Hunk[] = hunks.flatMap((h) => {
     const count = deleted ? h.baseCount : h.headCount;
     if (count <= maxLines) return [h];
     const pieces: Hunk[] = [];
     const start = deleted ? h.baseStart : h.headStart;
-    for (let s = start; s < start + count; s += maxLines) {
-      pieces.push(subHunk(h, s, Math.min(maxLines, start + count - s), deleted, s === start));
+    const end = start + count;
+    let s = start;
+    while (s < end) {
+      const ideal = Math.min(s + maxLines, end);
+      const cut = ideal < end ? snapCut(lines, s, ideal) : ideal;
+      pieces.push(subHunk(h, s, cut - s, deleted, s === start));
+      s = cut;
     }
     return pieces;
   });
 
+  return bucketize(flat, maxLines, deleted);
+}
+
+/**
+ * Prefers cutting a fragment after a blank line — or, failing that, a `;`/`}`/`{` line —
+ * within 8 lines above the cap, so fragments don't open mid-expression (#12).
+ */
+function snapCut(lines: string[], pieceStart: number, ideal: number): number {
+  let statementEnd: number | undefined;
+  for (let cut = ideal; cut > ideal - 8 && cut > pieceStart + 1; cut--) {
+    const lastLine = (lines[cut - 2] ?? '').trim();
+    if (lastLine === '') return cut;
+    if (statementEnd === undefined && /[;}{]$/.test(lastLine)) statementEnd = cut;
+  }
+  return statementEnd ?? ideal;
+}
+
+function bucketize(flat: Hunk[], maxLines: number, deleted: boolean): Hunk[][] {
   const buckets: Hunk[][] = [];
   let bucket: Hunk[] = [];
   let bucketLines = 0;
@@ -189,13 +212,22 @@ function makeChunk(
     }
   }
 
+  // Submodule bumps also have blank content lines but are real pointer changes, not whitespace.
+  const whitespaceOnly =
+    input.generatedReason === undefined &&
+    input.diff.submodule !== true &&
+    changed.length > 0 &&
+    changed.every((line) => line === '');
+  const changeTypes: ChangeType[] =
+    input.generatedReason !== undefined ? ['generated'] : whitespaceOnly ? ['whitespace'] : [];
+
   return {
     id: chunkId(input.diff.path, idPath, fnv1a(changed.join('\n'))),
     file: input.diff.path,
     symbolPath,
     displayPath: idPath,
     kind,
-    changeTypes: input.generatedReason !== undefined ? ['generated'] : [],
+    changeTypes,
     ...(input.generatedReason !== undefined ? { generatedReason: input.generatedReason } : {}),
     hunks,
     headRange: deleted

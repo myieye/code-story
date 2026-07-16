@@ -10,11 +10,11 @@ export function chunkAt(flat: FlatBook, cursorIndex: number): Chunk {
 
 /** Low-signal chunks render as collapsed stubs and are batch-acknowledgeable (R-002). */
 export function isLowSignal(chunk: Chunk): boolean {
-  return chunk.changeTypes.includes('generated');
+  return chunk.changeTypes.length > 0;
 }
 
 export function stubReason(chunk: Chunk): string {
-  return chunk.generatedReason ?? 'generated';
+  return chunk.generatedReason ?? chunk.changeTypes[0] ?? 'generated';
 }
 
 /** Next/previous not-reviewed chunk starting at `from` (cursor space), wrapping. */

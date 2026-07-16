@@ -5,7 +5,7 @@ import { type Hunk } from './diff.js';
 
 export type ChunkKind = 'method' | 'method-fragment' | 'markup-region' | 'config' | 'other';
 
-export type ChangeType = 'generated';
+export type ChangeType = 'generated' | 'whitespace';
 
 export interface LineRange {
   /** 1-based, inclusive */
@@ -23,6 +23,7 @@ export interface Chunk {
   baseRange?: LineRange;
   headRange?: LineRange;
   kind: ChunkKind;
+  /** Non-empty marks the chunk low-signal: collapsed stub, batch-ackable (R-002). */
   changeTypes: ChangeType[];
   /** Stub badge label when `generated` ∈ changeTypes, e.g. "lockfile" (R-002). */
   generatedReason?: string;

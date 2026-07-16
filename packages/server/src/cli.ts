@@ -63,8 +63,9 @@ if (dumpChunks) {
 
   for (const c of chunks) {
     const lines = c.hunks.reduce((n, h) => n + Math.max(h.headCount, h.baseCount), 0);
+    const stub = c.changeTypes.length > 0 ? ` [stub: ${c.generatedReason ?? c.changeTypes[0]}]` : '';
     console.log(
-      `${c.kind.padEnd(15)} ${c.file}${c.symbolPath.length ? ' :: ' + c.symbolPath.join('.') : ''} (~${lines} lines)`,
+      `${c.kind.padEnd(15)} ${c.file}${c.symbolPath.length ? ' :: ' + c.symbolPath.join('.') : ''} (~${lines} lines)${stub}`,
     );
   }
   console.log(`\n${chunks.length} chunks over ${files.length} files`);
