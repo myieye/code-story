@@ -65,8 +65,8 @@ if (dumpGraph) {
 
 if (exportPath) {
   const files = await diffRange(repo, resolved);
-  const { chunks, contents } = await computeChunks(repo, resolved, files);
-  const compiled = compileBook({ files, chunks, headSha: resolved.head });
+  const { chunks, contents, graph } = await computeChunks(repo, resolved, files);
+  const compiled = compileBook({ files, chunks, graph, headSha: resolved.head });
   await writeFile(exportPath, exportBookMarkdown({ ...compiled, contents, title: range }));
 
   const leftovers = compiled.chunks.length - chunks.length;

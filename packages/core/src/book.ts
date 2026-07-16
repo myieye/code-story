@@ -1,10 +1,13 @@
 import { type FileDiff, type Hunk } from './diff.js';
+import { type ImportGraph } from './import-graph.js';
 import { type Book, type Chunk, chunkId, type Occurrence, type Section } from './model.js';
+import { type FileRole, fileRoles } from './roles.js';
 
 export interface CompileBookInput {
-  /** Changed files in git diff order — section order follows it. */
+  /** Changed files in git diff order — the ordering tie-break source. */
   files: FileDiff[];
   chunks: Chunk[];
+  graph: ImportGraph;
   headSha: string;
 }
 
@@ -15,9 +18,11 @@ export interface CompiledBook {
 }
 
 /**
- * Naive book compile (spec 00): one section per changed file in git order, every chunk exactly
- * one primary occurrence. Any changed line the chunker failed to claim lands in a synthesized
- * leftover chunk in a final section — the R-001 backstop, so no code path drops a line.
+ * Book compile (spec 00 + spec 01 tier 0): one section per changed file, every chunk exactly
+ * one primary occurrence; sections ordered by role (impl topo-sorted deps-first, tests after
+ * their impl, periphery, low-signal). Any changed line the chunker failed to claim lands in a
+ * synthesized leftover chunk in a final section — the R-001 backstop, so no code path drops
+ * a line. Deterministic for a fixed input (R-038 depends on stable re-runs).
  */
 export function compileBook(input: CompileBookInput): CompiledBook {
   const byFile = new Map<string, Chunk[]>();
@@ -27,20 +32,115 @@ export function compileBook(input: CompileBookInput): CompiledBook {
     byFile.set(chunk.file, list);
   }
 
-  const sections: Section[] = [];
+  const sectionsByFile = new Map<string, Section>();
   const leftovers: Chunk[] = [];
   for (const file of input.files) {
     const fileChunks = byFile.get(file.path) ?? [];
     leftovers.push(...leftoverChunks(file, fileChunks));
     if (fileChunks.length > 0) {
-      sections.push({ id: file.path, title: file.path, occurrences: fileChunks.map(primary) });
+      sectionsByFile.set(file.path, { id: file.path, title: file.path, occurrences: fileChunks.map(primary) });
     }
   }
+
+  const gitOrder = [...sectionsByFile.keys()];
+  const roles = fileRoles(gitOrder, input.chunks, input.graph);
+  const sections = orderFiles(gitOrder, roles, input.graph).map((f) => sectionsByFile.get(f)!);
   if (leftovers.length > 0) {
     sections.push({ id: '(leftovers)', title: 'Leftovers', occurrences: leftovers.map(primary) });
   }
 
   return { book: { sections, headSha: input.headSha }, chunks: [...input.chunks, ...leftovers] };
+}
+
+/** Spec 01 tier-0 section order: impl (topo) each followed by its tests, then periphery, then low-signal. */
+function orderFiles(gitOrder: string[], roles: Map<string, FileRole>, graph: ImportGraph): string[] {
+  const byRole = (role: FileRole) => gitOrder.filter((f) => roles.get(f) === role);
+  const impl = topoSort(byRole('impl'), graph);
+  const implOrder = new Map(impl.map((f, i) => [f, i]));
+
+  const testsByAnchor = new Map<string, string[]>();
+  const unanchored: string[] = [];
+  for (const test of byRole('test')) {
+    const anchor = anchorImpl(test, impl, implOrder, graph);
+    if (anchor === undefined) unanchored.push(test);
+    else testsByAnchor.set(anchor, [...(testsByAnchor.get(anchor) ?? []), test]);
+  }
+
+  return [
+    ...impl.flatMap((f) => [f, ...(testsByAnchor.get(f) ?? [])]),
+    ...unanchored,
+    ...byRole('periphery'),
+    ...byRole('low-signal'),
+  ];
+}
+
+/**
+ * Dependencies-first topological sort. Greedy Kahn picking the git-earliest ready file keeps
+ * ties in git order; when a cycle leaves nothing ready, the git-earliest remaining file is
+ * emitted anyway — cycles fall back to git order.
+ */
+function topoSort(files: string[], graph: ImportGraph): string[] {
+  const deps = new Map<string, string[]>(files.map((f) => [f, []]));
+  for (const edge of graph.edges) {
+    if (deps.has(edge.from) && deps.has(edge.to)) deps.get(edge.from)!.push(edge.to);
+  }
+
+  const remaining = [...files];
+  const emitted = new Set<string>();
+  const result: string[] = [];
+  while (remaining.length > 0) {
+    const ready = remaining.findIndex((f) => deps.get(f)!.every((d) => emitted.has(d)));
+    const [file] = remaining.splice(Math.max(ready, 0), 1);
+    emitted.add(file!);
+    result.push(file!);
+  }
+  return result;
+}
+
+/** The impl section a test goes after: the LAST impl it imports, else the best stem match. */
+function anchorImpl(
+  test: string,
+  impl: string[],
+  implOrder: Map<string, number>,
+  graph: ImportGraph,
+): string | undefined {
+  let last: string | undefined;
+  for (const edge of graph.edges) {
+    if (edge.from !== test) continue;
+    const at = implOrder.get(edge.to);
+    if (at !== undefined && (last === undefined || at > implOrder.get(last)!)) last = edge.to;
+  }
+  return last ?? stemMatch(test, impl, implOrder);
+}
+
+/**
+ * Path-stem fallback (HistoryServiceActivityTests.cs → HistoryService.cs): strip test
+ * conventions from the test's stem, then find the longest impl stem that equals it or
+ * prefixes it. Non-exact prefixes must be ≥4 chars — precision over recall.
+ */
+function stemMatch(test: string, impl: string[], implOrder: Map<string, number>): string | undefined {
+  const testStem = fileStem(test)
+    .replace(/\.(test|spec)$/, '')
+    .replace(/tests?$/, '');
+  let best: string | undefined;
+  for (const file of impl) {
+    const stem = fileStem(file);
+    if (stem !== testStem && !(stem.length >= 4 && testStem.startsWith(stem))) continue;
+    if (
+      best === undefined ||
+      stem.length > fileStem(best).length ||
+      (stem.length === fileStem(best).length && implOrder.get(file)! > implOrder.get(best)!)
+    ) {
+      best = file;
+    }
+  }
+  return best;
+}
+
+function fileStem(path: string): string {
+  const name = path.split('/').at(-1)!.toLowerCase();
+  const dot = name.lastIndexOf('.');
+  return dot > 0 ? name.slice(0, dot) : name;
 }
 
 function primary(chunk: Chunk): Occurrence {

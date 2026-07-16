@@ -15,7 +15,7 @@ describe('exportBookMarkdown', () => {
     const head = ['const a = 1;', 'const b = 2;', 'const c = 3;'];
     const base = ['const a = 1;', 'const old = 0;'];
     const chunks = chunkFile({ diff, lines: head, baseLines: base });
-    const compiled = compileBook({ files: [diff], chunks, headSha: 'deadbeef123' });
+    const compiled = compileBook({ files: [diff], chunks, graph: { edges: [], unresolved: 0 }, headSha: 'deadbeef123' });
 
     const md = exportBookMarkdown({
       ...compiled,
@@ -39,7 +39,7 @@ describe('exportBookMarkdown', () => {
     };
     const head = ['```diff embedded fence```'];
     const chunks = chunkFile({ diff, lines: head, baseLines: [] });
-    const compiled = compileBook({ files: [diff], chunks, headSha: 'abc' });
+    const compiled = compileBook({ files: [diff], chunks, graph: { edges: [], unresolved: 0 }, headSha: 'abc' });
 
     const withContent = exportBookMarkdown({
       ...compiled,

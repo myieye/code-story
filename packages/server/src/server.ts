@@ -55,8 +55,8 @@ export function startServer(options: ServerOptions, requestedPort = 0): Promise<
     (bookCache ??= uncacheOnError(
       (async () => {
         const files = await getDiff();
-        const { chunks, contents } = await computeChunks(options.repo, options.range, files);
-        const compiled = compileBook({ files, chunks, headSha: options.range.head });
+        const { chunks, contents, graph } = await computeChunks(options.repo, options.range, files);
+        const compiled = compileBook({ files, chunks, graph, headSha: options.range.head });
         return { ...compiled, contents };
       })(),
       () => (bookCache = undefined),
