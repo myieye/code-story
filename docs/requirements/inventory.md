@@ -253,3 +253,12 @@ Avoid overly complex terminology; not dense.
 
 Sharpens: R-005, R-008 (`narrative` payloads), R-009. This is a hard acceptance criterion for
 every AI-written string in the product — and belongs in the readability eval (R-034).
+
+### R-037 — Patch history persisted outside the reviewed repo
+Every generated git patch (AI or manual, per R-011/R-035) is persisted somewhere that is
+explicitly *not* part of the repo being reviewed, so versions/changes through the history of a
+thread can be compared at any time.
+> "The generated git patches should be persisted somewhere (obviously not part of the repo being reviewed) so versions/changes through the history of a thread can be compared."
+
+Sharpens: R-011 (the ledger's storage home). Resolved into ADR 0001: per-repo store under the
+user's data directory (e.g. `~/.code-story/`), append-only and content-addressed.

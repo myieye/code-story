@@ -28,13 +28,14 @@ traceable list):
 
 ## Status
 
-Problem-space research complete; spec groundwork under way. Nothing built yet.
+Problem-space research complete; architecture ratified; nothing built yet.
 Headline findings: **no existing tool occupies this quadrant** (narrative ordering is becoming
 table stakes at CodeRabbit/Devin/cubic, but nobody does coverage-guaranteed queues + local
-BYO-agent verifiable-patch threads); recommended shape is a **local daemon + browser "book" UI**
+BYO-agent verifiable-patch threads); the accepted shape is a **local daemon + browser "book" UI**
 with a hybrid ACP-client / MCP-server / headless-CLI agent layer. See
 [docs/research/00-synthesis.md](docs/research/00-synthesis.md) and
-[ADR 0001](docs/decisions/0001-architecture.md) (proposed).
+[ADR 0001](docs/decisions/0001-architecture.md) (accepted 2026-07-16). Next:
+grill→spec→issues per [docs/process/build-process.md](docs/process/build-process.md).
 
 ## Repository layout
 
@@ -42,7 +43,7 @@ with a hybrid ACP-client / MCP-server / headless-CLI agent layer. See
 - `docs/vision/` — the vision: [original prompt](docs/vision/original-prompt.md) and
   [addendum](docs/vision/addendum-2026-07-16.md) persisted verbatim for traceability passes,
   plus the [distillation](docs/vision/vision.md).
-- `docs/requirements/` — numbered requirements inventory (R-001…R-036) extracted from the vision.
+- `docs/requirements/` — numbered requirements inventory (R-001…R-037) extracted from the vision.
 - `docs/research/` — [synthesis](docs/research/00-synthesis.md), landscape (+4 appendices), agent protocols, platform, review science.
 - `docs/design/` — design sketches (core primitives: chunks, occurrences, book, patch ledger).
 - `docs/decisions/` — ADRs.

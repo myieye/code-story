@@ -1,6 +1,7 @@
 # ADR 0001 — Platform & agent-integration architecture
 
-Status: **proposed** (research-backed recommendation; awaiting Tim's ratification)
+Status: **accepted** — ratified by Tim 2026-07-16 (with one amendment: review state and the
+patch ledger live *outside* the reviewed repo, R-037; see §7)
 Date: 2026-07-15
 Basis: [research synthesis](../research/00-synthesis.md), reports [02](../research/02-agent-protocols.md), [03](../research/03-platform.md)
 
@@ -35,8 +36,13 @@ Build **code-story** as a greenfield, local-first tool:
    code-change channel is `submit_patch` (validated, hashed, linked to its thread). Per-harness
    write-denial (disallowedTools/hooks, ACP permission denial, read-only sandboxes) as extra
    belts. Manual edits stay unrestricted and are recorded as tool-computed deltas.
-7. **State**: content-addressed snapshots + a JSON/SQLite store under `.code-story/`
-   (gitignored by default; shareable later).
+7. **State**: content-addressed snapshots + a SQLite/JSON store in a **per-repo directory under
+   the user's data home** (e.g. `~/.code-story/<repo-id>/`, XDG-compliant) — never inside the
+   reviewed repo (R-037). The patch ledger there is append-only, so every version a thread ever
+   produced (AI patches, in-place manual patches, detected external edits) remains comparable
+   across the thread's whole history, and survives worktree cleanup, branch deletion, and
+   re-clones. (Amended at ratification: an earlier draft said gitignored `.code-story/` inside
+   the repo.)
 
 ## Alternatives considered
 

@@ -14,9 +14,9 @@ BYO-agent threads whose code changes are verifiable patches.
 3. `docs/research/00-synthesis.md` — answers to the founding questions (does it exist: no;
    fork: no, harvest; platform; protocols; the science). Deep dives: `01*` landscape,
    `02` agent protocols, `03` platform, `04` review science, `05` pair-review due diligence.
-4. `docs/decisions/0001-architecture.md` — proposed architecture (local daemon + browser book UI;
-   ACP-client + MCP-server + headless-CLI hybrid; patch-only via worktrees). **Status: proposed,
-   not yet ratified by Tim.**
+4. `docs/decisions/0001-architecture.md` — the architecture (local daemon + browser book UI;
+   ACP-client + MCP-server + headless-CLI hybrid; patch-only via worktrees; state/ledger outside
+   the reviewed repo). **Status: accepted — ratified by Tim 2026-07-16.**
 5. `docs/design/core-primitives-sketch.md` — chunk/occurrence/book/ledger data model sketch.
 6. `docs/process/build-process.md` — spec pipeline (Pocock skills), model economy, dogfooding.
 
@@ -57,7 +57,9 @@ BYO-agent threads whose code changes are verifiable patches.
 
 ## Current state (2026-07-16)
 
-Research + spec groundwork complete and pushed. Next: Tim ratifies/amends ADR 0001 → grill→spec→
+Research + spec groundwork complete and pushed. **ADR 0001 ratified** (2026-07-16) with the
+R-037 amendment (patch ledger lives outside the reviewed repo). Tim explicitly does *not* want
+implementation started in the research session — next steps for a build session: grill→spec→
 issues pipeline (`docs/process/build-process.md`) → first vertical slice (proposed: scripts-only
 chunker + coverage queue over a real lexbox PR). Dogfood target repo: languageforge/lexbox
 (C# + Svelte/TS); the tool must stay repo-agnostic (R-025).

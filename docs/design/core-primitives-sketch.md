@@ -129,5 +129,7 @@ question (explicit config first; inference later, if ever).
 
 - Chunk fingerprint algorithm & rename tolerance thresholds.
 - Patch format: unified diff vs structured (line-anchored with context hashes) for robust apply.
-- Where the content-addressed store lives (plain `.code-story/` dir? git objects reused?).
+- ~~Where the content-addressed store lives~~ — resolved (R-037, ADR 0001): per-repo store under
+  the user's data home (e.g. `~/.code-story/<repo-id>/`), never inside the reviewed repo;
+  append-only so thread history stays comparable forever.
 - Whether the book recompiles incrementally per head state or versions whole editions.
