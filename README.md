@@ -48,3 +48,10 @@ grill→spec→issues per [docs/process/build-process.md](docs/process/build-pro
 - `docs/design/` — design sketches (core primitives: chunks, occurrences, book, patch ledger).
 - `docs/decisions/` — ADRs.
 - `docs/process/` — [build process](docs/process/build-process.md): spec pipeline, model economy, dogfooding.
+
+## Development
+
+Build once (`pnpm install && pnpm -r build`), then start a daemon on any diff/range:
+`node packages/server/dist/cli.js <base>..<head> --port 7357`. To drive the book UI
+programmatically (walk latency, mark/unmark round-trips) against a running daemon, use
+`node tools/dogfood-walk.mjs --port 7357` (flags: `--walk`, `--marks`, `--headless`).
