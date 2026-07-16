@@ -7,15 +7,15 @@ import { batchableSections, findUnreviewed, pendingStubCount } from './review-lo
 import { estimateRowHeight, RowView, type SectionAck } from './RowView.js';
 import { flattenBook, occurrenceKey, type Row } from './rows.js';
 import { ShortcutOverlay } from './ShortcutOverlay.js';
+import { useBookKeymap } from './useBookKeymap.js';
 import { useReview } from './useReview.js';
+import { useSeenTracking } from './useSeenTracking.js';
 
 export function BookPage({ data, initialReview }: { data: BookResponse; initialReview: ReviewFile }) {
   const flat = useMemo(() => flattenBook(data.book, data.chunks), [data]);
   const review = useReview(initialReview);
   const scrollRef = useRef<HTMLDivElement>(null);
   const rowEls = useRef(new Map<number, HTMLElement>());
-  const seenEdges = useRef(new Map<string, { top?: boolean; bottom?: boolean }>());
-  const seenTimer = useRef<number | undefined>(undefined);
 
   const [cursor, setCursor] = useState(() => {
     const resumed = initialReview.cursor ? flat.firstIndexByChunkId.get(initialReview.cursor) : undefined;
@@ -178,76 +178,21 @@ export function BookPage({ data, initialReview }: { data: BookResponse; initialR
     setLastBatch(null);
   };
 
-  useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (overlayOpen) {
-        if (e.key === 'Escape' || e.key === '?') {
-          setOverlayOpen(false);
-          e.preventDefault();
-        }
-        return;
-      }
-      const target = e.target as HTMLElement | null;
-      if (e.key === 'Escape') {
-        if (target?.closest('.cm-editor')) {
-          const rowIndex = flat.chunkRowIndexes[cursor];
-          if (rowIndex !== undefined) rowEls.current.get(rowIndex)?.focus({ preventScroll: true });
-          e.preventDefault();
-        }
-        return;
-      }
-      if (target?.closest('.cm-editor, input, textarea, select, button')) return;
-      const plain = !e.ctrlKey && !e.metaKey && !e.altKey;
-      if (plain && (e.key === 'j' || e.key === 'PageDown')) moveCursor(cursor + 1);
-      else if (plain && (e.key === 'k' || e.key === 'PageUp')) moveCursor(cursor - 1);
-      else if (plain && e.key === 'n') jumpUnreviewed(1);
-      else if (plain && e.key === 'N') jumpUnreviewed(-1);
-      else if (plain && e.key === 'Enter') {
-        // Key-repeat never marks: each mark requires a fresh keydown (R-026).
-        if (!e.repeat) markCurrent();
-      } else if (plain && e.key === 'u') unmarkCurrent();
-      else if (plain && e.key === 'x') toggleCollapseCurrent();
-      else if (plain && e.key === '?') setOverlayOpen(true);
-      else if (e.ctrlKey && e.key === 'Home') moveCursor(0);
-      else if (e.ctrlKey && e.key === 'End') moveCursor(totalOccurrences - 1);
-      else return;
-      e.preventDefault();
-    };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
+  useBookKeymap({
+    overlayOpen,
+    setOverlayOpen,
+    cursor,
+    totalOccurrences,
+    flat,
+    rowEls,
+    moveCursor,
+    jumpUnreviewed,
+    markCurrent,
+    unmarkCurrent,
+    toggleCollapseCurrent,
   });
 
-  // seen = both edges of the block have been inside the viewport (covers blocks taller than it)
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-    const scan = () => {
-      const top = el.scrollTop;
-      const bottom = top + el.clientHeight;
-      const newlySeen: string[] = [];
-      for (const item of virtualizer.getVirtualItems()) {
-        const row = flat.rows[item.index];
-        if (row?.kind !== 'chunk') continue;
-        if (review.stateOf(row.chunk.id) !== 'unseen') continue;
-        const edges = seenEdges.current.get(row.chunk.id) ?? {};
-        if (item.start >= top && item.start <= bottom) edges.top = true;
-        if (item.end >= top && item.end <= bottom) edges.bottom = true;
-        seenEdges.current.set(row.chunk.id, edges);
-        if (edges.top && edges.bottom) newlySeen.push(row.chunk.id);
-      }
-      review.setSeen(newlySeen);
-    };
-    const onScroll = () => {
-      window.clearTimeout(seenTimer.current);
-      seenTimer.current = window.setTimeout(scan, 160);
-    };
-    el.addEventListener('scroll', onScroll, { passive: true });
-    const initial = window.setTimeout(scan, 400);
-    return () => {
-      el.removeEventListener('scroll', onScroll);
-      window.clearTimeout(initial);
-    };
-  });
+  useSeenTracking({ scrollRef, virtualizer, flat, stateOf: review.stateOf, setSeen: review.setSeen });
 
   const items = virtualizer.getVirtualItems();
   const currentSection = useMemo(() => {
