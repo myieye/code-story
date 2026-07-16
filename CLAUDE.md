@@ -153,10 +153,11 @@ CLI `--check-order` (exit 0/1) with a PR-2357-shaped synthetic CI fixture; `--du
 Dogfood 1 (baseline doc "Dogfood 1" section): both dogfood-0 inversions **0** on PR 2357 AND
 on second subject sillsdev PR 2379 (`8dd70ba~1..8dd70ba`, C#-only); j/k median 4ms via new
 `tools/dogfood-walk.mjs` (root devDep playwright-core, channel:'chrome'; restore nets zero
-only on fresh review state). Recurring artifact = genuine 2-cycles (one per subject) → **#20**
-(cycle-aware check-order split, gateable) and **#21** (C# ancestor-namespace back-edge
-evidence, fix after #20 re-measure). Server vitest pinned to src (stale dist/*.test.js were
-double-counted; true counts now core 110 / server 13 / web 11 = 134). BookPage slimmed:
+only on fresh review state). Recurring artifact = genuine 2-cycles (one per subject) → **#20 done** (same-SCC inversions
+land in informational `cycleInversions`; `ok` gates on acyclic+test only — both subjects exit
+0); **#21 open, evidence-gated** (C# ancestor-namespace back-edge — watch future dogfoods).
+Server vitest pinned to src (stale dist/*.test.js were double-counted; true counts now
+core 114 / server 13 / web 11 = 138). BookPage slimmed:
 keymap + seen-scan live in web `useBookKeymap.ts`/`useSeenTracking.ts` (no-dep-array
 re-register is intentional). Subagent ops note: resuming a 529-killed worktree agent loses
 isolation — it lands in the MAIN worktree; keep the tree clean while resumed agents run.
