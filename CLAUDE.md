@@ -55,6 +55,11 @@ BYO-agent threads whose code changes are verifiable patches.
   mode). Issue/PR bodies open with the *[Claude, autonomous]* line; `[claude]`/`[vibe]` title
   prefixes are dropped as pure noise in an all-Claude repo. (Specializes Tim's global tagging
   rule — Tim can veto.)
+- **Per-issue PR flow (Tim, 2026-07-16)**: work lands incrementally — one short-lived branch
+  per issue (`claude/<issue>-<slug>`), PR against main, self-merged (merge commit, not squash
+  — commit history carries the traceability) once tests are green and the slice is verified.
+  Claude creates and merges its own PRs; no waiting for review (vibe mode). Doc-only
+  housekeeping may go straight to main. Proven end-to-end on PR #29 (M1+M2, 56 commits).
 
 ## Hard-won product insights (don't re-derive)
 
