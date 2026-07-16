@@ -14,6 +14,7 @@ export function RowView({
   reviewedCount,
   sectionStats,
   sectionAck,
+  sectionRationale,
   onMarkSection,
   onUndoBatch,
   state,
@@ -33,6 +34,8 @@ export function RowView({
   reviewedCount: number;
   sectionStats: Map<string, { done: number; total: number }>;
   sectionAck: SectionAck | undefined;
+  /** AI order overlay's one-line rationale for this section, when applied (spec 02). */
+  sectionRationale: string | undefined;
   onMarkSection: (sectionId: string) => void;
   onUndoBatch: () => void;
   state: ChunkReviewState;
@@ -46,19 +49,26 @@ export function RowView({
   if (row.kind === 'section') {
     const stats = sectionStats.get(row.id);
     return (
-      <div className="section-header">
-        <span className="section-path">{row.title}</span>
-        <span className="section-count">{stats ? `${stats.done}/${stats.total} reviewed` : `${row.chunkCount} chunks`}</span>
-        {/* One element for both labels so focus survives the mark → undo morph (spec 00a). */}
-        {sectionAck && (
-          <button
-            className="bar-button section-ack"
-            onClick={() => (sectionAck.kind === 'mark' ? onMarkSection(row.id) : onUndoBatch())}
-          >
-            {sectionAck.kind === 'mark'
-              ? `Mark all ${sectionAck.count} reviewed (${sectionAck.reason})`
-              : `Undo mark all (${sectionAck.count})`}
-          </button>
+      <div className="section-block">
+        <div className="section-header">
+          <span className="section-path">{row.title}</span>
+          <span className="section-count">{stats ? `${stats.done}/${stats.total} reviewed` : `${row.chunkCount} chunks`}</span>
+          {/* One element for both labels so focus survives the mark → undo morph (spec 00a). */}
+          {sectionAck && (
+            <button
+              className="bar-button section-ack"
+              onClick={() => (sectionAck.kind === 'mark' ? onMarkSection(row.id) : onUndoBatch())}
+            >
+              {sectionAck.kind === 'mark'
+                ? `Mark all ${sectionAck.count} reviewed (${sectionAck.reason})`
+                : `Undo mark all (${sectionAck.count})`}
+            </button>
+          )}
+        </div>
+        {sectionRationale && (
+          <div className="section-rationale">
+            <span className="badge ai-badge">AI</span> {sectionRationale}
+          </div>
         )}
       </div>
     );
@@ -148,8 +158,13 @@ export function RowView({
   );
 }
 
-export function estimateRowHeight(row: Row, data: BookResponse, isCollapsed: (chunk: Chunk) => boolean): number {
-  if (row.kind === 'section') return 46;
+export function estimateRowHeight(
+  row: Row,
+  data: BookResponse,
+  isCollapsed: (chunk: Chunk) => boolean,
+  hasRationale?: (sectionId: string) => boolean,
+): number {
+  if (row.kind === 'section') return hasRationale?.(row.id) ? 68 : 46;
   if (row.kind === 'end') return 160;
   if (isCollapsed(row.chunk)) return 76;
   const lines = data.diffs[row.chunk.id]?.length ?? 1;
