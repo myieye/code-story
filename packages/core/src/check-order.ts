@@ -6,6 +6,11 @@ export interface OrderReport {
   ok: boolean;
   /** Section pairs where a consumer reads before its dependency. */
   importInversions: { earlier: string; later: string }[];
+  /**
+   * Inversions whose two files sit in the same import cycle (strongly-connected component).
+   * No ordering can satisfy both directions, so these are reported but never gate `ok`.
+   */
+  cycleInversions: { earlier: string; later: string }[];
   /** Test sections reading before an impl section they import. */
   testBeforeImpl: { test: string; impl: string }[];
 }
@@ -33,7 +38,34 @@ export function checkOrder(book: Book, graph: ImportGraph, chunks: Chunk[]): Ord
     return list.length > 0 && list.every(isLowSignal);
   };
 
+  const adjacency = new Map<string, string[]>();
+  for (const edge of graph.edges) {
+    if (!position.has(edge.from) || !position.has(edge.to)) continue;
+    const targets = adjacency.get(edge.from) ?? [];
+    targets.push(edge.to);
+    adjacency.set(edge.from, targets);
+  }
+  const reachable = new Map<string, Set<string>>();
+  const reach = (start: string): Set<string> => {
+    const cached = reachable.get(start);
+    if (cached) return cached;
+    const found = new Set<string>();
+    const stack = [start];
+    while (stack.length > 0) {
+      for (const next of adjacency.get(stack.pop()!) ?? []) {
+        if (!found.has(next)) {
+          found.add(next);
+          stack.push(next);
+        }
+      }
+    }
+    reachable.set(start, found);
+    return found;
+  };
+  const inSameCycle = (a: string, b: string) => reach(a).has(b) && reach(b).has(a);
+
   const importInversions: OrderReport['importInversions'] = [];
+  const cycleInversions: OrderReport['cycleInversions'] = [];
   const testBeforeImpl: OrderReport['testBeforeImpl'] = [];
   const seen = new Set<string>();
   for (const edge of graph.edges) {
@@ -44,8 +76,14 @@ export function checkOrder(book: Book, graph: ImportGraph, chunks: Chunk[]): Ord
     const key = `${edge.from}\0${edge.to}`;
     if (seen.has(key)) continue;
     seen.add(key);
-    if (isTestPath(edge.from) && !isTestPath(edge.to)) testBeforeImpl.push({ test: edge.from, impl: edge.to });
+    if (inSameCycle(edge.from, edge.to)) cycleInversions.push({ earlier: edge.from, later: edge.to });
+    else if (isTestPath(edge.from) && !isTestPath(edge.to)) testBeforeImpl.push({ test: edge.from, impl: edge.to });
     else importInversions.push({ earlier: edge.from, later: edge.to });
   }
-  return { ok: importInversions.length === 0 && testBeforeImpl.length === 0, importInversions, testBeforeImpl };
+  return {
+    ok: importInversions.length === 0 && testBeforeImpl.length === 0,
+    importInversions,
+    cycleInversions,
+    testBeforeImpl,
+  };
 }

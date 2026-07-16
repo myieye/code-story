@@ -37,7 +37,53 @@ describe('checkOrder', () => {
     const report = checkOrder(bookOf(['a.ts', 'b.ts']), graphOf(['a.ts', 'b.ts']), [chunk('a.ts'), chunk('b.ts')]);
     expect(report.ok).toBe(false);
     expect(report.importInversions).toEqual([{ earlier: 'a.ts', later: 'b.ts' }]);
+    expect(report.cycleInversions).toEqual([]);
     expect(report.testBeforeImpl).toEqual([]);
+  });
+
+  it('reports a 2-cycle inversion informationally without failing', () => {
+    const report = checkOrder(bookOf(['a.ts', 'b.ts']), graphOf(['a.ts', 'b.ts'], ['b.ts', 'a.ts']), [
+      chunk('a.ts'),
+      chunk('b.ts'),
+    ]);
+    expect(report.ok).toBe(true);
+    expect(report.importInversions).toEqual([]);
+    expect(report.cycleInversions).toEqual([{ earlier: 'a.ts', later: 'b.ts' }]);
+  });
+
+  it('classifies inversions inside a 3-cycle as cycle inversions', () => {
+    const report = checkOrder(
+      bookOf(['a.ts', 'b.ts', 'c.ts']),
+      graphOf(['a.ts', 'b.ts'], ['b.ts', 'c.ts'], ['c.ts', 'a.ts']),
+      [chunk('a.ts'), chunk('b.ts'), chunk('c.ts')],
+    );
+    expect(report.ok).toBe(true);
+    expect(report.importInversions).toEqual([]);
+    expect(report.cycleInversions).toEqual([
+      { earlier: 'a.ts', later: 'b.ts' },
+      { earlier: 'b.ts', later: 'c.ts' },
+    ]);
+  });
+
+  it('still fails an acyclic inversion when an unrelated cycle exists', () => {
+    const report = checkOrder(
+      bookOf(['a.ts', 'b.ts', 'c.ts', 'd.ts']),
+      graphOf(['a.ts', 'b.ts'], ['b.ts', 'a.ts'], ['c.ts', 'd.ts']),
+      [chunk('a.ts'), chunk('b.ts'), chunk('c.ts'), chunk('d.ts')],
+    );
+    expect(report.ok).toBe(false);
+    expect(report.importInversions).toEqual([{ earlier: 'c.ts', later: 'd.ts' }]);
+    expect(report.cycleInversions).toEqual([{ earlier: 'a.ts', later: 'b.ts' }]);
+  });
+
+  it('sends a test-impl pair in the same cycle to cycleInversions', () => {
+    const report = checkOrder(bookOf(['x.test.ts', 'x.ts']), graphOf(['x.test.ts', 'x.ts'], ['x.ts', 'x.test.ts']), [
+      chunk('x.test.ts'),
+      chunk('x.ts'),
+    ]);
+    expect(report.ok).toBe(true);
+    expect(report.testBeforeImpl).toEqual([]);
+    expect(report.cycleInversions).toEqual([{ earlier: 'x.test.ts', later: 'x.ts' }]);
   });
 
   it('passes compileBook output built from the same inputs', () => {

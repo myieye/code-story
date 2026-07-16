@@ -71,12 +71,10 @@ if (checkOrderFlag) {
   const report = checkOrder(book, graph, chunks);
 
   for (const inv of report.importInversions) console.log(`import inversion: ${inv.earlier} reads before ${inv.later}`);
+  for (const inv of report.cycleInversions) console.log(`cycle inversion (unavoidable): ${inv.earlier} <-> ${inv.later}`);
   for (const inv of report.testBeforeImpl) console.log(`test before impl: ${inv.test} reads before ${inv.impl}`);
-  console.log(
-    report.ok
-      ? `order: OK (${book.sections.length} sections, 0 inversions)`
-      : `order: FAILED — ${report.importInversions.length} import inversions, ${report.testBeforeImpl.length} test-before-impl`,
-  );
+  const counts = `${report.importInversions.length} import inversions, ${report.testBeforeImpl.length} test-before-impl, ${report.cycleInversions.length} within cycles`;
+  console.log(report.ok ? `order: OK (${book.sections.length} sections, ${counts})` : `order: FAILED — ${counts}`);
   process.exit(report.ok ? 0 : 1);
 }
 
