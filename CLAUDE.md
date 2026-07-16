@@ -80,7 +80,7 @@ markdown export; zero AI. Spec: `docs/spec/00-chunker-and-naive-book.md` (includ
 ux-expert pass on the book UI). **ADR 0002**: book UI is React (Tim's call). Issue policy
 (Tim-ratified): just-in-time — 5–8 vertical-slice GitHub issues per milestone, filed when that
 milestone's spec lands; never a full backlog. Milestone-0 slices are issues #1–#8 (blocking
-edges in bodies). **#1 scaffold, #2 diff ingestion, #3 chunker done.** Stack: pnpm monorepo (core/server/web),
+edges in bodies). **#1 scaffold, #2 diff ingestion, #3 chunker, #4 naive book + export done.** Stack: pnpm monorepo (core/server/web),
 TS strict (TS 7), vitest, React 19 + Vite, hono daemon, CI. Core: `parseGitDiff` (-U0, ranges
 only), pure `chunkFile` (hunk∩symbol intersection, fragments >40 lines, fnv1a fingerprints,
 R-001 coverage invariant property-tested with fast-check). Server: tree-sitter via
@@ -88,5 +88,8 @@ R-001 coverage invariant property-tested with fast-check). Server: tree-sitter v
 incompatible — don't switch back), C#/TS/TSX/JS grammars; **Svelte has no prebuilt grammar** —
 M0 splits script (TS-parsed) / template / style by regex. Submodules (gitlink 160000) are
 content-less chunks. Verified on lexbox: 172k-line range → 5256 chunks, coverage OK, 31s;
-mid-size PR <3s. Next: #4 naive book + markdown export.
+mid-size PR <3s. Book compile (`compileBook`): section per file in git order, one primary
+occurrence per chunk, leftovers section as R-001 backstop; `exportBookMarkdown` (backtick-safe
+fences); CLI `--export book.md`; server `/api/book` + `/api/export.md`. Next: #5 book UI
+(virtualized CM6).
 Dogfood target: languageforge/lexbox (C# + Svelte/TS); repo-agnostic (R-025).

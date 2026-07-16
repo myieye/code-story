@@ -3,8 +3,17 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { serve } from '@hono/node-server';
 import { serveStatic } from '@hono/node-server/serve-static';
-import { CORE_VERSION, type FileDiff } from '@code-story/core';
+import {
+  type Book,
+  type Chunk,
+  CORE_VERSION,
+  compileBook,
+  exportBookMarkdown,
+  type FileContents,
+  type FileDiff,
+} from '@code-story/core';
 import { Hono } from 'hono';
+import { computeChunks } from './chunks.js';
 import { diffRange, type ResolvedRange } from './git.js';
 
 const webDist = fileURLToPath(new URL('../../web/dist', import.meta.url));
@@ -23,12 +32,32 @@ export interface RunningServer {
 export function startServer(options: ServerOptions, requestedPort = 0): Promise<RunningServer> {
   const app = new Hono();
   let diffCache: Promise<FileDiff[]> | undefined;
+  let bookCache: Promise<{ book: Book; chunks: Chunk[]; contents: Map<string, FileContents> }> | undefined;
+
+  const getDiff = () => (diffCache ??= diffRange(options.repo, options.range));
+  const getBook = () =>
+    (bookCache ??= (async () => {
+      const files = await getDiff();
+      const { chunks, contents } = await computeChunks(options.repo, options.range, files);
+      const compiled = compileBook({ files, chunks, headSha: options.range.head });
+      return { ...compiled, contents };
+    })());
 
   app.get('/api/health', (c) => c.json({ ok: true, name: 'code-story', core: CORE_VERSION }));
 
   app.get('/api/diff', async (c) => {
-    diffCache ??= diffRange(options.repo, options.range);
-    return c.json({ ...options.range, files: await diffCache });
+    return c.json({ ...options.range, files: await getDiff() });
+  });
+
+  app.get('/api/book', async (c) => {
+    const { book, chunks } = await getBook();
+    return c.json({ ...options.range, book, chunks });
+  });
+
+  app.get('/api/export.md', async (c) => {
+    const { book, chunks, contents } = await getBook();
+    const title = `${options.range.base.slice(0, 8)}..${options.range.head.slice(0, 8)}`;
+    return c.text(exportBookMarkdown({ book, chunks, contents, title }));
   });
 
   if (existsSync(webDist)) {
