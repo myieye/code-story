@@ -1,0 +1,49 @@
+{
+  "promptVersion": "order-eval-1",
+  "judgeModel": "sonnet",
+  "inputs": {
+    "firstArg": "/tmp/claude-0/-home-user-code-story/0e4fa192-08e1-59ac-a59c-4837f8fdf3fd/scratchpad/pr2309-tier0.md",
+    "secondArg": "/tmp/claude-0/-home-user-code-story/0e4fa192-08e1-59ac-a59c-4837f8fdf3fd/scratchpad/pr2309-ai.md"
+  },
+  "timestamp": "2026-07-16T23:34:50.913Z",
+  "trials": [
+    {
+      "trial": 1,
+      "assignment": {
+        "A": "second-arg",
+        "B": "first-arg"
+      },
+      "choice": "A",
+      "resolvedWinner": "second-arg",
+      "reason": "Book A introduces the core query-params.ts type/library rewrite before the FilterBar/debouncedFilter consumer changes that depend on it, whereas Book B leads with FilterBar using APIs not yet defined."
+    },
+    {
+      "trial": 2,
+      "assignment": {
+        "A": "first-arg",
+        "B": "second-arg"
+      },
+      "choice": "B",
+      "resolvedWinner": "second-arg",
+      "reason": "Book B puts query-params.ts (the store-to-plain-object migration that all the filter components' prop-type changes depend on) before its consumers, whereas Book A opens with FilterBar/UserFilter changes that presuppose that migration hasn't happened yet; B also keeps the FilterBar/UserFilter/ProjectFilter concern group less interrupted by unrelated sections than A does."
+    },
+    {
+      "trial": 3,
+      "assignment": {
+        "A": "first-arg",
+        "B": "second-arg"
+      },
+      "choice": "B",
+      "resolvedWinner": "second-arg",
+      "reason": "Book B puts query-params.ts (the defining module) immediately before all its consumers as one contiguous block and groups the FilterBar/UserFilter/ProjectFilter concern together, producing fewer concern-switches and a shorter definition-to-use gap for debouncedFilter than Book A, which opens with FilterBar/UserFilter before query-params.ts even exists in the story and scatters the two concerns across more locations."
+    }
+  ],
+  "totals": {
+    "/tmp/claude-0/-home-user-code-story/0e4fa192-08e1-59ac-a59c-4837f8fdf3fd/scratchpad/pr2309-tier0.md": 0,
+    "/tmp/claude-0/-home-user-code-story/0e4fa192-08e1-59ac-a59c-4837f8fdf3fd/scratchpad/pr2309-ai.md": 3
+  },
+  "invalidTrials": 0,
+  "metadata": {
+    "note": "single-family judge (Claude): self-preference caveat applies; generator/judge ids must differ where possible"
+  }
+}

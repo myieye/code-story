@@ -188,3 +188,39 @@ quoted verbatim above in trial order); and the in-session read-through was **not
 session that generated the orders also read them) — the blind A/B human read-through the spec
 requires stays open for Tim. Ship/hold verdict lands in spec 02's status line once the UI walk
 (#24) and that read-through happen.
+
+## Dogfood 3 (2026-07-16, issue #30) — the Svelte/TS-heavy subject
+
+Third subject fills the language-mix gap: lexbox PR **2309** (`Fix user-filter input loss
+under rapid typing`, `39a14e93~1..39a14e93`) — 16 files, all under `frontend/`, 8 `.svelte` +
+6 `.ts`, zero lockfile/translation noise. 37 chunks / 16 sections. Same protocol as Dogfood 2
+(generator **opus**, prompt `order-1`, judge **sonnet**, K=3 blind pairwise, report archived
+at `reports/eval-2309.json`; sealed pair `pr2309-A/B.md` added to the blind-read folder).
+
+| Subject | Judge verdict | What the AI changed |
+| --- | --- | --- |
+| PR 2309 (Svelte/TS-only) | **AI 3 / tier-0 0** | Led with `query-params.ts` (the store→plain-object migration everything consumes), kept the FilterBar/UserFilter/ProjectFilter concern contiguous, put the admin-page 2-cycle adjacent with `ProjectFilter` after it, and ordered the test page-objects before the test that imports them. |
+
+All three trials independently named the same two structures: definition-before-consumers
+(`query-params.ts` first) and concern grouping. That's the cleanest judge consensus of the
+three subjects.
+
+**Structural finding 1 — tier 0 failed its own gate here.** This is the first subject where
+`--check-order` fails on the *tier-0* order: 4 acyclic import inversions (exit 1), plus the
+known-informational 2-cycle. Cause: when greedy Kahn stalls on the `admin/+page.svelte ↔
+AdminProjects.svelte` cycle, the git-order fallback emits sections that depend *into* the
+cycle (`ProjectFilter.svelte`) and test files ahead of the test helpers they import — the
+fallback ignores edges among the stalled remainder. The AI overlay, which must pass the same
+gate at 0 acyclic inversions to persist at all, cleared it on the first try. Filed as a
+tier-0 fix candidate (cycle-stall fallback should keep honoring remaining edges).
+
+**Structural finding 2 — `.svelte.ts` modules are invisible to the import graph.**
+`FilterBar.svelte` imports `$lib/util/debouncedFilter.svelte` (Svelte 5 runes-module
+convention; file on disk is `debouncedFilter.svelte.ts`). `stripCodeExt` strips one extension,
+so the changed file reduces to `debouncedFilter.svelte`, never matching the specifier — the
+edge is dropped and the heart of this bug fix floated orderless (both orders placed it late;
+trial 3 still credited the AI with the shorter definition-to-use gap). Fix is a recursive
+strip; needs a CORE_VERSION bump (graph change ⇒ overlay invalidation).
+
+Running tally: AI 8 / tier-0 1 across three subjects and three language mixes, with all
+Dogfood-2 caveats (K=3 directional, single-family judge) still standing.
