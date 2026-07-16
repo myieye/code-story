@@ -34,8 +34,17 @@ BYO-agent threads whose code changes are verifiable patches.
   work to Tim — never sell code as fine; make critique easy.
 - **Session limits are real**: a research subagent died mid-run on a usage limit; all long agent
   work needs persist-and-resume design (and batch work should expect interruption).
+- **Vibe mode (Tim, 2026-07-16)**: this is a pure vibe-code project — Claude owns it as
+  engineer, tester, *and* reviewer. Commit, push, and iterate at will (feature branches or
+  straight to main; no per-push permission needed — this overrides Tim's global commit rule for
+  this repo only). The bar is not "it builds": actually *use* the tool on real diffs and verify
+  it genuinely eases the wall-of-diffs burden before calling anything done.
+- **Quota discipline (Tim, 2026-07-16)**: Tim's Claude quota is shared with his other work —
+  don't burn it. Pace the build across sessions; prefer direct work over agent fan-outs; don't
+  re-run or re-read without a question to answer; check quota (`quota-status` skill) before any
+  heavy phase and stop comfortably short of limits rather than sprinting.
 - **Commits**: `git config user.email noreply@anthropic.com`, `user.name Claude` (a stop-hook
-  enforces this); push to the designated `claude/…` branch.
+  enforces this).
 
 ## Hard-won product insights (don't re-derive)
 
@@ -55,11 +64,13 @@ BYO-agent threads whose code changes are verifiable patches.
 - **Subscription rule**: ride the user's Claude plan only *through* Anthropic's own CLI/SDK
   (Agent SDK / `claude -p` / claude-agent-acp). Raw OAuth token reuse is banned (Feb 2026).
 
-## Current state (2026-07-16)
+## Current state (2026-07-16, build session 1)
 
-Research + spec groundwork complete and pushed. **ADR 0001 ratified** (2026-07-16) with the
-R-037 amendment (patch ledger lives outside the reviewed repo). Tim explicitly does *not* want
-implementation started in the research session — next steps for a build session: grill→spec→
-issues pipeline (`docs/process/build-process.md`) → first vertical slice (proposed: scripts-only
-chunker + coverage queue over a real lexbox PR). Dogfood target repo: languageforge/lexbox
-(C# + Svelte/TS); the tool must stay repo-agnostic (R-025).
+Milestone 0 scoped with Tim: **chunker + naive book** — `code-story <base>..<head>` →
+tree-sitter chunks in file order rendered in the browser, coverage queue, reviewed-state,
+markdown export; zero AI. Spec: `docs/spec/00-chunker-and-naive-book.md` (includes the
+ux-expert pass on the book UI). **ADR 0002**: book UI is React (Tim's call). Issue policy
+(Tim-ratified): just-in-time — 5–8 vertical-slice GitHub issues per milestone, filed when that
+milestone's spec lands; never a full backlog. Next: file the spec-00 slices as issues (blocking
+edges), then one agent session per issue, PRs reviewed by Tim. Dogfood target:
+languageforge/lexbox (C# + Svelte/TS); repo-agnostic (R-025).

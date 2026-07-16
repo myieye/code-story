@@ -6,7 +6,7 @@ prompts should check each tidbit against this list and against the implementatio
 open questions to resolve during spec work.
 
 Status legend: `captured` (in this doc only), `specced`, `built`, `validated`.
-All entries are currently `captured`.
+Entries advance individually via a `Status:` line; entries without one are `captured`.
 
 ## A. Coverage & structure
 
@@ -16,21 +16,28 @@ queue: items are popped/processed until everything has been handled, and the ent
 represented and accessible at all times.
 > "Don't exclude any part of the diff/branch/PR." / "There needs to be insurance that all the code is handled to some extent. e.g. treat the whole diff as a queue and pop things until everything's been processed."
 
-Open: what counts as "handled" for auto-collapsed items — is a visible collapsed stub enough, or
-must the reviewer explicitly acknowledge each?
+Open question resolved ([spec 00a](../spec/00a-book-ui.md)): a visible stub is *not* "handled" —
+explicit acknowledgment is required, batchable per enumerated group (with undo), so
+misclassified low-signal chunks can't slip through while lockfiles don't demand 40 keystrokes.
+
+Status: `specced` — [spec 00](../spec/00-chunker-and-naive-book.md), [spec 00a](../spec/00a-book-ui.md)
 
 ### R-002 — Initial collapsing of low-signal parts
 Some parts (lockfiles, generated code, mechanical renames…) can start collapsed — but never
 removed (see R-001).
 > "certainly some things can potentially be initially collapsed"
 
+Status: `specced` — [spec 00](../spec/00-chunker-and-naive-book.md)
+
 ### R-003 — Sub-file chunk granularity
 The unit of review is smaller than a file: most methods individually, and smaller pieces of larger
 methods/chunks.
 > "Likely smaller chunks then the file-level" / "Fairly granular: most methods, but also smaller pieces of larger methods/chunks of code."
 
-Open: chunking algorithm (tree-sitter node boundaries? hunk ∩ symbol?), and how chunk identity
-survives rebases/edits.
+Open: how chunk identity survives rebases/edits (algorithm resolved: hunk ∩ tree-sitter symbol
+boundaries, spec 00).
+
+Status: `specced` (identity across head moves still open) — [spec 00](../spec/00-chunker-and-naive-book.md)
 
 ### R-004 — Chunks may recur; occurrences are linked
 A chunk may appear in multiple places in the narrative (e.g. when explaining flows through other
@@ -46,6 +53,9 @@ reasonable granularity. The book format should itself be machine-assessable: an 
 
 Open: ordering heuristics (dependency order? data-flow? entry-points-first?), and whether the
 reviewer can reorder.
+
+Status: `specced` (partial: linear book + machine-assessable export; AI ordering is M1) —
+[spec 00](../spec/00-chunker-and-naive-book.md)
 
 ## B. Context & navigation
 
@@ -108,6 +118,9 @@ Track what has been reviewed at chunk granularity, not GitHub's file-level "view
 > "User should be able to track what parts they've already reviewed. (Not just files scope like GH)"
 
 Open: how state survives new pushes/rebases (re-open only affected chunks).
+
+Status: `specced` (partial: fixed-head state only; re-open-on-change deferred) —
+[spec 00](../spec/00-chunker-and-naive-book.md)
 
 ### R-015 — Defer-with-question ("reviewed except this one thing")
 Mark a chunk as essentially reviewed but with one open question. That closes the area while
