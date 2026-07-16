@@ -1,0 +1,49 @@
+{
+  "promptVersion": "order-eval-1",
+  "judgeModel": "sonnet",
+  "inputs": {
+    "firstArg": "/tmp/claude-0/-home-user-code-story/0e4fa192-08e1-59ac-a59c-4837f8fdf3fd/scratchpad/pr2379-tier0.md",
+    "secondArg": "/tmp/claude-0/-home-user-code-story/0e4fa192-08e1-59ac-a59c-4837f8fdf3fd/scratchpad/pr2379-ai.md"
+  },
+  "timestamp": "2026-07-16T20:46:42.057Z",
+  "trials": [
+    {
+      "trial": 1,
+      "assignment": {
+        "A": "first-arg",
+        "B": "second-arg"
+      },
+      "choice": "B",
+      "resolvedWinner": "second-arg",
+      "reason": "Book B introduces the core EntryQueryHelpers implementation and its unit tests before touching the consuming FwDataMiniLcmApi and integration/snapshot tests, matching definitions-before-uses and building toward the change's payoff."
+    },
+    {
+      "trial": 2,
+      "assignment": {
+        "A": "first-arg",
+        "B": "second-arg"
+      },
+      "choice": "B",
+      "resolvedWinner": "second-arg",
+      "reason": "Book B introduces the core EntryQueryHelpers definitions and their unit tests before showing consuming/behavioral changes (FwDataMiniLcmApi, sync tests, snapshots), whereas Book A leads with call-site tweaks and integration tests before the underlying definitions."
+    },
+    {
+      "trial": 3,
+      "assignment": {
+        "A": "second-arg",
+        "B": "first-arg"
+      },
+      "choice": "A",
+      "resolvedWinner": "second-arg",
+      "reason": "Book A introduces the core EntryQueryHelpers/LcmCrdtKernel implementation and its dedicated unit tests before the downstream consumer changes (FwDataMiniLcmApi, cross-implementation tests, sync-test exclusions), so definitions precede uses, whereas Book B leads with consumer-side tweaks before the underlying implementation is shown."
+    }
+  ],
+  "totals": {
+    "/tmp/claude-0/-home-user-code-story/0e4fa192-08e1-59ac-a59c-4837f8fdf3fd/scratchpad/pr2379-tier0.md": 0,
+    "/tmp/claude-0/-home-user-code-story/0e4fa192-08e1-59ac-a59c-4837f8fdf3fd/scratchpad/pr2379-ai.md": 3
+  },
+  "invalidTrials": 0,
+  "metadata": {
+    "note": "single-family judge (Claude): self-preference caveat applies; generator/judge ids must differ where possible"
+  }
+}

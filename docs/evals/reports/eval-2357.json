@@ -1,0 +1,49 @@
+{
+  "promptVersion": "order-eval-1",
+  "judgeModel": "sonnet",
+  "inputs": {
+    "firstArg": "/tmp/claude-0/-home-user-code-story/0e4fa192-08e1-59ac-a59c-4837f8fdf3fd/scratchpad/pr2357-tier0.md",
+    "secondArg": "/tmp/claude-0/-home-user-code-story/0e4fa192-08e1-59ac-a59c-4837f8fdf3fd/scratchpad/pr2357-ai.md"
+  },
+  "timestamp": "2026-07-16T20:46:23.046Z",
+  "trials": [
+    {
+      "trial": 1,
+      "assignment": {
+        "A": "first-arg",
+        "B": "second-arg"
+      },
+      "choice": "B",
+      "resolvedWinner": "second-arg",
+      "reason": "B orders frontend components so definitions precede their uses (history-service before ActivityFilter, ActivityItemChangePreview before ActivityItem, ActivityItem before HistoryView and ActivityView) and culminates in ActivityView, the main feature, whereas A buries HistoryView after ActivityView despite ActivityItem already depending on it."
+    },
+    {
+      "trial": 2,
+      "assignment": {
+        "A": "first-arg",
+        "B": "second-arg"
+      },
+      "choice": "B",
+      "resolvedWinner": "second-arg",
+      "reason": "Book B groups the data layer (utils.ts, history-service.ts) before the components that consume it, keeps the nested ActivityItemChangePreview/ActivityItem pair adjacent, and ends with ActivityView.svelte as the culminating integration point, whereas Book A splits history-service.ts away from ActivityFilter/ActivityItem with an unrelated component in between and buries the top-level view before HistoryView."
+    },
+    {
+      "trial": 3,
+      "assignment": {
+        "A": "first-arg",
+        "B": "second-arg"
+      },
+      "choice": "A",
+      "resolvedWinner": "first-arg",
+      "reason": "Book A keeps the tightly-coupled Activity components (Filter, Item, View) contiguous and defers the more peripheral HistoryView tweak to the end, whereas Book B interrupts that same cluster by wedging HistoryView between ActivityFilter and ActivityView, breaking concern locality."
+    }
+  ],
+  "totals": {
+    "/tmp/claude-0/-home-user-code-story/0e4fa192-08e1-59ac-a59c-4837f8fdf3fd/scratchpad/pr2357-tier0.md": 1,
+    "/tmp/claude-0/-home-user-code-story/0e4fa192-08e1-59ac-a59c-4837f8fdf3fd/scratchpad/pr2357-ai.md": 2
+  },
+  "invalidTrials": 0,
+  "metadata": {
+    "note": "single-family judge (Claude): self-preference caveat applies; generator/judge ids must differ where possible"
+  }
+}
