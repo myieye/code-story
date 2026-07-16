@@ -326,3 +326,14 @@ reusing prior AI analysis but adapting it to treat the current diff as the only 
 
 Open: how reviewed-state carries through a crunch (chunk-identity matching must prove a chunk's
 final content was already reviewed — coverage can't be taken on faith, R-001/R-026).
+
+## K. Spec 01 scoping, 2026-07-16 ([verbatim source](../vision/addendum-2026-07-16.md))
+
+### R-042 — Use AI's full power where it earns intuition and readability
+The counterweight to R-024: never waste tokens on what scripts can do, but never fail to apply
+AI where it genuinely makes the result intuitive and readable — Tim marked this "very
+important". Every plan/spec must show both halves: what stays script, and where AI is actually
+allowed to shine.
+> "we need to make sure we're not wasting tokens on things scripts can do, but also not (very important) failing to utilize AI's power to truly create something intuitive and readable."
+
+Status: `specced` — [spec 01](../spec/01-story-ordering.md) (tier ladder: tier 0 script, tier 1 AI gated by eval)

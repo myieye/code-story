@@ -1,9 +1,11 @@
 # Spec 01 — Milestone 1: story ordering
 
-Status: draft — awaiting Tim's scoping pass (open questions at the end)
+Status: scoped — Tim answered all four open questions 2026-07-16 (see the resolutions inline
+at the end); M1 slices filed.
 Date: 2026-07-16
 Satisfies: R-034 (ordering eval loop on real diffs), R-005 (partial: reading-order intelligence,
-deterministic tier), R-024 (scripts before AI — tier 0 is zero-AI), R-031–R-033 (partial: the
+deterministic tier), R-024 (scripts before AI — tier 0 is zero-AI), R-042 (the tier ladder is
+the both-halves answer: tier 0 script, tier 1 AI gated by eval), R-031–R-033 (partial: the
 order steers attention toward what decides mergeability first).
 Evidence: dogfood 0 baseline (`docs/evals/dogfood-0-baseline.md`) and issue #13 — the two
 measured inversions on lexbox PR 2357.
@@ -91,17 +93,22 @@ tier-0 eval shows where deterministic ordering is insufficient — if it is.
   it later, preserving the door-stays-open invariants.
 - No configurability (custom role patterns, ordering toggles) until dogfooding demands it.
 
-## Open questions for Tim (grill step)
+## Open questions — resolved by Tim, 2026-07-16
 
 1. **Is section-level granularity enough for M1?** Chunk-level interleaving (e.g. a helper
    function right before its call site from another file) is where this eventually wants to go
-   — but it multiplies eval surface. Proposal: section-level now, chunk-level only with tier 1.
+   — but it multiplies eval surface.
+   **Resolved: section-level now**; chunk-level only with tier 1.
 2. **Tests-after-impl vs tests-as-proof-first?** Some reviewers read tests first as a spec of
-   behavior. Proposal: impl-then-its-tests (the dogfood-0 pain was unexplained test targets),
-   revisit after the next dogfood.
+   behavior.
+   **Resolved: impl-then-its-tests** (the dogfood-0 pain was unexplained test targets); revisit
+   after the next dogfood.
 3. **Does tier 1 (AI ordering) belong in M1 at all**, or does M1 end at deterministic + eval,
-   with AI ordering as M2's opening slice once the eval can judge it? Proposal: the latter —
-   it keeps M1 zero-AI and the eval honest.
+   with AI ordering as M2's opening slice once the eval can judge it?
+   **Resolved: M1 ends deterministic**; AI ordering opens M2. Tim's verbatim rider (traced as
+   R-042): never waste tokens on what scripts can do, but — very important — never fail to use
+   AI's power "to truly create something intuitive and readable". Tier 1 is deferred, not
+   diminished: the eval exists precisely so the AI tier can prove the intuition it adds.
 4. **Chapter grouping**: should the ordered book get named chapters ("Core service", "UI",
-   "Housekeeping") in M1, or stay a flat ordered section list? Proposal: flat now; chapters are
-   narration-adjacent.
+   "Housekeeping") in M1, or stay a flat ordered section list?
+   **Resolved: flat list in M1**; chapters are narration-adjacent.

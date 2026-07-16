@@ -134,10 +134,14 @@ strictly-blank only); fragment cuts snap to blank/statement-end lines within 8 a
 "View summary", reverts on unmark — ux-expert pass on #14). Re-verified on PR 2357: 28/125
 stubs (12 generated / 14 translations / 2 whitespace), coverage OK, batch-ack works on real
 sections, fragments open on statement boundaries. Remaining noise is deliberate: en.po (2) +
-almost-blank chunks. Only #13 (M1 ordering) left from dogfood 0; **spec 01 drafted**
-(`docs/spec/01-story-ordering.md`: deterministic roles + changed-file import graph → topo
-order, AI tier gated) — awaiting Tim's answers to its four open questions before filing M1
-slices. **Maintainability pass done** (`docs/reviews/2026-07-16-maintainability-pass.md` — the
+almost-blank chunks. Only #13 (M1 ordering) left from dogfood 0; **spec 01 scoped by Tim**
+(`docs/spec/01-story-ordering.md`: section-level deterministic ordering, impl-then-its-tests,
+flat list, M1 zero-AI — AI ordering opens M2, gated by the `--check-order` eval; Tim's rider =
+**R-042**: don't waste tokens on script work, but never fail to use AI where it truly earns
+intuition/readability — verbatim in `docs/vision/addendum-2026-07-16.md`). **M1 slices filed:
+issues #15 (import graph) → #16 (file roles) → #17 (ordering in compileBook) → #18
+(--check-order + CI fixture) → #19 (dogfood 1: PR 2357 v1 column + second subject, closes
+#13)**. **Maintainability pass done** (`docs/reviews/2026-07-16-maintainability-pass.md` — the
 pick-up-here doc): low-signal helpers + `checkCoverage` consolidated in core,
 `detectChangeTypes` seam in chunker, and web rows now occurrence-keyed (`chunkId#ordinal` —
 the R-004/M1 blocker cleared; walk stops = occurrences, progress = distinct chunks). Its two
