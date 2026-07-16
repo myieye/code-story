@@ -136,6 +136,11 @@ stubs (12 generated / 14 translations / 2 whitespace), coverage OK, batch-ack wo
 sections, fragments open on statement boundaries. Remaining noise is deliberate: en.po (2) +
 almost-blank chunks. Only #13 (M1 ordering) left from dogfood 0; **spec 01 drafted**
 (`docs/spec/01-story-ordering.md`: deterministic roles + changed-file import graph → topo
-order, AI tier gated, occurrence-keyed web rows ride along) — awaiting Tim's answers to its
-four open questions before filing M1 slices. Dogfood target: languageforge/lexbox (C# + Svelte/TS); repo-agnostic
+order, AI tier gated) — awaiting Tim's answers to its four open questions before filing M1
+slices. **Maintainability pass done** (`docs/reviews/2026-07-16-maintainability-pass.md` — the
+pick-up-here doc): low-signal helpers + `checkCoverage` consolidated in core,
+`detectChangeTypes` seam in chunker, and web rows now occurrence-keyed (`chunkId#ordinal` —
+the R-004/M1 blocker cleared; walk stops = occurrences, progress = distinct chunks). Its two
+listed leftovers (in-repo dogfood-walk harness; BookPage hook extraction) are documented
+there with shapes — next session starts by reading that doc. Dogfood target: languageforge/lexbox (C# + Svelte/TS); repo-agnostic
 (R-025).
