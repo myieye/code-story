@@ -1,6 +1,16 @@
 import path from 'node:path';
-import { type Chunk, chunkFile, classifyGenerated, type FileContents, type FileDiff } from '@code-story/core';
+import {
+  buildImportGraph,
+  type Chunk,
+  chunkFile,
+  classifyGenerated,
+  type FileContents,
+  type FileDiff,
+  type FileImports,
+  type ImportGraph,
+} from '@code-story/core';
 import { fileAt, type ResolvedRange } from './git.js';
+import { extractImports } from './imports.js';
 import { extractSymbols } from './treesitter.js';
 
 const CONFIG_EXTENSIONS = new Set(['json', 'yaml', 'yml', 'lock', 'toml', 'xml', 'csproj', 'props', 'targets', 'config', 'resx']);
@@ -9,11 +19,14 @@ export interface ComputedChunks {
   chunks: Chunk[];
   /** Fetched file contents, keyed like Chunk.file — the export/render input. */
   contents: Map<string, FileContents>;
+  /** Import graph over the changed files (spec 01 ordering input). */
+  graph: ImportGraph;
 }
 
 export async function computeChunks(repo: string, range: ResolvedRange, files: FileDiff[]): Promise<ComputedChunks> {
   const chunks: Chunk[] = [];
   const contents = new Map<string, FileContents>();
+  const imports: FileImports[] = [];
   for (const file of files) {
     const deleted = file.status === 'deleted';
     const noContent = file.binary || file.submodule === true;
@@ -40,6 +53,11 @@ export async function computeChunks(repo: string, range: ResolvedRange, files: F
     const ext = path.extname(file.path).slice(1).toLowerCase();
     const generatedReason = classifyGenerated(file.path, noContent ? [] : lines);
 
+    if (!noContent) {
+      const extracted = extractImports(file.path, primary);
+      if (extracted) imports.push({ path: file.path, ...extracted });
+    }
+
     chunks.push(
       ...chunkFile({
         diff: file,
@@ -51,5 +69,5 @@ export async function computeChunks(repo: string, range: ResolvedRange, files: F
       }),
     );
   }
-  return { chunks, contents };
+  return { chunks, contents, graph: buildImportGraph(imports) };
 }

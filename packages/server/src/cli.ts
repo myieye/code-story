@@ -10,6 +10,7 @@ const args = process.argv.slice(2);
 const noOpen = args.includes('--no-open');
 const dumpDiff = args.includes('--dump-diff');
 const dumpChunks = args.includes('--dump-chunks');
+const dumpGraph = args.includes('--dump-graph');
 const exportIndex = args.indexOf('--export');
 const exportPath = exportIndex >= 0 ? args[exportIndex + 1] : undefined;
 const portIndex = args.indexOf('--port');
@@ -20,7 +21,7 @@ const repo = process.cwd();
 
 if (!range || (exportIndex >= 0 && !exportPath) || Number.isNaN(port)) {
   console.error(
-    'Usage: code-story <base>..<head> [--export book.md] [--port <n>] [--dump-diff] [--dump-chunks] [--no-open]',
+    'Usage: code-story <base>..<head> [--export book.md] [--port <n>] [--dump-diff] [--dump-chunks] [--dump-graph] [--no-open]',
   );
   process.exit(1);
 }
@@ -52,6 +53,14 @@ if (dumpChunks) {
       : `coverage: FAILED — missing ${coverage.missing.length} (${coverage.missing.slice(0, 5).join(', ')}), duplicated ${coverage.duplicated.length}`,
   );
   process.exit(coverage.ok ? 0 : 1);
+}
+
+if (dumpGraph) {
+  const files = await diffRange(repo, resolved);
+  const { graph } = await computeChunks(repo, resolved, files);
+  for (const edge of graph.edges) console.log(`${edge.from} -> ${edge.to}`);
+  console.log(`\n${graph.edges.length} edges, ${graph.unresolved} unresolved specifiers`);
+  process.exit(0);
 }
 
 if (exportPath) {
