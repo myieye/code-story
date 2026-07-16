@@ -3,6 +3,9 @@ import { type Hunk } from './diff.js';
 // The book/chunk model from docs/design/core-primitives-sketch.md, restricted to the
 // milestone-0 subset (spec 00).
 
+/** Bump whenever chunking or ordering logic changes — bookFingerprint bakes it in, so a bump invalidates persisted order overlays. */
+export const CORE_VERSION = '0.0.1';
+
 export type ChunkKind = 'method' | 'method-fragment' | 'markup-region' | 'config' | 'other';
 
 export type ChangeType = 'generated' | 'whitespace';

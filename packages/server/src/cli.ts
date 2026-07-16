@@ -1,6 +1,15 @@
 #!/usr/bin/env node
 import { writeFile } from 'node:fs/promises';
-import { checkCoverage, checkOrder, compileBook, exportBookMarkdown, isLowSignal, lowSignalReason } from '@code-story/core';
+import {
+  buildOrderManifest,
+  checkCoverage,
+  checkOrder,
+  compileBook,
+  exportBookMarkdown,
+  isLowSignal,
+  lowSignalReason,
+  renderOrderManifest,
+} from '@code-story/core';
 import open from 'open';
 import { computeChunks } from './chunks.js';
 import { diffRange, resolveRange } from './git.js';
@@ -12,6 +21,7 @@ const dumpDiff = args.includes('--dump-diff');
 const dumpChunks = args.includes('--dump-chunks');
 const dumpGraph = args.includes('--dump-graph');
 const checkOrderFlag = args.includes('--check-order');
+const dumpManifest = args.includes('--dump-manifest');
 const exportIndex = args.indexOf('--export');
 const exportPath = exportIndex >= 0 ? args[exportIndex + 1] : undefined;
 const portIndex = args.indexOf('--port');
@@ -22,7 +32,7 @@ const repo = process.cwd();
 
 if (!range || (exportIndex >= 0 && !exportPath) || Number.isNaN(port)) {
   console.error(
-    'Usage: code-story <base>..<head> [--export book.md] [--port <n>] [--dump-diff] [--dump-chunks] [--dump-graph] [--check-order] [--no-open]',
+    'Usage: code-story <base>..<head> [--export book.md] [--port <n>] [--dump-diff] [--dump-chunks] [--dump-graph] [--check-order] [--dump-manifest] [--no-open]',
   );
   process.exit(1);
 }
@@ -76,6 +86,19 @@ if (checkOrderFlag) {
   const counts = `${report.importInversions.length} import inversions, ${report.testBeforeImpl.length} test-before-impl, ${report.cycleInversions.length} within cycles`;
   console.log(report.ok ? `order: OK (${book.sections.length} sections, ${counts})` : `order: FAILED — ${counts}`);
   process.exit(report.ok ? 0 : 1);
+}
+
+if (dumpManifest) {
+  const files = await diffRange(repo, resolved);
+  const { chunks, graph } = await computeChunks(repo, resolved, files);
+  const { book } = compileBook({ files, chunks, graph, headSha: resolved.head });
+  const manifest = buildOrderManifest(book, graph, chunks);
+
+  console.log(renderOrderManifest(manifest));
+  console.log(
+    `\nmanifest: ${manifest.sections.length} story sections, ${manifest.pinnedTail.length} pinned, ~${manifest.estimatedTokens} tokens`,
+  );
+  process.exit(0);
 }
 
 if (exportPath) {
