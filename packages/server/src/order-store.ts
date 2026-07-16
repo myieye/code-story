@@ -1,7 +1,9 @@
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { OrderOverlay } from '@code-story/core';
 import type { ResolvedRange } from './git.js';
+
+export { saveJson } from './json-file.js';
 
 /** The AI order overlay lives beside the review state: `<repo-id>/reviews/<base12>..<head12>.order.json`. */
 export function orderFilePath(dataHome: string, repoId: string, range: ResolvedRange): string {
@@ -49,10 +51,3 @@ export async function loadJobRecord(file: string): Promise<OrderJobRecord | null
   return null;
 }
 
-/** Atomic: write a sibling temp file, then rename over the target. */
-export async function saveJson(file: string, value: unknown): Promise<void> {
-  await mkdir(path.dirname(file), { recursive: true });
-  const tmp = `${file}.tmp`;
-  await writeFile(tmp, JSON.stringify(value, null, 2));
-  await rename(tmp, file);
-}

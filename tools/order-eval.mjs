@@ -1,11 +1,20 @@
 #!/usr/bin/env node
-// Blind pairwise readability judge for two orderings of the same book (spec 02, "The readability
-// eval"). Generator-independent: takes two already-exported markdown books and judges them; it
-// does not run the tier-1 ordering job or the mechanical --check-order pre-gate.
-import { spawn } from 'node:child_process';
+// Blind pairwise readability judge for two orderings of the same book. Generator-independent:
+// takes two already-exported markdown books and judges them; it does not run the tier-1
+// ordering job or the mechanical --check-order pre-gate. Requires `pnpm build` (imports the
+// server's claude-cli module from dist so judge and job share one subprocess contract).
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const here = dirname(fileURLToPath(import.meta.url));
+const { extractJsonBlock, invokeClaudeJson } = await import(
+  join(here, '../packages/server/dist/claude-cli.js')
+).catch(() => {
+  console.error('order-eval: cannot load packages/server/dist/claude-cli.js — run pnpm build first');
+  process.exit(1);
+});
 
 const PROMPT_VERSION = 'order-eval-1';
 
@@ -48,8 +57,7 @@ function readBook(path) {
   return raw;
 }
 
-// Blindness prep (R-026 applied to ourselves): rationales would tell the judge the AI's own
-// sales pitch for a section instead of letting it read the order cold.
+// Rationales would hand the judge the AI's own pitch for its order; the judge reads cold.
 function stripRationales(text) {
   return text
     .split('\n')
@@ -84,33 +92,8 @@ ${textB}
 (end of Book B)`;
 }
 
-function invokeJudge(prompt, judgeModel, cwd) {
-  return new Promise((resolve, reject) => {
-    const child = spawn(
-      'claude',
-      ['-p', '--model', judgeModel, '--output-format', 'json', '--tools', ''],
-      { cwd, timeout: JUDGE_TIMEOUT_MS },
-    );
-    let stdout = '';
-    let stderr = '';
-    child.stdout.on('data', (d) => (stdout += d));
-    child.stderr.on('data', (d) => (stderr += d));
-    child.on('error', (err) => reject(new Error(`failed to spawn claude CLI: ${err.message}`)));
-    child.on('close', () => resolve({ stdout, stderr }));
-    child.stdin.write(prompt);
-    child.stdin.end();
-  });
-}
-
-// Extracts the judge's verdict from the CLI's `--output-format json` envelope. The envelope
-// itself should parse cleanly; the model's answer lives in its `result` string, which may carry
-// stray prose around the JSON object despite instructions, hence the defensive block extraction.
 function parseVerdict(stdout) {
-  const envelope = JSON.parse(stdout);
-  if (typeof envelope.result !== 'string') throw new Error('envelope has no result string');
-  const match = envelope.result.match(/\{[\s\S]*\}/);
-  if (!match) throw new Error('no JSON object found in result');
-  const verdict = JSON.parse(match[0]);
+  const verdict = extractJsonBlock(stdout);
   if (verdict.choice !== 'A' && verdict.choice !== 'B') throw new Error('choice is not A or B');
   if (typeof verdict.reason !== 'string' || verdict.reason.trim() === '') {
     throw new Error('reason is missing or empty');
@@ -120,8 +103,7 @@ function parseVerdict(stdout) {
 
 async function judgeOnce(prompt, judgeModel, cwd) {
   try {
-    const { stdout } = await invokeJudge(prompt, judgeModel, cwd);
-    return parseVerdict(stdout);
+    return parseVerdict(await invokeClaudeJson(prompt, judgeModel, cwd, JUDGE_TIMEOUT_MS));
   } catch {
     return null;
   }

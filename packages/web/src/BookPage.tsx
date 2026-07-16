@@ -1,21 +1,14 @@
-import {
-  applyOrderOverlay,
-  type Chunk,
-  type ChunkReviewState,
-  isLowSignal,
-  type OrderOverlay,
-  type ReviewFile,
-} from '@code-story/core';
+import { type Chunk, type ChunkReviewState, isLowSignal, type ReviewFile } from '@code-story/core';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { type BookResponse, type OrderResponse, sendOrderPatch } from './api.js';
-import { orderDecision } from './order-logic.js';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { BookResponse, OrderResponse } from './api.js';
 import { OutlineSidebar } from './OutlineSidebar.js';
 import { batchableSections, findUnreviewed, pendingStubCount } from './review-logic.js';
 import { estimateRowHeight, RowView, type SectionAck } from './RowView.js';
 import { flattenBook, occurrenceKey, type Row } from './rows.js';
 import { ShortcutOverlay } from './ShortcutOverlay.js';
 import { useBookKeymap } from './useBookKeymap.js';
+import { useOrderOverlay } from './useOrderOverlay.js';
 import { useReview } from './useReview.js';
 import { useSeenTracking } from './useSeenTracking.js';
 
@@ -29,35 +22,9 @@ export function BookPage({
   initialOrder: OrderResponse;
 }) {
   const review = useReview(initialReview);
-  const [overlay, setOverlay] = useState<OrderOverlay | null>(initialOrder.overlay);
-  const decision = useMemo(() => orderDecision(overlay, review.states), [overlay, review.states]);
-  const orderApplied = decision === 'apply' && overlay !== null;
-
-  // Auto-apply (fresh review, no marks yet) must persist appliedAt immediately — a mark made
-  // before the PATCH lands would otherwise flip the decision to 'offer' and reorder underfoot.
-  const autoApplySent = useRef(false);
-  useEffect(() => {
-    if (!orderApplied || overlay?.appliedAt || autoApplySent.current) return;
-    autoApplySent.current = true;
-    setOverlay((prev) => (prev ? { ...prev, appliedAt: new Date().toISOString() } : prev));
-    void sendOrderPatch({ applied: true });
-  }, [orderApplied, overlay]);
-
-  const bookData = useMemo((): BookResponse => {
-    if (!orderApplied || !overlay) return data;
-    return { ...data, book: applyOrderOverlay(data.book, data.graph, data.chunks, overlay) };
-  }, [data, orderApplied, overlay]);
-
-  const sectionRationales = orderApplied ? overlay.rationales : undefined;
-
-  const applyOrder = () => {
-    setOverlay((prev) => (prev ? { ...prev, appliedAt: new Date().toISOString() } : prev));
-    void sendOrderPatch({ applied: true });
-  };
-  const dismissOrder = () => {
-    setOverlay((prev) => (prev ? { ...prev, dismissedAt: new Date().toISOString() } : prev));
-    void sendOrderPatch({ dismissed: true });
-  };
+  const order = useOrderOverlay(data, initialOrder, review.states);
+  const { bookData, orderApplied, rationales: sectionRationales } = order;
+  const hasRationale = useCallback((id: string) => Boolean(sectionRationales?.[id]), [sectionRationales]);
 
   const flat = useMemo(() => flattenBook(bookData.book, bookData.chunks), [bookData]);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -123,7 +90,7 @@ export function BookPage({
   const virtualizer = useVirtualizer({
     count: flat.rows.length,
     getScrollElement: () => scrollRef.current,
-    estimateSize: (i) => estimateRowHeight(flat.rows[i]!, bookData, isCollapsed, (id) => Boolean(sectionRationales?.[id])),
+    estimateSize: (i) => estimateRowHeight(flat.rows[i]!, bookData, isCollapsed, hasRationale),
     overscan: 8,
   });
 
@@ -285,7 +252,7 @@ export function BookPage({
             <span className="progress-fill" style={{ width: `${distinctChunks ? (reviewedCount / distinctChunks) * 100 : 0}%` }} />
           </span>
           {orderApplied && (
-            <span className="ai-order-indicator" title="Section order proposed by AI (spec 02)">
+            <span className="ai-order-indicator" title="The section order was proposed by AI">
               AI reading order
             </span>
           )}
@@ -333,13 +300,13 @@ export function BookPage({
           ?
         </button>
       </header>
-      {decision === 'offer' && (
+      {order.offer && (
         <div className="order-banner" role="region" aria-label="AI reading order">
           <span>AI reading order ready — apply?</span>
-          <button className="bar-button" onClick={applyOrder}>
+          <button className="bar-button" onClick={order.applyOrder}>
             Apply
           </button>
-          <button className="bar-button" onClick={dismissOrder}>
+          <button className="bar-button" onClick={order.dismissOrder}>
             Dismiss
           </button>
         </div>

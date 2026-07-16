@@ -7,7 +7,6 @@ import {
   applyOrderOverlay,
   applyReviewPatch,
   type Book,
-  bookFingerprint,
   type BookResponse,
   type Chunk,
   CORE_VERSION,
@@ -16,6 +15,7 @@ import {
   type FileContents,
   type FileDiff,
   type ImportGraph,
+  isOverlayFresh,
   type OrderPatch,
   type OrderResponse,
   type ReviewFile,
@@ -33,8 +33,15 @@ import { defaultDataHome, loadReview, repoIdFrom, reviewFilePath, saveReview } f
 const webDist = fileURLToPath(new URL('../../web/dist', import.meta.url));
 
 function jobSummary(record: OrderJobRecord): NonNullable<OrderResponse['job']> {
-  const { status, model, startedAt, finishedAt, error } = record;
-  return { status, model, startedAt, ...(finishedAt ? { finishedAt } : {}), ...(error ? { error } : {}) };
+  const { status, model, promptVersion, startedAt, finishedAt, error } = record;
+  return {
+    status,
+    model,
+    promptVersion,
+    startedAt,
+    ...(finishedAt ? { finishedAt } : {}),
+    ...(error ? { error } : {}),
+  };
 }
 
 export interface ServerOptions {
@@ -121,13 +128,16 @@ export function startServer(options: ServerOptions, requestedPort = 0): Promise<
   });
 
   // The in-flight ordering job. A persisted `running` record without this handle is an orphan
-  // from a dead daemon and reads as failed (spec 02).
+  // from a dead daemon and reads as failed. liveRecord mirrors what the running job will
+  // persist, so GET never misreads the window before the record file lands.
   let liveJob: Promise<void> | undefined;
+  let liveRecord: OrderJobRecord | undefined;
 
   app.get('/api/order', async (c) => {
     const { orderFile, jobFile } = await getStore();
-    const [overlay, record, { book }] = await Promise.all([loadOverlay(orderFile), loadJobRecord(jobFile), getBook()]);
-    const fresh = overlay !== null && overlay.bookFingerprint === bookFingerprint(book) ? overlay : null;
+    const [overlay, stored, { book }] = await Promise.all([loadOverlay(orderFile), loadJobRecord(jobFile), getBook()]);
+    const fresh = overlay !== null && isOverlayFresh(book, overlay) ? overlay : null;
+    const record = liveRecord ?? stored;
     const job =
       record?.status === 'running' && liveJob === undefined
         ? { ...record, status: 'failed' as const, error: 'job orphaned by a daemon restart — re-run it' }
@@ -137,12 +147,13 @@ export function startServer(options: ServerOptions, requestedPort = 0): Promise<
   });
 
   app.post('/api/order-job', async (c) => {
-    const { dataHome, orderFile, jobFile } = await getStore();
-    if (liveJob !== undefined) {
-      const record = await loadJobRecord(jobFile);
-      return c.json({ job: record && jobSummary(record) }, 200);
-    }
     const body = (await c.req.json().catch(() => ({}))) as { model?: string };
+    const { dataHome, orderFile, jobFile } = await getStore();
+    // No awaits between this guard and the liveJob assignment — a second concurrent POST must
+    // see the first one's handle, or two paid model calls race on the same overlay file.
+    if (liveJob !== undefined) {
+      return c.json({ job: liveRecord && jobSummary(liveRecord) }, 200);
+    }
     const record: OrderJobRecord = {
       version: 1,
       status: 'running',
@@ -150,9 +161,10 @@ export function startServer(options: ServerOptions, requestedPort = 0): Promise<
       promptVersion: ORDER_PROMPT_VERSION,
       startedAt: new Date().toISOString(),
     };
-    await saveJson(jobFile, record);
+    liveRecord = record;
     liveJob = (async () => {
       try {
+        await saveJson(jobFile, record);
         const { book, chunks, graph } = await getBook();
         const overlay = await runOrderJob({ book, graph, chunks, model: record.model, cwd: dataHome });
         await saveJson(orderFile, overlay);
@@ -166,20 +178,32 @@ export function startServer(options: ServerOptions, requestedPort = 0): Promise<
         });
       } finally {
         liveJob = undefined;
+        liveRecord = undefined;
       }
     })();
     return c.json({ job: jobSummary(record) }, 202);
   });
 
+  // Serialized like review saves: concurrent PATCHes (auto-apply vs dismiss, two tabs) must not
+  // interleave their read-modify-write and drop each other's sticky flag.
+  let orderPatchChain = Promise.resolve();
   app.patch('/api/order', async (c) => {
-    const { orderFile } = await getStore();
-    const overlay = await loadOverlay(orderFile);
-    if (overlay === null) return c.json({ error: 'no order overlay' }, 404);
     const patch = (await c.req.json()) as OrderPatch;
-    if (patch.applied) overlay.appliedAt = new Date().toISOString();
-    if (patch.dismissed) overlay.dismissedAt = new Date().toISOString();
-    await saveJson(orderFile, overlay);
-    return c.json({ ok: true });
+    const { orderFile } = await getStore();
+    const op = orderPatchChain.then(async () => {
+      const overlay = await loadOverlay(orderFile);
+      if (overlay === null) return false;
+      if (patch.applied) overlay.appliedAt = new Date().toISOString();
+      if (patch.dismissed) overlay.dismissedAt = new Date().toISOString();
+      await saveJson(orderFile, overlay);
+      return true;
+    });
+    orderPatchChain = op.then(
+      () => undefined,
+      () => undefined,
+    );
+    const found = await op;
+    return found ? c.json({ ok: true }) : c.json({ error: 'no order overlay' }, 404);
   });
 
   app.get('/api/review', async (c) => {
@@ -198,14 +222,17 @@ export function startServer(options: ServerOptions, requestedPort = 0): Promise<
     return c.json({ ok: true });
   });
 
-  // `?order=ai` exports the overlay-applied order when a fresh overlay exists (the eval harness
-  // compares this against the default tier-0 export); silently tier 0 otherwise.
+  // `?order=ai` must never silently fall back to tier 0 — an eval comparing "both orders"
+  // would then confidently judge two identical books.
   app.get('/api/export.md', async (c) => {
     const { book, chunks, contents, graph } = await getBook();
     let exported = book;
     if (c.req.query('order') === 'ai') {
       const overlay = await loadOverlay((await getStore()).orderFile);
-      if (overlay !== null) exported = applyOrderOverlay(book, graph, chunks, overlay);
+      if (overlay === null || !isOverlayFresh(book, overlay)) {
+        return c.text('no fresh AI order overlay for this range (run the order job first)', 409);
+      }
+      exported = applyOrderOverlay(book, graph, chunks, overlay);
     }
     const title = `${options.range.base.slice(0, 8)}..${options.range.head.slice(0, 8)}`;
     return c.text(exportBookMarkdown({ book: exported, chunks, contents, title }));

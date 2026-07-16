@@ -1,8 +1,9 @@
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { readFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import path from 'node:path';
 import { emptyReview, type ReviewFile } from '@code-story/core';
 import type { ResolvedRange } from './git.js';
+import { saveJson } from './json-file.js';
 
 /**
  * Where one review's state lives: `~/.code-story/<repo-id>/reviews/<base12>..<head12>.json`
@@ -45,10 +46,6 @@ export async function loadReview(file: string, range: ResolvedRange): Promise<Re
   return emptyReview(range.base, range.head);
 }
 
-/** Atomic: write a sibling temp file, then rename over the target. */
 export async function saveReview(file: string, review: ReviewFile): Promise<void> {
-  await mkdir(path.dirname(file), { recursive: true });
-  const tmp = `${file}.tmp`;
-  await writeFile(tmp, JSON.stringify(review, null, 2));
-  await rename(tmp, file);
+  return saveJson(file, review);
 }

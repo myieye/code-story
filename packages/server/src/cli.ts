@@ -5,6 +5,7 @@ import {
   buildOrderManifest,
   checkCoverage,
   checkOrder,
+  chunkLineCount,
   compileBook,
   exportBookMarkdown,
   isLowSignal,
@@ -15,7 +16,8 @@ import open from 'open';
 import { computeChunks } from './chunks.js';
 import { diffRange, originUrl, resolveRange, rootCommit } from './git.js';
 import { runOrderJob } from './order-job.js';
-import { loadOverlay, orderFilePath, saveJson } from './order-store.js';
+import { ORDER_PROMPT_VERSION } from './order-prompt.js';
+import { loadOverlay, orderFilePath, orderJobFilePath, type OrderJobRecord, saveJson } from './order-store.js';
 import { defaultDataHome, repoIdFrom } from './review-store.js';
 import { startServer } from './server.js';
 
@@ -65,7 +67,7 @@ if (dumpChunks) {
   const { chunks } = await computeChunks(repo, resolved, files);
 
   for (const c of chunks) {
-    const lines = c.hunks.reduce((n, h) => n + Math.max(h.headCount, h.baseCount), 0);
+    const lines = chunkLineCount(c);
     const stub = isLowSignal(c) ? ` [stub: ${lowSignalReason(c)}]` : '';
     console.log(
       `${c.kind.padEnd(15)} ${c.file}${c.symbolPath.length ? ' :: ' + c.symbolPath.join('.') : ''} (~${lines} lines)${stub}`,
@@ -116,41 +118,63 @@ if (dumpManifest) {
   process.exit(0);
 }
 
-if (aiOrder) {
-  const files = await diffRange(repo, resolved);
-  const { chunks, graph } = await computeChunks(repo, resolved, files);
-  const compiled = compileBook({ files, chunks, graph, headSha: resolved.head });
-  const dataHome = defaultDataHome();
-  const repoId = repoIdFrom(repo, await rootCommit(repo), await originUrl(repo));
-  console.log(`code-story: running the AI ordering job (${model})…`);
-  const overlay = await runOrderJob({ book: compiled.book, graph, chunks: compiled.chunks, model, cwd: dataHome });
-  await saveJson(orderFilePath(dataHome, repoId, resolved), overlay);
-  console.log(`code-story: AI order saved (${overlay.permutation.length} story sections)`);
-}
-
-if (exportPath) {
+// One compile pass serves both --ai-order and --export (the natural one-shot invocation
+// combines them; a second tree-sitter pass costs ~30s on very large ranges).
+if (aiOrder || exportPath) {
   const files = await diffRange(repo, resolved);
   const { chunks, contents, graph } = await computeChunks(repo, resolved, files);
   const compiled = compileBook({ files, chunks, graph, headSha: resolved.head });
-  let book = compiled.book;
-  if (orderChoice === 'ai') {
-    const repoId = repoIdFrom(repo, await rootCommit(repo), await originUrl(repo));
-    const overlay = await loadOverlay(orderFilePath(defaultDataHome(), repoId, resolved));
-    const applied = overlay === null ? book : applyOrderOverlay(book, graph, compiled.chunks, overlay);
-    if (applied === book) {
-      console.error('code-story: no fresh AI order overlay for this range (run --ai-order first)');
-      process.exit(1);
-    }
-    book = applied;
-  }
-  await writeFile(exportPath, exportBookMarkdown({ book, chunks: compiled.chunks, contents, title: range }));
+  const dataHome = defaultDataHome();
+  const repoId = repoIdFrom(repo, await rootCommit(repo), await originUrl(repo));
+  const orderFile = orderFilePath(dataHome, repoId, resolved);
 
-  const leftovers = compiled.chunks.length - chunks.length;
-  console.log(
-    `wrote ${exportPath}: ${compiled.chunks.length} chunks, ${compiled.book.sections.length} sections` +
-      (leftovers > 0 ? ` — WARNING: ${leftovers} leftover chunks (chunker gaps)` : ''),
-  );
-  process.exit(0);
+  if (aiOrder) {
+    const jobFile = orderJobFilePath(dataHome, repoId, resolved);
+    const record: OrderJobRecord = {
+      version: 1,
+      status: 'running',
+      model,
+      promptVersion: ORDER_PROMPT_VERSION,
+      startedAt: new Date().toISOString(),
+    };
+    await saveJson(jobFile, record);
+    console.log(`code-story: running the AI ordering job (${model})…`);
+    try {
+      const overlay = await runOrderJob({ book: compiled.book, graph, chunks: compiled.chunks, model, cwd: dataHome });
+      await saveJson(orderFile, overlay);
+      await saveJson(jobFile, { ...record, status: 'done', finishedAt: new Date().toISOString() });
+      console.log(`code-story: AI order saved (${overlay.permutation.length} story sections)`);
+    } catch (e) {
+      await saveJson(jobFile, {
+        ...record,
+        status: 'failed',
+        finishedAt: new Date().toISOString(),
+        error: (e as Error).message,
+      });
+      throw e;
+    }
+  }
+
+  if (exportPath) {
+    let book = compiled.book;
+    if (orderChoice === 'ai') {
+      const overlay = await loadOverlay(orderFile);
+      const applied = overlay === null ? book : applyOrderOverlay(book, graph, compiled.chunks, overlay);
+      if (applied === book) {
+        console.error('code-story: no fresh AI order overlay for this range (run --ai-order first)');
+        process.exit(1);
+      }
+      book = applied;
+    }
+    await writeFile(exportPath, exportBookMarkdown({ book, chunks: compiled.chunks, contents, title: range }));
+
+    const leftovers = compiled.chunks.length - chunks.length;
+    console.log(
+      `wrote ${exportPath}: ${compiled.chunks.length} chunks, ${compiled.book.sections.length} sections` +
+        (leftovers > 0 ? ` — WARNING: ${leftovers} leftover chunks (chunker gaps)` : ''),
+    );
+    process.exit(0);
+  }
 }
 
 const { url } = await startServer({ repo, range: resolved }, port);

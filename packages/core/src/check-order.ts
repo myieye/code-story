@@ -1,5 +1,5 @@
 import { type ImportGraph } from './import-graph.js';
-import { type Book, type Chunk, isLowSignal } from './model.js';
+import { type Book, type Chunk, isLowSignal, LEFTOVERS_SECTION_ID } from './model.js';
 import { isTestPath } from './roles.js';
 
 export interface OrderReport {
@@ -24,7 +24,7 @@ export interface OrderReport {
 export function checkOrder(book: Book, graph: ImportGraph, chunks: Chunk[]): OrderReport {
   const position = new Map<string, number>();
   book.sections.forEach((s, i) => {
-    if (s.id !== '(leftovers)') position.set(s.id, i);
+    if (s.id !== LEFTOVERS_SECTION_ID) position.set(s.id, i);
   });
 
   const chunksByFile = new Map<string, Chunk[]>();

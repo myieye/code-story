@@ -160,10 +160,10 @@ describe('validatePermutation', () => {
         const keys = manifest.sections.map((s) => s.key);
         if (keys.length === 0) return;
 
-        expect(validatePermutation(manifest, keys).ok).toBe(true);
-        expect(validatePermutation(manifest, keys.slice(1)).ok).toBe(false);
-        expect(validatePermutation(manifest, [...keys, keys[0]!]).ok).toBe(false);
-        expect(validatePermutation(manifest, [...keys, 'nonexistent.ts']).ok).toBe(false);
+        expect(validatePermutation(keys, keys).ok).toBe(true);
+        expect(validatePermutation(keys, keys.slice(1)).ok).toBe(false);
+        expect(validatePermutation(keys, [...keys, keys[0]!]).ok).toBe(false);
+        expect(validatePermutation(keys, [...keys, 'nonexistent.ts']).ok).toBe(false);
       }),
       { numRuns: 100 },
     );

@@ -24,6 +24,7 @@ export interface OrderResponse {
   job: {
     status: 'running' | 'done' | 'failed';
     model: string;
+    promptVersion: string;
     startedAt: string;
     finishedAt?: string;
     error?: string;

@@ -1,9 +1,7 @@
-import { spawn } from 'node:child_process';
 import { mkdir } from 'node:fs/promises';
 import {
   applyOrderOverlay,
   type Book,
-  bookFingerprint,
   buildOrderManifest,
   checkOrder,
   type Chunk,
@@ -12,6 +10,7 @@ import {
   renderOrderManifest,
   validatePermutation,
 } from '@code-story/core';
+import { extractJsonBlock, invokeClaudeJson } from './claude-cli.js';
 import { ORDER_PROMPT_VERSION, orderPrompt } from './order-prompt.js';
 
 const MANIFEST_TOKEN_LIMIT = 8000;
@@ -40,15 +39,16 @@ export interface OrderJobInput {
   graph: ImportGraph;
   chunks: Chunk[];
   model: string;
-  /** Where the subprocess runs — the data home, never the reviewed repo (spec 02 sandbox rule). */
+  /** Where the subprocess runs: the data home. Never the reviewed repo — the job has no
+   * business reading it, and must not become an unreviewed side channel into it. */
   cwd: string;
   /** Test seam: replaces the claude subprocess. */
   invoke?: (prompt: string, model: string, cwd: string) => Promise<string>;
 }
 
 /**
- * Runs the tier-1 ordering job (spec 02): manifest → claude -p (no tools) → validated overlay.
- * Throws OrderJobError; never returns a partial result. The caller persists the overlay.
+ * Runs the tier-1 ordering job: manifest → claude -p → validated overlay. Throws OrderJobError;
+ * never returns a partial result. The caller persists the overlay.
  */
 export async function runOrderJob(input: OrderJobInput): Promise<OrderOverlay> {
   const manifest = buildOrderManifest(input.book, input.graph, input.chunks);
@@ -63,7 +63,7 @@ export async function runOrderJob(input: OrderJobInput): Promise<OrderOverlay> {
   }
 
   const prompt = orderPrompt(renderOrderManifest(manifest));
-  const invoke = input.invoke ?? invokeClaude;
+  const invoke = input.invoke ?? ((p, m, cwd) => invokeClaudeJson(p, m, cwd, JOB_TIMEOUT_MS));
   // A fresh install has no data home yet; spawn with a missing cwd dies instantly (ENOENT).
   await mkdir(input.cwd, { recursive: true });
 
@@ -96,7 +96,7 @@ function tryBuildOverlay(
 ): { overlay: OrderOverlay } | { error: string } {
   let proposal: { order?: unknown; rationales?: unknown };
   try {
-    proposal = extractJson(raw);
+    proposal = extractJsonBlock(raw) as { order?: unknown; rationales?: unknown };
   } catch (e) {
     return { error: `unparseable model output: ${(e as Error).message}` };
   }
@@ -104,7 +104,10 @@ function tryBuildOverlay(
     return { error: 'model output has no "order" string array' };
   }
   const order = proposal.order as string[];
-  const check = validatePermutation(manifest, order);
+  const check = validatePermutation(
+    manifest.sections.map((s) => s.key),
+    order,
+  );
   if (!check.ok) return { error: `not a permutation: ${check.errors.join('; ')}` };
 
   const keys = new Set(order);
@@ -114,7 +117,7 @@ function tryBuildOverlay(
   }
   const overlay: OrderOverlay = {
     version: 1,
-    bookFingerprint: bookFingerprint(input.book),
+    bookFingerprint: manifest.bookFingerprint,
     permutation: order,
     rationales,
     model: input.model,
@@ -131,35 +134,6 @@ function tryBuildOverlay(
     };
   }
   return { overlay };
-}
-
-/** First {...} block in the CLI envelope's result string — the model may wrap it in prose. */
-function extractJson(raw: string): { order?: unknown; rationales?: unknown } {
-  const envelope = JSON.parse(raw) as { result?: unknown };
-  if (typeof envelope.result !== 'string') throw new Error('claude envelope has no result string');
-  const match = envelope.result.match(/\{[\s\S]*\}/);
-  if (!match) throw new Error('no JSON object in model result');
-  return JSON.parse(match[0]) as { order?: unknown; rationales?: unknown };
-}
-
-function invokeClaude(prompt: string, model: string, cwd: string): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const child = spawn('claude', ['-p', '--model', model, '--output-format', 'json', '--tools', ''], {
-      cwd,
-      timeout: JOB_TIMEOUT_MS,
-    });
-    let stdout = '';
-    let stderr = '';
-    child.stdout.on('data', (d: Buffer) => (stdout += d.toString()));
-    child.stderr.on('data', (d: Buffer) => (stderr += d.toString()));
-    child.on('error', (e) => reject(new Error(`failed to spawn claude: ${e.message}`)));
-    child.on('close', (code) => {
-      if (code === 0) resolve(stdout);
-      else reject(new Error(`claude exited ${code}: ${stderr.slice(0, 500)}`));
-    });
-    child.stdin.write(prompt);
-    child.stdin.end();
-  });
 }
 
 function sleep(ms: number): Promise<void> {
