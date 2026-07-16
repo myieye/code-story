@@ -1,7 +1,9 @@
 # Requirements inventory
 
 Every requirement extracted from the [original prompt](../vision/original-prompt.md) and its
-[addenda](../vision/addendum-2026-07-16.md), numbered for traceability. Future passes over the
+addenda ([2026-07-16](../vision/addendum-2026-07-16.md),
+[PR versions](../vision/addendum-2026-07-16-pr-versions.md),
+[editor features](../vision/addendum-2026-07-16-editor-features.md)), numbered for traceability. Future passes over the
 prompts should check each tidbit against this list and against the implementation. Each entry: the requirement, its source in the prompt (paraphrased quote), and
 open questions to resolve during spec work.
 
@@ -67,6 +69,13 @@ must be unmistakable what is diff and what is context.
 ### R-007 — Fast navigation into old AND new code
 Seamless, fast navigation to any code referenced by the diff — in both the base and head versions.
 > "it should be possible to seamlessly navigate to/view code referenced by the diff (both old and new). Should be fast."
+
+Amended ([editor-features addendum](../vision/addendum-2026-07-16-editor-features.md)): the
+exact affordance is open (ctrl+click, or a "rummage" dialog for free navigation) and it is not
+the main workflow — deferring the feature is fine, but **the architecture must never make it
+impossible**. Door-stays-open check for every design: can a definition lookup (SCIP/ctags/LSP)
+be bolted onto this later without rework?
+> "real-code context should be readily available somehow… Maybe we just open a dialog when a user can rummage and navigation as much as they want? … it's not necessarily the main work flow. So perhaps defer?" / "I'm concerned it would be totally impossible if we didn't plan for it."
 
 Open: navigation on the *old* version requires either a live checkout/worktree of base or a
 precomputed index (SCIP/ctags) — decide per platform.
@@ -254,6 +263,14 @@ Manual changes happen directly where the code is shown — either editing the co
 easier) a script-generated git patch that is applied and then lives in the review/thread history
 like any other ledger entry.
 > "I can make manual changes directly where the code is shown (either directly to the code or if easier, a git patch could be generated - hopefully via script - and applied (also then living in the history of the review/thread))"
+
+Reinforced ([editor-features addendum](../vision/addendum-2026-07-16-editor-features.md)):
+> "Inline code editing is important"
+
+Implementation note for the door: the M0 `DiffView` doc is a *render artifact* (interleaved
+del/add/context rows from `unifiedChunkLines`) — inline editing must edit a head-side buffer of
+the real file region and emit a patch through the ledger (primitives §5), never edit the
+unified render text.
 
 Sharpens: R-011, R-012 — in-place editing is required, not just editor handoff; manual patches
 join the same ledger as AI patches.

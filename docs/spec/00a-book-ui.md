@@ -189,6 +189,17 @@ Active when focus is on a chunk container or the feed; never inside CM or inputs
   slots fights CM's block-widget model and the virtualizer; per-chunk instances + list
   virtualization is the tractable inversion.
 
+## Doors kept open (M0 renders read-only, but must not foreclose)
+
+- **Inline editing (R-012/R-035, "important")**: `DiffView`'s document is a render artifact
+  (interleaved del/add/context rows). Editing will swap in (or overlay) a head-side buffer of
+  the real file region and emit a ledger patch — never edit the unified render text. Per-chunk
+  CM instances make this a per-block swap, no feed rework.
+- **Definition navigation (R-007, deferrable)**: acceptable shape is a "rummage" dialog/panel
+  opened from a symbol (not necessarily in-place ctrl+click); needs a symbol index
+  (SCIP/ctags) server-side and a token→position hook in `DiffView`. Nothing in the feed layout
+  may assume chunks are the only viewable code.
+
 ## Risks — validate in dogfood 0
 
 - **Enter = mark-&-advance may still build momentum.** Watch `marked-unseen` rate and
