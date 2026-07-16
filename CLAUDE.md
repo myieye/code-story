@@ -186,9 +186,16 @@ judge id ≠ generator id (self-preference caveat in every report). **Dogfood 2*
 judge sonnet vs generator opus — AI order wins 2/3 (PR 2357) and 3/3 (PR 2379, where it fixed
 the 2-cycle git-order fallback that `--check-order` structurally can't see — the measured
 R-042 instance). Verdict in spec status: **HOLD at opt-in; Tim's blind A/B read-through is the
-open gate half** (a session that generated the orders can't self-blind). Test counts now
-core 124 / server 19 / web 18 = 161. #26 closes with the verdict; #27 filed (order-2 prompt:
-locality-vs-purity rank, evidence-gated like #21). Next: Tim's blind read-through decides
-ship/default; then M3 scoping (narration/context payloads — R-036 becomes the gate) or the
-ambitious paths spec 02 defers (chunk-level interleave, code excerpts in manifest, auto-run).
+open gate half** (a session that generated the orders can't self-blind) — **prepared as #28**
+(`docs/evals/blind-read-2026-07-16/`: sealed-mapping A/B pairs + README). **M2 review pass
+done same-day** (`docs/reviews/2026-07-16-m2-review.md` — read its "deliberately not fixed"
+list before touching M2 code): races fixed (order-job POST guard, PATCH serialization),
+export?order=ai now 409s instead of silently serving tier 0, `claude-cli.ts` owns the
+tool-less spawn + brace-balanced JSON extraction (order-eval imports it from dist — needs
+`pnpm build`), web overlay state lives in `useOrderOverlay.ts`, indicator only claims AI order
+when the applier actually reordered. Test counts now core 124 / server 25 / web 18 = 167.
+#26 closed with the verdict; #27 filed (order-2 prompt: locality-vs-purity rank,
+evidence-gated like #21). Next: #28 decides ship/default; then M3 scoping (narration/context
+payloads — R-036 becomes the gate) or the ambitious paths spec 02 defers (chunk-level
+interleave, code excerpts in manifest, auto-run).
 Dogfood target: languageforge/lexbox (C# + Svelte/TS); repo-agnostic (R-025).
