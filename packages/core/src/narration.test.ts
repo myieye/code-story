@@ -167,3 +167,12 @@ describe('fleschScore backtick collapse', () => {
     expect(fleschScore(text)).toBe(fleschScore(text));
   });
 });
+
+describe('filterFreshNarration fail-open direction', () => {
+  it('drops all narration on a malformed overlay instead of passing it through', () => {
+    const malformed = { version: 1, model: 'm', promptVersion: 'p', opener: { text: 'stale', key: 'k' } } as never;
+    const filtered = filterFreshNarration(book('h1', sample), 'h1', malformed);
+    expect(filtered.sections).toEqual({});
+    expect(filtered.opener.text).toBe('');
+  });
+});

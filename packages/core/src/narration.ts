@@ -41,8 +41,9 @@ export function narrationOpenerKey(book: Book, headSha: string): string {
 
 /**
  * Drops overlay entries whose section is gone or whose fingerprint no longer matches, and clears
- * the opener text unless its key still matches the current book. Fail-open like applyOrderOverlay:
- * any unexpected shape returns the overlay untouched rather than throwing.
+ * the opener text unless its key still matches the current book. Fail-open means "no narration",
+ * never "unvalidated narration": an unexpected shape drops everything ("faithful or silent",
+ * spec 03) — the inverse of applyOrderOverlay, whose safe direction is the unchanged book.
  */
 export function filterFreshNarration(book: Book, headSha: string, overlay: NarrationOverlay): NarrationOverlay {
   try {
@@ -56,7 +57,7 @@ export function filterFreshNarration(book: Book, headSha: string, overlay: Narra
     const opener = overlay.opener.key === openerKey ? overlay.opener : { text: '', key: openerKey };
     return { ...overlay, opener, sections };
   } catch {
-    return overlay;
+    return { ...overlay, opener: { text: '', key: '' }, sections: {} };
   }
 }
 
