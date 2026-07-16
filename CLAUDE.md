@@ -45,6 +45,10 @@ BYO-agent threads whose code changes are verifiable patches.
   heavy phase and stop comfortably short of limits rather than sprinting.
 - **Commits**: `git config user.email noreply@anthropic.com`, `user.name Claude` (a stop-hook
   enforces this).
+- **GitHub provenance in this repo**: everything here is Claude-authored by default (vibe
+  mode). Issue/PR bodies open with the *[Claude, autonomous]* line; `[claude]`/`[vibe]` title
+  prefixes are dropped as pure noise in an all-Claude repo. (Specializes Tim's global tagging
+  rule — Tim can veto.)
 
 ## Hard-won product insights (don't re-derive)
 
@@ -71,6 +75,7 @@ tree-sitter chunks in file order rendered in the browser, coverage queue, review
 markdown export; zero AI. Spec: `docs/spec/00-chunker-and-naive-book.md` (includes the
 ux-expert pass on the book UI). **ADR 0002**: book UI is React (Tim's call). Issue policy
 (Tim-ratified): just-in-time — 5–8 vertical-slice GitHub issues per milestone, filed when that
-milestone's spec lands; never a full backlog. Next: file the spec-00 slices as issues (blocking
-edges), then one agent session per issue, PRs reviewed by Tim. Dogfood target:
-languageforge/lexbox (C# + Svelte/TS); repo-agnostic (R-025).
+milestone's spec lands; never a full backlog. Milestone-0 slices are issues #1–#8 (blocking
+edges in bodies). **#1 (scaffold) done**: pnpm monorepo (core/server/web), TS strict (TS 7),
+vitest, React 19 + Vite, hono daemon serving the built web app, CI. Next: #2 diff ingestion.
+Dogfood target: languageforge/lexbox (C# + Svelte/TS); repo-agnostic (R-025).
