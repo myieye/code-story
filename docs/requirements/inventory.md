@@ -275,3 +275,37 @@ thread can be compared at any time.
 
 Sharpens: R-011 (the ledger's storage home). Resolved into ADR 0001: per-repo store under the
 user's data directory (e.g. `~/.code-story/`), append-only and content-addressed.
+
+## J. Addendum, 2026-07-16: PR versions ([verbatim source](../vision/addendum-2026-07-16-pr-versions.md))
+
+Scope note (Tim): this whole area is explicitly deferrable — "It might be really hard and
+complicated while leaving it out still gets us 80% of what we want." But the paradigm must
+ultimately handle it ("find the ultimate solution for also handling this in our paradigm").
+Design direction sketched in [pr-versions-sketch](../design/pr-versions-sketch.md).
+
+### R-038 — Version-safe review progress (goal)
+New PR versions (pushes during a review) must neither force re-reviewing what hasn't changed
+nor let the reviewer spend attention on stale content.
+> "prevented reviewers from re-reviewing things as well as from reviewing stale things"
+
+### R-039 — Appended-chapter model; stale stays in place, marked
+New version diffs append at the end as additional chapters/sections; superseded content is
+never removed or reordered — it stays where it was, visibly marked stale. The entire review
+remains one linear top-to-bottom read.
+> "Append new diffs at the end in additional chapters" / "Stale things stay where they are and are marked as such" / "the entire review remains a linear top-to-bottom with PR versions… acting as new sections/chapters"
+
+Open: what "marked as such" links to (its superseding occurrence?), and what happens on
+force-push/rebase where "incremental" loses meaning.
+
+### R-040 — Incremental and absolute diff views
+For a versioned review, both the per-version (incremental) diff and the cumulative diff against
+the original base must be viewable.
+> "possible to see both the incremental diff as well as the absolute diff against the base"
+
+### R-041 — "Crunch" recompilation to a fresh single story
+An operation that recompiles all versions / the current total diff into a single fresh story —
+reusing prior AI analysis but adapting it to treat the current diff as the only diff.
+> "crunch all version/current total diff into a single story again… Reusing AI analysis, but adapting it so it's treats the current diff as the only diff"
+
+Open: how reviewed-state carries through a crunch (chunk-identity matching must prove a chunk's
+final content was already reviewed — coverage can't be taken on faith, R-001/R-026).

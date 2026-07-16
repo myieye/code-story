@@ -7,9 +7,9 @@ BYO-agent threads whose code changes are verifiable patches.
 
 ## Read in this order
 
-1. `docs/vision/original-prompt.md` + `docs/vision/addendum-2026-07-16.md` — Tim's words,
+1. `docs/vision/original-prompt.md` + the `docs/vision/addendum-*.md` files — Tim's words,
    **verbatim**; the ultimate source of truth for traceability passes.
-2. `docs/requirements/inventory.md` — R-001…R-036, each traced to a source quote. The tracing
+2. `docs/requirements/inventory.md` — R-001…R-041, each traced to a source quote. The tracing
    instrument for everything.
 3. `docs/research/00-synthesis.md` — answers to the founding questions (does it exist: no;
    fork: no, harvest; platform; protocols; the science). Deep dives: `01*` landscape,
@@ -59,6 +59,10 @@ BYO-agent threads whose code changes are verifiable patches.
   criterion for every AI-written string, including what we write to Tim.
 - **Merge pragmatism** (R-031–R-033): the story steers toward "responsibly mergeable", weighing
   PR age/size and change criticality — not exhaustive polish.
+- **PR versions are designed but deferred** (R-038–R-041, `docs/design/pr-versions-sketch.md`):
+  new versions append as stale-marked-aware chapters; `crunch` recompiles a fresh edition with
+  proof-carried review state. Don't build it yet — but don't break its three door-stays-open
+  invariants (derived+fingerprinted chunks, occurrence-based books, append-only review state).
 - **The moat** (landscape verdict): narrative ordering alone is table stakes (Devin, CodeRabbit,
   cubic ship it). The unoccupied combination = coverage-guaranteed queue + local harness-agnostic
   verifiable-patch threads + reviewer-side intelligence feeding instruction files.

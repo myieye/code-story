@@ -132,4 +132,6 @@ question (explicit config first; inference later, if ever).
 - ~~Where the content-addressed store lives~~ — resolved (R-037, ADR 0001): per-repo store under
   the user's data home (e.g. `~/.code-story/<repo-id>/`), never inside the reviewed repo;
   append-only so thread history stays comparable forever.
-- Whether the book recompiles incrementally per head state or versions whole editions.
+- ~~Whether the book recompiles incrementally per head state or versions whole editions~~ —
+  direction chosen (R-039/R-041, [pr-versions-sketch](pr-versions-sketch.md)): new versions
+  append as chapters; an explicit `crunch` produces a fresh edition.
