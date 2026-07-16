@@ -60,6 +60,11 @@ BYO-agent threads whose code changes are verifiable patches.
   — commit history carries the traceability) once tests are green and the slice is verified.
   Claude creates and merges its own PRs; no waiting for review (vibe mode). Doc-only
   housekeeping may go straight to main. Proven end-to-end on PR #29 (M1+M2, 56 commits).
+- **Scheduler ops (Tim, 2026-07-16)**: `delete_trigger` blocks on Tim's approval — it breaks
+  autonomy, don't rely on it. Instead make triggers that never need deleting: schedule one-shot
+  continuations late in the window, keep the message THIN ("continue per CLAUDE.md's Next
+  pointer, per-issue PR flow, don't sprint into a hard limit") so the durable instructions live
+  here, not in the trigger. A stale-but-thin trigger is harmless; a fat one forces a delete.
 
 ## Hard-won product insights (don't re-derive)
 
