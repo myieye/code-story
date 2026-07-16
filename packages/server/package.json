@@ -1,5 +1,5 @@
 {
-  "name": "code-story",
+  "name": "@code-story/server",
   "version": "0.0.1",
   "private": true,
   "type": "module",
@@ -7,9 +7,9 @@
     "code-story": "./dist/cli.js"
   },
   "scripts": {
-    "build": "tsc -p .",
+    "build": "tsc -b .",
     "start": "node dist/cli.js",
-    "test": "vitest run"
+    "test": "tsc -p tsconfig.check.json && vitest run"
   },
   "dependencies": {
     "@code-story/core": "workspace:*",

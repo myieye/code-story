@@ -78,6 +78,7 @@ function leftoverChunks(file: FileDiff, chunks: Chunk[]): Chunk[] {
       id: chunkId(file.path, ['(leftover)'], `${runStart}-${end}`),
       file: file.path,
       symbolPath: [],
+      displayPath: ['(leftover)', `lines ${runStart}–${end}`],
       kind: 'other',
       changeTypes: [],
       hunks: [hunk],

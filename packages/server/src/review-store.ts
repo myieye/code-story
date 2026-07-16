@@ -16,9 +16,18 @@ export function defaultDataHome(): string {
   return path.join(homedir(), '.code-story');
 }
 
-/** `<basename>-<rootSha12>`: readable, and stable across clones/moves of the same repo. */
-export function repoIdFrom(repoPath: string, rootCommitSha: string): string {
-  const slug = path.basename(path.resolve(repoPath)).replace(/[^\w.-]+/g, '-') || 'repo';
+/**
+ * `<slug>-<rootSha12>`: readable, and stable across clones/worktrees/moves of the same repo.
+ * The slug prefers the origin repo name over the directory name so every checkout of a repo
+ * maps to the same data-home directory.
+ */
+export function repoIdFrom(repoPath: string, rootCommitSha: string, originUrl?: string): string {
+  const originName = originUrl
+    ?.replace(/\/+$/, '')
+    .split(/[/:]/)
+    .at(-1)
+    ?.replace(/\.git$/, '');
+  const slug = (originName || path.basename(path.resolve(repoPath))).replace(/[^\w.-]+/g, '-') || 'repo';
   return `${slug}-${rootCommitSha.slice(0, 12)}`;
 }
 

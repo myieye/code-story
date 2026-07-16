@@ -1,4 +1,5 @@
 import type { Book, Chunk } from '@code-story/core';
+export { chunkTitle } from '@code-story/core';
 
 export type Row =
   | { kind: 'section'; id: string; title: string; chunkCount: number }
@@ -39,14 +40,6 @@ export function flattenBook(book: Book, chunks: Chunk[]): FlatBook {
   rows.push({ kind: 'end' });
 
   return { rows, chunkRowIndexes, chunkIndexById, sectionRowIndex, totalChunks: posinset };
-}
-
-/** The id's display path (symbol path + fragment suffix), or a line-range fallback. */
-export function chunkTitle(chunk: Chunk): string {
-  const displayPath = chunk.id.split('::')[1];
-  if (displayPath) return displayPath;
-  const range = chunk.headRange ?? chunk.baseRange;
-  return range ? `lines ${range.start}–${range.end}` : chunk.file;
 }
 
 export function chunkSize(chunk: Chunk): { added: number; removed: number } {

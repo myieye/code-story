@@ -18,6 +18,8 @@ export interface Chunk {
   file: string;
   /** e.g. ["UserService", "Merge"]; empty for non-code chunks */
   symbolPath: string[];
+  /** What to call the chunk in UIs/exports: symbolPath plus fragment/leftover labels. */
+  displayPath: string[];
   baseRange?: LineRange;
   headRange?: LineRange;
   kind: ChunkKind;
@@ -54,4 +56,11 @@ export type ChunkReviewState = 'unseen' | 'seen' | 'reviewed';
  */
 export function chunkId(file: string, symbolPath: string[], fingerprint: string): string {
   return [file, symbolPath.join('.'), fingerprint].join('::');
+}
+
+/** The chunk's display title, with a line-range fallback for label-less chunks. */
+export function chunkTitle(chunk: Chunk): string {
+  if (chunk.displayPath.length > 0) return chunk.displayPath.join('.');
+  const range = chunk.headRange ?? chunk.baseRange;
+  return range ? `lines ${range.start}–${range.end}` : chunk.file;
 }

@@ -5,5 +5,7 @@
     "rootDir": "src",
     "types": ["node"]
   },
-  "include": ["src"]
+  "references": [{ "path": "../core" }],
+  "include": ["src"],
+  "exclude": ["src/**/*.test.ts"]
 }

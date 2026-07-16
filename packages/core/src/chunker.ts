@@ -191,6 +191,7 @@ function makeChunk(
     id: chunkId(input.diff.path, idPath, fnv1a(changed.join('\n'))),
     file: input.diff.path,
     symbolPath,
+    displayPath: idPath,
     kind,
     changeTypes: [],
     hunks,

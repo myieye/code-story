@@ -1,4 +1,4 @@
-import { type Book, type Chunk } from './model.js';
+import { type Book, type Chunk, chunkTitle } from './model.js';
 
 export interface FileContents {
   /** Head-side lines (1-based indexing via line - 1); absent for deleted files. */
@@ -42,14 +42,6 @@ export function exportBookMarkdown(input: ExportBookInput): string {
   }
 
   return out.join('\n');
-}
-
-/** The id's display path (symbol path + fragment suffix), or a line-range fallback. */
-function chunkTitle(chunk: Chunk): string {
-  const displayPath = chunk.id.split('::')[1];
-  if (displayPath) return displayPath;
-  const range = chunk.headRange ?? chunk.baseRange;
-  return range ? `lines ${range.start}–${range.end}` : chunk.file;
 }
 
 function sizeLabel(chunk: Chunk): string {

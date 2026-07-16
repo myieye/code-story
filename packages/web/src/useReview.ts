@@ -22,22 +22,34 @@ export function useReview(initial: ReviewFile): Review {
   const pendingCursor = useRef<string | undefined>(undefined);
   const timer = useRef<number | undefined>(undefined);
 
+  const scheduleFlush = useCallback(() => {
+    timer.current ??= window.setTimeout(() => flushRef.current(), FLUSH_DELAY_MS);
+  }, []);
+  const flushRef = useRef(() => {});
+
   const flush = useCallback(() => {
     window.clearTimeout(timer.current);
     timer.current = undefined;
     if (pendingSet.current.size === 0 && pendingCursor.current === undefined) return;
+    const sent = pendingSet.current;
+    const sentCursor = pendingCursor.current;
     const patch = {
-      set: [...pendingSet.current].map(([chunkId, v]) => ({ chunkId, ...v })),
-      ...(pendingCursor.current !== undefined ? { cursor: pendingCursor.current } : {}),
+      set: [...sent].map(([chunkId, v]) => ({ chunkId, ...v })),
+      ...(sentCursor !== undefined ? { cursor: sentCursor } : {}),
     };
     pendingSet.current = new Map();
     pendingCursor.current = undefined;
-    void sendReviewPatch(patch).catch((e: unknown) => console.error('code-story: review save failed', e));
-  }, []);
-
-  const scheduleFlush = useCallback(() => {
-    timer.current ??= window.setTimeout(flush, FLUSH_DELAY_MS);
-  }, [flush]);
+    void sendReviewPatch(patch).catch((e: unknown) => {
+      // Re-queue what failed (newer pending entries win) and retry — marks must not be lost.
+      console.error('code-story: review save failed, retrying', e);
+      for (const [id, v] of sent) {
+        if (!pendingSet.current.has(id)) pendingSet.current.set(id, v);
+      }
+      pendingCursor.current ??= sentCursor;
+      scheduleFlush();
+    });
+  }, [scheduleFlush]);
+  flushRef.current = flush;
 
   useEffect(() => {
     window.addEventListener('pagehide', flush);

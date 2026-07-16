@@ -12,11 +12,16 @@ const dumpDiff = args.includes('--dump-diff');
 const dumpChunks = args.includes('--dump-chunks');
 const exportIndex = args.indexOf('--export');
 const exportPath = exportIndex >= 0 ? args[exportIndex + 1] : undefined;
-const range = args.find((a, i) => !a.startsWith('--') && (exportIndex < 0 || i !== exportIndex + 1));
+const portIndex = args.indexOf('--port');
+const port = portIndex >= 0 ? Number(args[portIndex + 1]) : 0;
+const valueIndexes = new Set([exportIndex + 1, portIndex + 1].filter((i) => i > 0));
+const range = args.find((a, i) => !a.startsWith('--') && !valueIndexes.has(i));
 const repo = process.cwd();
 
-if (!range || (exportIndex >= 0 && !exportPath)) {
-  console.error('Usage: code-story <base>..<head> [--export book.md] [--dump-diff] [--dump-chunks] [--no-open]');
+if (!range || (exportIndex >= 0 && !exportPath) || Number.isNaN(port)) {
+  console.error(
+    'Usage: code-story <base>..<head> [--export book.md] [--port <n>] [--dump-diff] [--dump-chunks] [--no-open]',
+  );
   process.exit(1);
 }
 
@@ -85,7 +90,7 @@ if (exportPath) {
   process.exit(0);
 }
 
-const { url } = await startServer({ repo, range: resolved });
+const { url } = await startServer({ repo, range: resolved }, port);
 
 console.log(`code-story serving ${range} (${resolved.base.slice(0, 8)}..${resolved.head.slice(0, 8)}) at ${url}`);
 console.log('Ctrl+C to stop.');

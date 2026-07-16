@@ -7,7 +7,7 @@
   "types": "./dist/index.d.ts",
   "scripts": {
     "build": "tsc -p .",
-    "test": "vitest run"
+    "test": "tsc -p tsconfig.check.json && vitest run"
   },
   "devDependencies": {
     "fast-check": "^4.9.0",

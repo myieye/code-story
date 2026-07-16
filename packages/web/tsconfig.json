@@ -6,7 +6,9 @@
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "jsx": "react-jsx",
     "declaration": false,
+    "declarationMap": false,
     "noEmit": true
   },
+  "references": [{ "path": "../core" }],
   "include": ["src"]
 }

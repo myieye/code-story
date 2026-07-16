@@ -41,3 +41,11 @@ export async function rootCommit(repo: string): Promise<string> {
   if (!sha) throw new Error('Could not determine root commit');
   return sha;
 }
+
+export async function originUrl(repo: string): Promise<string | undefined> {
+  try {
+    return (await git(repo, ['config', '--get', 'remote.origin.url'])).trim() || undefined;
+  } catch {
+    return undefined;
+  }
+}

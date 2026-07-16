@@ -106,5 +106,11 @@ seen = both block edges entered viewport, marked-unseen logged, hide-reviewed to
 toast, aria-live, done banner (neutral facts + per-section table). Verified keyboard-only on
 lexbox: full walk→mark→done flow, state survives daemon restart, 1297-chunk book Enter median
 33ms (<50ms gate). Synthetic `KeyboardEvent` on `window` has no `.closest` target — dispatch
-test events on `document.body`. Next: #7 low-signal collapse + batch acknowledgment.
+test events on `document.body`. Architecture review pass done
+(`docs/reviews/2026-07-16-architecture-review.md` — read it before M1 work: it lists the
+deliberate M0 constraints and where they must be revisited, notably occurrence-vs-chunk identity
+in the web layer and the monolithic `/api/book` payload). All packages are `@code-story/*` now
+(server renamed; bin still `code-story`); API contract types live in `core/src/api.ts`;
+`pnpm test` type-checks test files via `tsconfig.check.json`; dev loop = daemon `--port 7357` +
+`CODE_STORY_PORT` Vite proxy. Next: #7 low-signal collapse + batch acknowledgment.
 Dogfood target: languageforge/lexbox (C# + Svelte/TS); repo-agnostic (R-025).

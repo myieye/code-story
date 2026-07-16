@@ -32,7 +32,7 @@ const STATES: ChunkReviewState[] = ['unseen', 'seen', 'reviewed'];
 
 /** Applies a patch in place; ignores malformed entries rather than corrupting the file. */
 export function applyReviewPatch(review: ReviewFile, patch: ReviewPatch): void {
-  for (const entry of patch.set ?? []) {
+  for (const entry of Array.isArray(patch.set) ? patch.set : []) {
     if (typeof entry.chunkId !== 'string' || !STATES.includes(entry.state)) continue;
     const next: ChunkReview = { state: entry.state };
     if (entry.markedUnseen ?? review.chunks[entry.chunkId]?.markedUnseen) next.markedUnseen = true;

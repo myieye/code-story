@@ -6,6 +6,7 @@ import { serveStatic } from '@hono/node-server/serve-static';
 import {
   applyReviewPatch,
   type Book,
+  type BookResponse,
   type Chunk,
   CORE_VERSION,
   compileBook,
@@ -18,7 +19,7 @@ import {
 } from '@code-story/core';
 import { Hono } from 'hono';
 import { computeChunks } from './chunks.js';
-import { diffRange, type ResolvedRange, rootCommit } from './git.js';
+import { diffRange, originUrl, type ResolvedRange, rootCommit } from './git.js';
 import { defaultDataHome, loadReview, repoIdFrom, reviewFilePath, saveReview } from './review-store.js';
 
 const webDist = fileURLToPath(new URL('../../web/dist', import.meta.url));
@@ -41,22 +42,36 @@ export function startServer(options: ServerOptions, requestedPort = 0): Promise<
   let diffCache: Promise<FileDiff[]> | undefined;
   let bookCache: Promise<{ book: Book; chunks: Chunk[]; contents: Map<string, FileContents> }> | undefined;
 
-  const getDiff = () => (diffCache ??= diffRange(options.repo, options.range));
+  // A rejected promise must not stay cached, or one transient git failure bricks the daemon.
+  const uncacheOnError = <T>(promise: Promise<T>, clear: () => void): Promise<T> =>
+    promise.catch((e: unknown) => {
+      clear();
+      throw e;
+    });
+
+  const getDiff = () =>
+    (diffCache ??= uncacheOnError(diffRange(options.repo, options.range), () => (diffCache = undefined)));
   const getBook = () =>
-    (bookCache ??= (async () => {
-      const files = await getDiff();
-      const { chunks, contents } = await computeChunks(options.repo, options.range, files);
-      const compiled = compileBook({ files, chunks, headSha: options.range.head });
-      return { ...compiled, contents };
-    })());
+    (bookCache ??= uncacheOnError(
+      (async () => {
+        const files = await getDiff();
+        const { chunks, contents } = await computeChunks(options.repo, options.range, files);
+        const compiled = compileBook({ files, chunks, headSha: options.range.head });
+        return { ...compiled, contents };
+      })(),
+      () => (bookCache = undefined),
+    ));
 
   let reviewCache: Promise<{ file: string; review: ReviewFile }> | undefined;
   const getReview = () =>
-    (reviewCache ??= (async () => {
-      const repoId = repoIdFrom(options.repo, await rootCommit(options.repo));
-      const file = reviewFilePath(options.dataHome ?? defaultDataHome(), repoId, options.range);
-      return { file, review: await loadReview(file, options.range) };
-    })());
+    (reviewCache ??= uncacheOnError(
+      (async () => {
+        const repoId = repoIdFrom(options.repo, await rootCommit(options.repo), await originUrl(options.repo));
+        const file = reviewFilePath(options.dataHome ?? defaultDataHome(), repoId, options.range);
+        return { file, review: await loadReview(file, options.range) };
+      })(),
+      () => (reviewCache = undefined),
+    ));
   // Serializes saves so concurrent PATCHes never interleave the write-temp/rename pair.
   let saveChain = Promise.resolve();
 
@@ -71,7 +86,8 @@ export function startServer(options: ServerOptions, requestedPort = 0): Promise<
     const diffs = Object.fromEntries(
       chunks.map((chunk) => [chunk.id, unifiedChunkLines(chunk, contents.get(chunk.file))]),
     );
-    return c.json({ ...options.range, book, chunks, diffs });
+    const response: BookResponse = { ...options.range, book, chunks, diffs };
+    return c.json(response);
   });
 
   app.get('/api/review', async (c) => {
@@ -83,8 +99,10 @@ export function startServer(options: ServerOptions, requestedPort = 0): Promise<
     const patch = (await c.req.json()) as ReviewPatch;
     const { file, review } = await getReview();
     applyReviewPatch(review, patch);
-    saveChain = saveChain.then(() => saveReview(file, review));
-    await saveChain;
+    const save = saveChain.then(() => saveReview(file, review));
+    // This request surfaces a failed save; the chain itself absorbs it so later saves still run.
+    saveChain = save.catch(() => undefined);
+    await save;
     return c.json({ ok: true });
   });
 
