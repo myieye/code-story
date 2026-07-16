@@ -11,6 +11,7 @@ import {
   exportBookMarkdown,
   type FileContents,
   type FileDiff,
+  unifiedChunkLines,
 } from '@code-story/core';
 import { Hono } from 'hono';
 import { computeChunks } from './chunks.js';
@@ -50,8 +51,11 @@ export function startServer(options: ServerOptions, requestedPort = 0): Promise<
   });
 
   app.get('/api/book', async (c) => {
-    const { book, chunks } = await getBook();
-    return c.json({ ...options.range, book, chunks });
+    const { book, chunks, contents } = await getBook();
+    const diffs = Object.fromEntries(
+      chunks.map((chunk) => [chunk.id, unifiedChunkLines(chunk, contents.get(chunk.file))]),
+    );
+    return c.json({ ...options.range, book, chunks, diffs });
   });
 
   app.get('/api/export.md', async (c) => {

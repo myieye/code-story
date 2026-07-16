@@ -1,0 +1,270 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, sans-serif;
+  color: #2c2a26;
+  background: #faf9f7;
+}
+
+#root {
+  height: 100vh;
+}
+
+.notice {
+  max-width: 640px;
+  margin: 4rem auto;
+  padding: 0 1rem;
+  font-size: 15px;
+}
+
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+.top-bar {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  padding: 8px 16px;
+  border-bottom: 1px solid #e5e2dc;
+  background: #fff;
+  flex: none;
+}
+
+.top-bar h1 {
+  font-size: 15px;
+  margin: 0;
+}
+
+.top-bar .range {
+  font-family: Consolas, monospace;
+  font-size: 12px;
+  color: #6b675f;
+}
+
+.top-bar .counts,
+.top-bar .hint {
+  font-size: 12px;
+  color: #8a857b;
+}
+
+.top-bar .spacer {
+  flex: 1;
+}
+
+.top-bar .export {
+  font-size: 12.5px;
+  color: #1a5fb4;
+  text-decoration: none;
+  border: 1px solid #c9d7ea;
+  border-radius: 5px;
+  padding: 3px 10px;
+}
+
+.body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.outline {
+  width: 280px;
+  flex: none;
+  overflow-y: auto;
+  border-right: 1px solid #e5e2dc;
+  background: #fff;
+  padding: 6px 0;
+}
+
+.outline-row {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 8px;
+  border: 0;
+  background: none;
+  padding: 5px 12px;
+  font-size: 12.5px;
+  color: #4a463f;
+  cursor: pointer;
+  text-align: left;
+}
+
+.outline-row:hover {
+  background: #f4f2ee;
+}
+
+.outline-row.current {
+  background: #eceff7;
+  color: #1c3a6e;
+}
+
+.outline-path {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: Consolas, monospace;
+  font-size: 11.5px;
+}
+
+.outline-count {
+  color: #a39e94;
+  font-size: 11px;
+}
+
+.feed-wrap {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.current-file {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 2;
+  padding: 5px 24px;
+  font-family: Consolas, monospace;
+  font-size: 12px;
+  color: #4a463f;
+  background: #f4f2eecc;
+  backdrop-filter: blur(4px);
+  border-bottom: 1px solid #e5e2dc;
+}
+
+.feed {
+  flex: 1;
+  overflow-y: auto;
+  padding-top: 28px;
+}
+
+.section-header {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 26px 24px 8px;
+}
+
+.section-path {
+  font-family: Consolas, monospace;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.section-count {
+  font-size: 12px;
+  color: #8a857b;
+}
+
+.chunk {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 6px 24px;
+}
+
+.chunk > .chunk-header,
+.chunk > .diff-view,
+.chunk > .diff-empty {
+  border: 1px solid #e5e2dc;
+}
+
+.chunk-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 12px;
+  background: #fff;
+  border-radius: 7px 7px 0 0;
+  border-bottom: 0 !important;
+}
+
+.chunk.cursor > .chunk-header {
+  background: #eceff7;
+}
+
+.chunk.cursor > .chunk-header,
+.chunk.cursor > .diff-view,
+.chunk.cursor > .diff-empty {
+  border-color: #7d9bd1;
+}
+
+.chunk-title {
+  font-family: Consolas, monospace;
+  font-size: 13px;
+  font-weight: 600;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.badge {
+  font-size: 10.5px;
+  padding: 1px 7px;
+  border-radius: 9px;
+  background: #f0eee9;
+  color: #6b675f;
+}
+
+.badge.kind-method {
+  background: #e7eef9;
+  color: #1c3a6e;
+}
+
+.badge.kind-markup-region {
+  background: #f3e9f5;
+  color: #6b2d75;
+}
+
+.badge.kind-config {
+  background: #f5efe0;
+  color: #6e5a1c;
+}
+
+.chunk-size {
+  font-family: Consolas, monospace;
+  font-size: 12px;
+}
+
+.chunk-size .added {
+  color: #1a7f37;
+}
+
+.chunk-size .removed {
+  color: #b3261e;
+}
+
+.diff-view {
+  background: #fff;
+  border-radius: 0 0 7px 7px;
+  border-top: 1px solid #eeece7 !important;
+  overflow: hidden;
+}
+
+.diff-empty {
+  background: #fff;
+  border-radius: 0 0 7px 7px;
+  padding: 10px 12px;
+  font-size: 12.5px;
+  font-style: italic;
+  color: #8a857b;
+}
+
+.end-of-book {
+  max-width: 1120px;
+  margin: 24px auto 80px;
+  padding: 20px 24px;
+  font-size: 14px;
+  color: #4a463f;
+}

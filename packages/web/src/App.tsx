@@ -1,21 +1,43 @@
 import { useEffect, useState } from 'react';
+import { type BookResponse, fetchBook } from './api.js';
+import { BookPage } from './BookPage.js';
+
+type State =
+  | { phase: 'loading' }
+  | { phase: 'error'; message: string }
+  | { phase: 'ready'; data: BookResponse };
 
 export function App() {
-  const [health, setHealth] = useState<'checking' | 'ok' | 'error'>('checking');
+  const [state, setState] = useState<State>({ phase: 'loading' });
 
   useEffect(() => {
-    fetch('/api/health')
-      .then((r) => (r.ok ? setHealth('ok') : setHealth('error')))
-      .catch(() => setHealth('error'));
+    fetchBook()
+      .then((data) => setState({ phase: 'ready', data }))
+      .catch((e: unknown) => setState({ phase: 'error', message: e instanceof Error ? e.message : String(e) }));
   }, []);
 
-  return (
-    <main style={{ fontFamily: 'system-ui, sans-serif', maxWidth: 1120, margin: '4rem auto' }}>
-      <h1>code-story</h1>
-      <p>No book loaded yet — diff ingestion arrives in the next slice.</p>
-      <p>
-        Daemon: {health === 'checking' ? 'checking…' : health === 'ok' ? 'connected' : 'unreachable'}
-      </p>
-    </main>
-  );
+  if (state.phase === 'loading') {
+    return <main className="notice">Compiling the book…</main>;
+  }
+  if (state.phase === 'error') {
+    return (
+      <main className="notice">
+        <h1>code-story</h1>
+        <p>Could not load the book: {state.message}</p>
+      </main>
+    );
+  }
+  if (state.data.book.sections.length === 0) {
+    return (
+      <main className="notice">
+        <h1>code-story</h1>
+        <p>
+          No changes between <code>{state.data.base.slice(0, 12)}</code> and{' '}
+          <code>{state.data.head.slice(0, 12)}</code>. Wrong base? Run{' '}
+          <code>code-story &lt;base&gt;..&lt;head&gt;</code> with the range you meant.
+        </p>
+      </main>
+    );
+  }
+  return <BookPage data={state.data} />;
 }

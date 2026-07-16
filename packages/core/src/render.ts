@@ -1,0 +1,62 @@
+import { type FileContents } from './export.js';
+import { type Chunk } from './model.js';
+
+export type UnifiedLineType = 'context' | 'add' | 'del' | 'gap';
+
+export interface UnifiedLine {
+  type: UnifiedLineType;
+  text: string;
+  /** Base-side line number (del lines; context lines of deleted files). */
+  base?: number;
+  /** Head-side line number (add and context lines). */
+  head?: number;
+}
+
+/**
+ * Renders a chunk as unified-diff rows built directly from its hunks — del lines from base
+ * content, add lines from head content, context from the primary side. Precise by construction:
+ * no re-diffing of sliced texts, so no spurious adds/dels at slice edges. Empty for chunks with
+ * no fetchable content (binary, submodules).
+ */
+export function unifiedChunkLines(chunk: Chunk, contents: FileContents | undefined, context = 3): UnifiedLine[] {
+  const primary = contents?.head ?? contents?.base;
+  if (!contents || !primary || chunk.hunks.length === 0) return [];
+  const deleted = !contents.head;
+
+  const out: UnifiedLine[] = [];
+  // Highest primary-side line already emitted, so overlapping context between close hunks merges
+  let emitted = 0;
+
+  const pushContext = (from: number, to: number) => {
+    for (let n = Math.max(from, emitted + 1, 1); n <= Math.min(to, primary.length); n++) {
+      const text = primary[n - 1] ?? '';
+      out.push(deleted ? { type: 'context', text, base: n } : { type: 'context', text, head: n });
+      emitted = n;
+    }
+  };
+
+  const hunks = [...chunk.hunks].sort((a, b) =>
+    deleted ? a.baseStart - b.baseStart : a.headStart - b.headStart,
+  );
+  for (const h of hunks) {
+    const [start, count] = deleted ? [h.baseStart, h.baseCount] : [h.headStart, h.headCount];
+    // For zero-count hunks, start is the line *before* the change point (unified diff semantics)
+    const beforeEnd = count > 0 ? start - 1 : start;
+    if (out.length > 0 && beforeEnd - context > emitted) out.push({ type: 'gap', text: '' });
+    pushContext(beforeEnd - context + 1, beforeEnd);
+
+    if (!deleted) {
+      for (let i = 0; i < h.baseCount; i++) {
+        out.push({ type: 'del', text: contents.base?.[h.baseStart - 1 + i] ?? '', base: h.baseStart + i });
+      }
+    }
+    for (let i = 0; i < count; i++) {
+      const text = primary[start - 1 + i] ?? '';
+      out.push(deleted ? { type: 'del', text, base: start + i } : { type: 'add', text, head: start + i });
+      emitted = start + i;
+    }
+
+    pushContext(beforeEnd + count + 1, beforeEnd + count + context);
+  }
+  return out;
+}
