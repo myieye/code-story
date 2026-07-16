@@ -165,6 +165,12 @@ isolation — it lands in the MAIN worktree; keep the tree clean while resumed a
 pick-up-here doc): low-signal helpers + `checkCoverage` consolidated in core,
 `detectChangeTypes` seam in chunker, and web rows now occurrence-keyed (`chunkId#ordinal` —
 the R-004/M1 blocker cleared; walk stops = occurrences, progress = distinct chunks). Its two
-listed leftovers (in-repo dogfood-walk harness; BookPage hook extraction) are documented
-there with shapes — next session starts by reading that doc. Dogfood target: languageforge/lexbox (C# + Svelte/TS); repo-agnostic
+listed leftovers are done (tools/dogfood-walk.mjs; the BookPage hooks). **Next up (M2 opening
+move): draft spec 02 — tier-1 AI ordering.** Spec 01's tier-1 section is the sketch
+(permutation-only, coverage untouchable, top-tier model, async daemon job, book renders tier 0
+immediately). The real design question is the *readability eval*: tier 0 already scores 0 on
+`--check-order`, so the AI tier must be judged on story quality (R-042: AI only where it truly
+earns intuition/readability; R-034 eval-first; R-036 register). Draft the spec, grill it, get
+Tim's scoping (auto-pick the gradual option), then file M2 slices just-in-time. Evidence
+inputs: baseline doc dogfood-1 section; #21 stays evidence-gated. Dogfood target: languageforge/lexbox (C# + Svelte/TS); repo-agnostic
 (R-025).
