@@ -39,10 +39,16 @@ BYO-agent threads whose code changes are verifiable patches.
   straight to main; no per-push permission needed — this overrides Tim's global commit rule for
   this repo only). The bar is not "it builds": actually *use* the tool on real diffs and verify
   it genuinely eases the wall-of-diffs burden before calling anything done.
-- **Quota discipline (Tim, 2026-07-16)**: Tim's Claude quota is shared with his other work —
-  don't burn it. Pace the build across sessions; prefer direct work over agent fan-outs; don't
-  re-run or re-read without a question to answer; check quota (`quota-status` skill) before any
-  heavy phase and stop comfortably short of limits rather than sprinting.
+- **Quota discipline (Tim, 2026-07-16; relaxed later same day)**: originally "don't burn it —
+  pace across sessions, prefer direct work over fan-outs." Tim then granted: "you have a large
+  quota available to you. go nuts. progress at will. use subagents to protect your context
+  window." Current stance: work liberally, delegate bulky self-contained work to subagents
+  (one tier down) to keep the root context lean, still check quota (`quota-status` skill)
+  before heavy phases and don't sprint into a hard limit.
+- **Gradual option auto-pick (Tim, 2026-07-16)**: when a scoping choice is gradual-vs-ambitious,
+  Tim always picks gradual — choose it automatically, record the deferred ambitious path in the
+  spec, don't ask. (He confirmed this after picking the gradual option on all four spec 01
+  questions.)
 - **Commits**: `git config user.email noreply@anthropic.com`, `user.name Claude` (a stop-hook
   enforces this).
 - **GitHub provenance in this repo**: everything here is Claude-authored by default (vibe
