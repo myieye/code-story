@@ -15,6 +15,8 @@ export interface FileDiff {
   basePath?: string;
   status: FileStatus;
   binary: boolean;
+  /** Gitlink entry (mode 160000) — has hunks but no blob content to fetch. */
+  submodule?: boolean;
   hunks: Hunk[];
 }
 
@@ -38,6 +40,10 @@ export function parseGitDiff(diffText: string): FileDiff[] {
       continue;
     }
     if (!current) continue;
+
+    if (line.endsWith(' 160000') && /^(index [0-9a-f]+\.\.[0-9a-f]+|(old|new|new file|deleted file) mode)/.test(line)) {
+      current.submodule = true;
+    }
 
     if (line.startsWith('new file mode')) {
       current.status = 'added';

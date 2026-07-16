@@ -79,6 +79,18 @@ describe('parseGitDiff', () => {
     expect(parseGitDiff(binary)[0]).toMatchObject({ path: 'logo.png', binary: true, hunks: [] });
   });
 
+  it('flags submodule (gitlink) entries', () => {
+    const submodule = `diff --git a/backend/harmony b/backend/harmony
+index 1111111..2222222 160000
+--- a/backend/harmony
++++ b/backend/harmony
+@@ -1 +1 @@
+-Subproject commit 1111111
++Subproject commit 2222222
+`;
+    expect(parseGitDiff(submodule)[0]).toMatchObject({ path: 'backend/harmony', submodule: true });
+  });
+
   it('parses multi-file diffs', () => {
     expect(parseGitDiff(modified + added + binary)).toHaveLength(3);
   });

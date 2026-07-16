@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { chunkId } from './index.js';
+import { chunkId } from './model.js';
 
 describe('chunkId', () => {
   it('is stable and readable', () => {
