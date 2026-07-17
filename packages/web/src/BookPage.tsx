@@ -7,7 +7,9 @@ import { batchableSections, findUnreviewed, pendingStubCount } from './review-lo
 import { estimateRowHeight, RowView, type SectionAck } from './RowView.js';
 import { flattenBook, occurrenceKey, type Row } from './rows.js';
 import { ShortcutOverlay } from './ShortcutOverlay.js';
+import { affordanceLabel } from './context-panel-logic.js';
 import { useBookKeymap } from './useBookKeymap.js';
+import { useContextPanels } from './useContextPanels.js';
 import { useNarration } from './useNarration.js';
 import { useOrderOverlay } from './useOrderOverlay.js';
 import { useReview } from './useReview.js';
@@ -34,9 +36,12 @@ export function BookPage({
     [narration],
   );
 
+  const context = useContextPanels();
+
   const flat = useMemo(() => flattenBook(bookData.book, bookData.chunks), [bookData]);
   const scrollRef = useRef<HTMLDivElement>(null);
   const rowEls = useRef(new Map<number, HTMLElement>());
+  const panelEls = useRef(new Map<string, HTMLElement>());
 
   const [cursor, setCursor] = useState(() => {
     const resumed = initialReview.cursor ? flat.firstIndexByChunkId.get(initialReview.cursor) : undefined;
@@ -129,7 +134,11 @@ export function BookPage({
 
   useEffect(() => {
     const id = chunkRowAt(cursor)?.chunk.id;
-    if (id) review.setCursor(id);
+    if (id) {
+      review.setCursor(id);
+      // On-demand, one request per focused chunk (R-009): reveals the affordance if it has any.
+      context.ensureFetched(id);
+    }
   }, [cursor]);
 
   useEffect(() => {
@@ -177,6 +186,24 @@ export function BookPage({
     setCollapsed(row.chunk, !isCollapsed(row.chunk));
   };
 
+  const toggleDefinitionsFor = (chunk: Chunk) => {
+    const outcome = context.toggle(chunk.id);
+    if (outcome === 'expanded') {
+      say(`Showing ${affordanceLabel(context.payloadFor(chunk.id))}. Escape returns to the chunk.`);
+      // Hand focus to the panel once the expand has rendered it (two frames, like row focus).
+      requestAnimationFrame(() =>
+        requestAnimationFrame(() => panelEls.current.get(chunk.id)?.focus({ preventScroll: true })),
+      );
+    } else if (outcome === 'collapsed') {
+      say('Definitions hidden.');
+    }
+  };
+
+  const toggleDefinitionsCurrent = () => {
+    const row = chunkRowAt(cursor);
+    if (row) toggleDefinitionsFor(row.chunk);
+  };
+
   const markSection = (sectionId: string) => {
     const batch = batches.get(sectionId);
     if (!batch) return;
@@ -211,6 +238,7 @@ export function BookPage({
     markCurrent,
     unmarkCurrent,
     toggleCollapseCurrent,
+    toggleDefinitionsCurrent,
   });
 
   useSeenTracking({ scrollRef, virtualizer, flat, stateOf: review.stateOf, setSeen: review.setSeen });
@@ -391,6 +419,13 @@ export function BookPage({
                       }}
                       onJumpNext={() => jumpUnreviewed(1)}
                       onExpand={(chunk) => setCollapsed(chunk, false)}
+                      contextPayload={row.kind === 'chunk' ? context.payloadFor(row.chunk.id) : undefined}
+                      panelExpanded={row.kind === 'chunk' && context.isExpanded(row.chunk.id)}
+                      onToggleDefinitions={toggleDefinitionsFor}
+                      registerPanelEl={(chunkId, el) => {
+                        if (el) panelEls.current.set(chunkId, el);
+                        else panelEls.current.delete(chunkId);
+                      }}
                     />
                   </div>
                 );

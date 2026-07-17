@@ -1,6 +1,14 @@
-import type { BookResponse, NarrationResponse, OrderPatch, OrderResponse, ReviewFile, ReviewPatch } from '@code-story/core';
+import type {
+  BookResponse,
+  ContextResponse,
+  NarrationResponse,
+  OrderPatch,
+  OrderResponse,
+  ReviewFile,
+  ReviewPatch,
+} from '@code-story/core';
 
-export type { BookResponse, NarrationResponse, OrderResponse };
+export type { BookResponse, ContextResponse, NarrationResponse, OrderResponse };
 
 export async function fetchBook(): Promise<BookResponse> {
   const response = await fetch('/api/book');
@@ -24,6 +32,13 @@ export async function fetchNarration(): Promise<NarrationResponse> {
   const response = await fetch('/api/narration');
   if (!response.ok) throw new Error(`GET /api/narration failed: ${response.status}`);
   return response.json() as Promise<NarrationResponse>;
+}
+
+/** On-demand context for one chunk — facts only, no model calls (spec 04). Cached by the caller. */
+export async function fetchContext(chunkId: string): Promise<ContextResponse> {
+  const response = await fetch(`/api/context?chunk=${encodeURIComponent(chunkId)}`);
+  if (!response.ok) throw new Error(`GET /api/context failed: ${response.status}`);
+  return response.json() as Promise<ContextResponse>;
 }
 
 /** Fire-and-forget from the caller's perspective — the banner/indicator decision is local-first. */
