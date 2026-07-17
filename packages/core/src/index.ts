@@ -3,6 +3,7 @@ export * from './book.js';
 export * from './check-order.js';
 export * from './chunker.js';
 export * from './classify.js';
+export * from './context.js';
 export * from './coverage.js';
 export * from './export.js';
 export * from './diff.js';
