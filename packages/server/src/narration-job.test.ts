@@ -238,3 +238,22 @@ describe('per-text gate salvage (#56)', () => {
     expect(bEntry.gateFailures?.join(' ')).toContain('2 sentences');
   });
 });
+
+describe('opener re-asks (#57)', () => {
+  test('the opener gets a second re-ask before falling open', async () => {
+    const file = freshOverlayFile();
+    let openerAsks = 0;
+    const result = await runNarrationJob({
+      ...base(file),
+      invoke: async (p) => {
+        if (!isOpener(p)) return envSection('Intro.');
+        openerAsks++;
+        return openerAsks < 3
+          ? envOpener('One. Two. Three. Four sentences is too many.')
+          : envOpener('A change overview. Follow the thread.');
+      },
+    });
+    expect(openerAsks).toBe(3);
+    expect(result.overlay.opener.text).toBe('A change overview. Follow the thread.');
+  });
+});

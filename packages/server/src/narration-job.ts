@@ -90,7 +90,8 @@ export async function runNarrationJob(input: NarrationJobInput): Promise<Narrati
     overlay.opener = resumable.opener;
   } else {
     const manifest = renderOrderManifest(buildOrderManifest(input.book, input.graph, input.chunks));
-    const result = await generate(openerNarrationPrompt(manifest), parseOpener, gateText('opener'), { invoke, model: input.model, cwd: input.cwd });
+    // The opener fails its caps more than sections do (#57) and is one cheap call: two re-asks.
+    const result = await generate(openerNarrationPrompt(manifest), parseOpener, gateText('opener'), { invoke, model: input.model, cwd: input.cwd, gateRetries: 2 });
     overlay.opener =
       'value' in result ? { text: result.value, key: openerKey } : { text: '', key: openerKey, failures: result.failures };
   }
@@ -163,6 +164,7 @@ interface GenCtx {
   invoke: NonNullable<NarrationJobInput['invoke']>;
   model: string;
   cwd: string;
+  gateRetries?: number;
 }
 
 /**
@@ -179,7 +181,7 @@ async function generate<T>(
 ): Promise<{ value: T } | { failures: string[]; last?: T }> {
   let transientLeft = TRANSIENT_BACKOFF_MS.length;
   let invalidLeft = 1;
-  let gateLeft = 1;
+  let gateLeft = ctx.gateRetries ?? 1;
   let prompt = basePrompt;
   for (;;) {
     let raw: string;
