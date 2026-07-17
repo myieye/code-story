@@ -1,6 +1,7 @@
 export * from './api.js';
 export * from './book.js';
 export * from './check-order.js';
+export * from './chunk-graph.js';
 export * from './chunker.js';
 export * from './classify.js';
 export * from './context.js';

@@ -238,6 +238,25 @@ function stronglyConnected(nodes: string[], deps: Map<string, string[]>): string
   return sccs;
 }
 
+/**
+ * File-level test→impl anchor pairs the book compile derives for test placement (spec 05): each
+ * test-role file mapped to the impl it anchors after (last impl it imports, else its stem match).
+ * Reuses the exact role/topo/anchor logic `orderFiles` runs, so a `test-anchor` graph edge lands on
+ * the same relation the story uses. `files` is the book's section files (git order).
+ */
+export function testImplAnchors(files: string[], chunks: Chunk[], graph: ImportGraph): { test: string; impl: string }[] {
+  const roles = fileRoles(files, chunks, graph);
+  const byRole = (role: FileRole) => files.filter((f) => roles.get(f) === role);
+  const impl = topoSort(byRole('impl'), graph);
+  const implOrder = new Map(impl.map((f, i) => [f, i]));
+  const out: { test: string; impl: string }[] = [];
+  for (const test of byRole('test')) {
+    const anchor = anchorImpl(test, impl, implOrder, graph);
+    if (anchor !== undefined) out.push({ test, impl: anchor });
+  }
+  return out;
+}
+
 /** The impl section a test goes after: the LAST impl it imports, else the best stem match. */
 function anchorImpl(
   test: string,
