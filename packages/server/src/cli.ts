@@ -15,6 +15,7 @@ import {
   renderOrderManifest,
 } from '@code-story/core';
 import open from 'open';
+import { buildChunkGraph } from './chunk-graph-build.js';
 import { computeChunks } from './chunks.js';
 import { diffRange, originUrl, resolveRange, rootCommit } from './git.js';
 import { runNarrationJob } from './narration-job.js';
@@ -36,6 +37,7 @@ const noOpen = args.includes('--no-open');
 const dumpDiff = args.includes('--dump-diff');
 const dumpChunks = args.includes('--dump-chunks');
 const dumpGraph = args.includes('--dump-graph');
+const dumpChunkGraph = args.includes('--dump-chunk-graph');
 const checkOrderFlag = args.includes('--check-order');
 const dumpManifest = args.includes('--dump-manifest');
 const aiOrder = args.includes('--ai-order');
@@ -62,7 +64,7 @@ if (
   (orderChoice !== 'tier0' && orderChoice !== 'ai')
 ) {
   console.error(
-    'Usage: code-story <base>..<head> [--export book.md] [--narration] [--order tier0|ai] [--ai-order] [--no-ai-order] [--narrate] [--model <id>] [--port <n>] [--dump-diff] [--dump-chunks] [--dump-graph] [--check-order] [--dump-manifest] [--no-open]\n' +
+    'Usage: code-story <base>..<head> [--export book.md] [--narration] [--order tier0|ai] [--ai-order] [--no-ai-order] [--narrate] [--model <id>] [--port <n>] [--dump-diff] [--dump-chunks] [--dump-graph] [--dump-chunk-graph] [--check-order] [--dump-manifest] [--no-open]\n' +
       '\n' +
       'AI reading order is the default: the daemon runs the ordering job in the background on\n' +
       'compile and applies it on the next book load. --no-ai-order (or CODE_STORY_NO_AI_ORDER)\n' +
@@ -106,6 +108,29 @@ if (dumpGraph) {
   const { graph } = await computeChunks(repo, resolved, files);
   for (const edge of graph.edges) console.log(`${edge.from} -> ${edge.to}`);
   console.log(`\n${graph.edges.length} edges, ${graph.unresolved} unresolved specifiers`);
+  process.exit(0);
+}
+
+if (dumpChunkGraph) {
+  const files = await diffRange(repo, resolved);
+  const { chunks, contents, graph } = await computeChunks(repo, resolved, files);
+  const { book, chunks: compiled } = compileBook({ files, chunks, graph, headSha: resolved.head });
+  const cg = await buildChunkGraph({ chunks: compiled, contents, graph, book, files, headSha: resolved.head });
+
+  const label = (id: string) => {
+    const c = compiled.find((k) => k.id === id);
+    return c ? `${c.file}${c.symbolPath.length ? ' :: ' + c.symbolPath.join('.') : ''}` : id;
+  };
+  const byKind: Record<string, number> = {};
+  for (const e of cg.edges) {
+    byKind[e.kind] = (byKind[e.kind] ?? 0) + 1;
+    const lines = e.fromLines.map((r) => (r.start === r.end ? `${r.start}` : `${r.start}-${r.end}`)).join(',');
+    console.log(`${label(e.from)}  →  ${label(e.to)}  [${e.kind}, ${e.source}${lines ? `, L${lines}` : ''}]`);
+  }
+  const summary = Object.entries(byKind)
+    .map(([k, n]) => `${n} ${k}`)
+    .join(', ');
+  console.log(`\n${cg.edges.length} edges${summary ? ` (${summary})` : ''} over ${compiled.length} chunks`);
   process.exit(0);
 }
 
