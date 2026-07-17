@@ -34,6 +34,12 @@ export async function fileAt(repo: string, sha: string, path: string): Promise<s
   return git(repo, ['show', `${sha}:${path}`]);
 }
 
+/** Every file path present at a commit — the head path index the context resolver matches against. */
+export async function listTree(repo: string, sha: string): Promise<string[]> {
+  const out = await git(repo, ['ls-tree', '-r', '--name-only', sha]);
+  return out.split('\n').filter((p) => p.length > 0);
+}
+
 /** First root commit — a repo identity stable across clones, branches, and directory moves. */
 export async function rootCommit(repo: string): Promise<string> {
   const out = await git(repo, ['rev-list', '--max-parents=0', '--first-parent', 'HEAD']);
