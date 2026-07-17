@@ -236,6 +236,18 @@ prompt iteration + re-eval, actionable now). Mid-dogfood harvest: #44 fixed (tru
 keys, 42% section loss; PRs #45+#47 — suffix + "chunk "-label resolution, opener failures
 recorded on overlay). Tim's two reads are open: #28 (blind order A/B, 3 pairs) and the
 narrated-vs-bare read (`docs/evals/narration-read-2026-07-17/`, spec-03 gate half).
-Next: **#33** (.svelte.ts graph fix + CORE_VERSION bump) and **#32** (cycle-stall fallback)
-— small tier-0 fixes; then **#48**; then ship decisions wait on Tim's reads.
+**Tier-0 redemption complete (late window)**: #33 (PR #50, recursive `stripCodeExt`,
+CORE_VERSION 0.0.2), #32 (PR #51, cycle-stall breaks one node from the smallest-external-
+in-degree SCC via Tarjan, 0.0.3), and #52 (PR #53, test-block anchor inheritance +
+helper-before-importer Kahn, 0.0.4 — split from #32 when the real book showed the remaining
+inversions were placement-rule, not cycle). Verified on all three dogfood subjects: tier-0
+`--check-order` is **0 import inversions / 0 test-before-impl** on 2309, 2357, 2379 (only
+unavoidable in-cycle pairs). Suite core 160 / server 38 / web 33 = 231. Note: three
+CORE_VERSION bumps in one night invalidated all persisted overlays — regenerate before any
+overlay-dependent demo.
+Next: **#48** (narration-3 prompt vs duplication claims + re-run narration eval on both
+subjects — the concrete open slice); #21/#27 stay evidence-gated watches; ship decisions
+(M2 order default-on, M3 narration default-on) wait on Tim's two reads (#28 blind order A/B,
+`docs/evals/narration-read-2026-07-17/` narrated-vs-bare). After #48: M4 scoping (context
+payloads, R-006/R-008 — spec 03 non-goals name the door).
 Dogfood target: languageforge/lexbox (C# + Svelte/TS); repo-agnostic (R-025).
