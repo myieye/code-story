@@ -1,4 +1,7 @@
+import { type CompiledBook } from './book.js';
+import { type ChapterComposition, type CompileChapterBookInput, compileChapterBook, validateChapterComposition } from './chapters.js';
 import { fnv1a } from './chunker.js';
+import { CALLS_DFS_KINDS, type ChunkGraph, edgesOfKinds } from './chunk-graph.js';
 import { type ImportGraph } from './import-graph.js';
 import {
   type Book,
@@ -12,6 +15,7 @@ import {
   lowSignalReason,
 } from './model.js';
 import { fileRoles } from './roles.js';
+import { type StoryConfig } from './story-config.js';
 
 export interface OrderManifestSection {
   /** Section id (= file path). */
@@ -45,6 +49,26 @@ export interface OrderOverlay {
 }
 
 /**
+ * Chapter-mode order overlay (spec 05, #77): the AI proposes a chapter partition of the story
+ * chunks, not a section permutation. `rationales` are keyed by chapter section id
+ * (`chapter:<anchorChunkId>`) so the web's section-header lookup works on the recomposed book.
+ */
+export interface OrderOverlayV2 {
+  version: 2;
+  bookFingerprint: string;
+  /** The proposed chapter partition of the story chunk ids; each chapter's first id is its anchor. */
+  chapters: string[][];
+  rationales: Record<string, string>;
+  model: string;
+  promptVersion: string;
+  createdAt: string;
+  appliedAt?: string;
+  dismissedAt?: string;
+}
+
+export type AnyOrderOverlay = OrderOverlay | OrderOverlayV2;
+
+/**
  * Digest over the book's derived identity: head + CORE_VERSION + each section's occurrence
  * chunk ids in order. Chunk ids already embed content fingerprints, so this changes whenever
  * section membership, chunk content, or section order changes — not just the head.
@@ -57,8 +81,8 @@ export function bookFingerprint(book: Book): string {
   return fnv1a(parts.join('\0'));
 }
 
-/** A persisted overlay is only usable against the exact book it was computed for. */
-export function isOverlayFresh(book: Book, overlay: OrderOverlay): boolean {
+/** A persisted overlay (v1 or v2) is only usable against the exact book it was computed for. */
+export function isOverlayFresh(book: Book, overlay: AnyOrderOverlay): boolean {
   return overlay.bookFingerprint === bookFingerprint(book);
 }
 
@@ -174,4 +198,77 @@ export function applyOrderOverlay(book: Book, graph: ImportGraph, chunks: Chunk[
   const reorderedStory = overlay.permutation.map((key) => sectionsById.get(key)!);
   const tail = pinnedTail.map((key) => sectionsById.get(key)!);
   return { ...book, sections: [...reorderedStory, ...tail] };
+}
+
+export interface ChunkOrderManifest {
+  /** Fingerprint of the tier-0 chapter book — the freshness key the resulting overlay carries. */
+  bookFingerprint: string;
+  /** Story chunks in tier-0 order — the chunks the model may regroup. Tests/low-signal/leftovers omitted. */
+  chunks: { id: string; title: string; kind: ChunkKind; lines: number; file: string }[];
+  /** `calls` edges among story chunks, each with its first call-site line. */
+  calls: { fromId: string; toId: string; fromLine: number }[];
+  /** The deterministic tier-0 grouping — the model's starting point (= storyComposition). */
+  tier0Chapters: string[][];
+  estimatedTokens: number;
+}
+
+/**
+ * The chapter-mode ordering job's input (spec 05, #77): the story chunks, their `calls` edges, and
+ * the tier-0 grouping to start from. Tests, low-signal, and leftovers are placed deterministically
+ * by the applier, so they never enter the manifest — the model only regroups story chunks.
+ */
+export function buildChunkOrderManifest(
+  book: Book,
+  chunks: Chunk[],
+  chunkGraph: ChunkGraph,
+  storyComposition: string[][],
+): ChunkOrderManifest {
+  const storyIds = storyComposition.flat();
+  const storyIdSet = new Set(storyIds);
+  const chunkById = new Map(chunks.map((c) => [c.id, c]));
+
+  const manifestChunks = storyIds.map((id) => {
+    const chunk = chunkById.get(id)!;
+    return { id, title: chunkTitle(chunk), kind: chunk.kind, lines: chunkLineCount(chunk), file: chunk.file };
+  });
+
+  const calls = edgesOfKinds(chunkGraph.edges, CALLS_DFS_KINDS)
+    .filter((e) => storyIdSet.has(e.from) && storyIdSet.has(e.to) && e.from !== e.to)
+    .map((e) => ({ fromId: e.from, toId: e.to, fromLine: e.fromLines[0]?.start ?? 0 }));
+
+  const draft = { bookFingerprint: bookFingerprint(book), chunks: manifestChunks, calls, tier0Chapters: storyComposition };
+  const estimatedTokens = Math.ceil(renderChunkOrderManifest(draft).length / 4);
+  return { ...draft, estimatedTokens };
+}
+
+/**
+ * Compact plain-text rendering of the chunk-order manifest for the model to read: one line per story
+ * chunk, a `calls:` block, the tier-0 grouping as numbered chapters, and a note that the rest is
+ * placed automatically. Plain text, not JSON — the model reads it as prose (mirrors `renderOrderManifest`).
+ */
+export function renderChunkOrderManifest(manifest: Omit<ChunkOrderManifest, 'estimatedTokens'>): string {
+  const chunkLines = manifest.chunks.map((c) => `${c.id} — ${c.title} (${c.kind}, ~${c.lines} lines) [${c.file}]`);
+  const callLines = manifest.calls.map((e) => `${e.fromId} -> ${e.toId} (line ${e.fromLine})`);
+  const callsBlock = ['calls:', ...(callLines.length > 0 ? callLines : ['(none)'])].join('\n');
+  const chapterLines = manifest.tier0Chapters.map((ids, i) => `${i + 1}. ${ids.join(', ')}`);
+  const note = 'Tests, low-signal chunks, and leftovers are placed automatically — order only the chunks above.';
+  return [chunkLines.join('\n'), callsBlock, chapterLines.join('\n'), note].join('\n\n');
+}
+
+/**
+ * Applies a chapter-mode order overlay (spec 05, #77). Fail-open: compiles the tier-0 chapter book,
+ * then returns `undefined` unless the overlay is fresh against it AND its composition is an exact
+ * partition of the tier-0 story chunks; on success it returns the recomposed book. Unlike
+ * `applyOrderOverlay` (which returns the tier-0 book by reference on failure), this returns
+ * `undefined` on failure so the caller can tell "applied" from "fell open to tier 0".
+ */
+export function applyChapterOverlay(
+  input: CompileChapterBookInput,
+  config: StoryConfig,
+  overlay: OrderOverlayV2,
+): CompiledBook | undefined {
+  const tier0 = compileChapterBook(input, config);
+  if (!isOverlayFresh(tier0.book, overlay)) return undefined;
+  if (!validateChapterComposition(tier0.storyComposition.flat(), overlay.chapters).ok) return undefined;
+  return compileChapterBook(input, config, { chapters: overlay.chapters } satisfies ChapterComposition);
 }
