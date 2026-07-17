@@ -2,7 +2,7 @@ import type { ContextPayload } from './context.js';
 import type { ImportGraph } from './import-graph.js';
 import type { Book, Chunk } from './model.js';
 import type { NarrationOverlay } from './narration.js';
-import type { OrderOverlay } from './order.js';
+import type { AnyOrderOverlay } from './order.js';
 import type { UnifiedLine } from './render.js';
 
 /**
@@ -18,11 +18,18 @@ export interface BookResponse {
   diffs: Record<string, UnifiedLine[]>;
   /** Changed-files import graph — applyOrderOverlay needs it web-side (spec 02). */
   graph: ImportGraph;
+  /**
+   * The chapter book recomposed with a fresh v2 order overlay applied (spec 05, #77). Set only in
+   * chapter mode when the stored overlay is v2 and applies cleanly — the web can't recompose a
+   * chapter book itself (it has no chunk graph), so the server does it per request. Absent in file
+   * mode and whenever no fresh v2 overlay exists.
+   */
+  aiBook?: Book;
 }
 
 /** `GET /api/order`: the persisted AI order overlay (null when absent or stale) + job state. */
 export interface OrderResponse {
-  overlay: OrderOverlay | null;
+  overlay: AnyOrderOverlay | null;
   job: {
     status: 'running' | 'done' | 'failed';
     model: string;

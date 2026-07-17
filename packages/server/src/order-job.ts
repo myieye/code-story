@@ -2,16 +2,24 @@ import { mkdir } from 'node:fs/promises';
 import {
   applyOrderOverlay,
   type Book,
+  buildChunkOrderManifest,
   buildOrderManifest,
   checkOrder,
   type Chunk,
+  type ChunkOrderManifest,
+  type ChunkGraph,
+  type CompileChapterBookInput,
+  compileChapterBook,
   type ImportGraph,
   type OrderOverlay,
+  type OrderOverlayV2,
   renderOrderManifest,
+  type StoryConfig,
+  validateChapterComposition,
   validatePermutation,
 } from '@code-story/core';
 import { extractJsonBlock, invokeClaudeJson } from './claude-cli.js';
-import { ORDER_PROMPT_VERSION, orderPrompt } from './order-prompt.js';
+import { CHAPTER_ORDER_PROMPT_VERSION, chapterOrderPrompt, ORDER_PROMPT_VERSION, orderPrompt } from './order-prompt.js';
 
 const MANIFEST_TOKEN_LIMIT = 8000;
 const JOB_TIMEOUT_MS = 10 * 60 * 1000;
@@ -47,6 +55,18 @@ export interface OrderJobInput {
 }
 
 /**
+ * The extra input the chapter-mode ordering job needs (spec 05, #77). `book`/`chunks` on
+ * `ChapterOrderJobInput` are the *tier-0 chapter* book and its compiled chunks (the manifest source);
+ * `input` is what recomposition and the checkOrder pre-gate feed back into `compileChapterBook`.
+ */
+export interface ChapterOrderJobInput extends OrderJobInput {
+  input: CompileChapterBookInput;
+  config: StoryConfig;
+  chunkGraph: ChunkGraph;
+  storyComposition: string[][];
+}
+
+/**
  * Runs the tier-1 ordering job: manifest → claude -p → validated overlay. Throws OrderJobError;
  * never returns a partial result. The caller persists the overlay.
  */
@@ -63,13 +83,52 @@ export async function runOrderJob(input: OrderJobInput): Promise<OrderOverlay> {
   }
 
   const prompt = orderPrompt(renderOrderManifest(manifest));
+  return invokeUntilValid(input, prompt, (raw) => tryBuildOverlay(input, manifest, raw));
+}
+
+/**
+ * Runs the chapter-mode ordering job (spec 05, #77): chunk manifest → aliased prompt → validated v2
+ * overlay. Same size guards and retry discipline as `runOrderJob`; the model regroups story chunks
+ * into chapters rather than permuting sections.
+ */
+export async function runChapterOrderJob(input: ChapterOrderJobInput): Promise<OrderOverlayV2> {
+  const manifest = buildChunkOrderManifest(input.book, input.chunks, input.chunkGraph, input.storyComposition);
+  if (manifest.estimatedTokens > MANIFEST_TOKEN_LIMIT) {
+    throw new OrderJobError(
+      'refused',
+      `manifest is ~${manifest.estimatedTokens} tokens (limit ${MANIFEST_TOKEN_LIMIT}) — a range this large reads fine in tier-0 order`,
+    );
+  }
+  if (manifest.chunks.length < 3) {
+    throw new OrderJobError('refused', `only ${manifest.chunks.length} story chunks — nothing to reorder`);
+  }
+
+  // The model never sees raw chunk ids — long ids get truncated in replies (#44). Aliases are
+  // assigned in manifest order (= tier-0 story order).
+  const aliasOf = new Map<string, string>();
+  const idOf = new Map<string, string>();
+  manifest.chunks.forEach((c, i) => {
+    const alias = `c${i + 1}`;
+    aliasOf.set(c.id, alias);
+    idOf.set(alias, c.id);
+  });
+
+  const prompt = chapterOrderPrompt(renderAliasedManifest(manifest, aliasOf), input.config.direction);
+  return invokeUntilValid(input, prompt, (raw) => tryBuildChapterOverlay(input, manifest, idOf, raw));
+}
+
+/** Shared invoke → validate loop: transient errors back off, one bad-output retry, then throws. */
+async function invokeUntilValid<T>(
+  input: OrderJobInput,
+  prompt: string,
+  build: (raw: string) => { overlay: T } | { error: string },
+): Promise<T> {
   const invoke = input.invoke ?? ((p, m, cwd) => invokeClaudeJson(p, m, cwd, JOB_TIMEOUT_MS));
   // A fresh install has no data home yet; spawn with a missing cwd dies instantly (ENOENT).
   await mkdir(input.cwd, { recursive: true });
 
   let transientLeft = TRANSIENT_BACKOFF_MS.length;
   let invalidLeft = 1;
-  let lastError = '';
   for (;;) {
     let raw: string;
     try {
@@ -80,10 +139,9 @@ export async function runOrderJob(input: OrderJobInput): Promise<OrderOverlay> {
       continue;
     }
 
-    const parsed = tryBuildOverlay(input, manifest, raw);
+    const parsed = build(raw);
     if ('overlay' in parsed) return parsed.overlay;
-    lastError = parsed.error;
-    if (invalidLeft === 0) throw new OrderJobError('invalid-output', lastError);
+    if (invalidLeft === 0) throw new OrderJobError('invalid-output', parsed.error);
     invalidLeft--;
   }
 }
@@ -131,6 +189,90 @@ function tryBuildOverlay(
     const worst = report.importInversions[0] ?? report.testBeforeImpl[0];
     return {
       error: `proposed order re-breaks dependencies (${report.importInversions.length} import inversions, ${report.testBeforeImpl.length} test-before-impl; e.g. ${JSON.stringify(worst)})`,
+    };
+  }
+  return { overlay };
+}
+
+/** Renders the chunk manifest with aliases in place of raw ids — the only text the model reads. */
+function renderAliasedManifest(manifest: ChunkOrderManifest, aliasOf: Map<string, string>): string {
+  const chunkLines = manifest.chunks.map(
+    (c) => `${aliasOf.get(c.id)} — ${c.title} (${c.kind}, ~${c.lines} lines) [${c.file}]`,
+  );
+  const callLines = manifest.calls.map((e) => `${aliasOf.get(e.fromId)} -> ${aliasOf.get(e.toId)} (line ${e.fromLine})`);
+  const callsBlock = ['calls:', ...(callLines.length > 0 ? callLines : ['(none)'])].join('\n');
+  const chapterLines = manifest.tier0Chapters.map(
+    (ids, i) => `${i + 1}. ${ids.map((id) => aliasOf.get(id)).join(', ')}`,
+  );
+  const note = 'The grouping above is a starting point; regroup and reorder the chunks into chapters.';
+  return [chunkLines.join('\n'), callsBlock, chapterLines.join('\n'), note].join('\n\n');
+}
+
+/**
+ * Parse + validate one chapter-mode reply: aliases back to ids, exact-partition check, then the
+ * checkOrder pre-gate on the recomposed chapter book. Rationales are re-keyed to the applier's
+ * chapter section ids (`chapter:<anchorChunkId>`) so the web's header lookup resolves them.
+ */
+function tryBuildChapterOverlay(
+  input: ChapterOrderJobInput,
+  manifest: ChunkOrderManifest,
+  idOf: Map<string, string>,
+  raw: string,
+): { overlay: OrderOverlayV2 } | { error: string } {
+  let proposal: { chapters?: unknown; rationales?: unknown };
+  try {
+    proposal = extractJsonBlock(raw) as { chapters?: unknown; rationales?: unknown };
+  } catch (e) {
+    return { error: `unparseable model output: ${(e as Error).message}` };
+  }
+  if (!Array.isArray(proposal.chapters) || !proposal.chapters.every((ch) => Array.isArray(ch))) {
+    return { error: 'model output has no "chapters" array-of-arrays' };
+  }
+  const aliasChapters = proposal.chapters as unknown[][];
+
+  const unknown = new Set<string>();
+  const idChapters: string[][] = aliasChapters.map((ch) =>
+    ch.map((alias) => {
+      if (typeof alias !== 'string' || !idOf.has(alias)) {
+        unknown.add(String(alias));
+        return String(alias);
+      }
+      return idOf.get(alias)!;
+    }),
+  );
+  if (unknown.size > 0) return { error: `unknown chunk aliases: ${[...unknown].slice(0, 5).join(', ')}` };
+
+  const check = validateChapterComposition(manifest.tier0Chapters.flat(), idChapters);
+  if (!check.ok) return { error: `not a chapter partition: ${check.errors.join('; ')}` };
+
+  const rawRationales = (proposal.rationales as Record<string, unknown> | undefined) ?? {};
+  const rationales: Record<string, string> = {};
+  for (const aliasChapter of aliasChapters) {
+    const anchorAlias = aliasChapter[0];
+    if (typeof anchorAlias !== 'string') continue;
+    const line = rawRationales[anchorAlias];
+    if (typeof line === 'string' && line.trim() !== '') rationales[`chapter:${idOf.get(anchorAlias)!}`] = line.trim();
+  }
+
+  const overlay: OrderOverlayV2 = {
+    version: 2,
+    bookFingerprint: manifest.bookFingerprint,
+    chapters: idChapters,
+    rationales,
+    model: input.model,
+    promptVersion: CHAPTER_ORDER_PROMPT_VERSION,
+    createdAt: new Date().toISOString(),
+  };
+
+  const composed = compileChapterBook(input.input, input.config, { chapters: idChapters });
+  const report = checkOrder(composed.book, input.graph, composed.chunks, {
+    config: input.config,
+    chunkGraph: input.chunkGraph,
+  });
+  if (!report.ok) {
+    const worst = report.importInversions[0] ?? report.testBeforeImpl[0];
+    return {
+      error: `proposed chapters re-break the reading order (${report.importInversions.length} inversions, ${report.testBeforeImpl.length} test-placement; e.g. ${JSON.stringify(worst)})`,
     };
   }
   return { overlay };

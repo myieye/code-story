@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
-import type { OrderOverlay } from '@code-story/core';
+import type { AnyOrderOverlay } from '@code-story/core';
 import type { ResolvedRange } from './git.js';
 
 export { saveJson } from './json-file.js';
@@ -25,11 +25,11 @@ export interface OrderJobRecord {
   error?: string;
 }
 
-/** Missing or unreadable overlay → null (the book just stays tier 0). */
-export async function loadOverlay(file: string): Promise<OrderOverlay | null> {
+/** Missing or unreadable overlay → null (the book just stays tier 0). Serves v1 and v2 (#77). */
+export async function loadOverlay(file: string): Promise<AnyOrderOverlay | null> {
   try {
-    const parsed = JSON.parse(await readFile(file, 'utf8')) as OrderOverlay;
-    if (parsed.version === 1) return parsed;
+    const parsed = JSON.parse(await readFile(file, 'utf8')) as AnyOrderOverlay;
+    if (parsed.version === 1 || parsed.version === 2) return parsed;
     console.warn(`code-story: ignoring order overlay at ${file} (version mismatch)`);
   } catch (e) {
     if ((e as NodeJS.ErrnoException).code !== 'ENOENT') {
