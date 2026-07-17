@@ -245,10 +245,22 @@ inversions were placement-rule, not cycle). Verified on all three dogfood subjec
 unavoidable in-cycle pairs). Suite core 160 / server 38 / web 33 = 231. Note: three
 CORE_VERSION bumps in one night invalidated all persisted overlays — regenerate before any
 overlay-dependent demo.
-Next: **#48** (narration-3 prompt vs duplication claims + re-run narration eval on both
-subjects — the concrete open slice); #21/#27 stay evidence-gated watches; ship decisions
-(M2 order default-on, M3 narration default-on) wait on Tim's two reads — **#28** (blind
-order A/B, 3 pairs) and **#54** (narrated-vs-bare). After #48: M4 scoping (context
-payloads, R-006/R-008 — spec 03 non-goals name the door). Open issues = exactly
-{#21, #27, #28, #48, #54}; no open PRs; all remote claude/* branches are merged.
+**Second window (2026-07-17, 04:20Z–)**: #48 done (PR #55, gate honestly applied): narration-3
+eliminated duplication claims (0 flags, was 5/6), 2309 passes the FULL gate, 2357 improved
+2→3-severity but floor still fails on a new mode — confident semantic assertions ("nulls
+pushed last": true for one sort branch, false for the other, verified) → **#58** (narration-4
+candidate: point-don't-assert, evidence-gated). #56 done (PR #59: gate fails per TEXT — salvage
+keeps passing intro/lines). #57 done (PR #60: opener targets two sentences + second re-ask,
+prompt now `narration-4`). narration-4 read material regenerated: **2309 fully narrated**
+(15/15 + opener), 2357 15/16 (opener overflowed 3 asks — recorded; "faithful or silent").
+**Spec 04 landed** (`docs/spec/04-context-payloads.md`, PR #61) — facts-only context payloads;
+grilled (14 findings, 5 feasibility blockers folded: reference extraction = NEW server parse
+pass, core stays dep-free; Svelte templates excluded (no grammar); unchanged-file resolution
+needs the head path index (`git ls-tree`) and covers path-specifier languages only; C#
+unchanged callees = SCIP door; definitions get an additive budget that never evicts diff
+text; narration prompt bumps stay owned by spec 03's eval track). M4 slices = **#62–#68**;
+#62 (core payload model) in flight.
+Next: land **#62**, then #63 (server reference extraction) → #64 (resolution+API) → #65–#68
+per blocking edges. #21/#27/#58 evidence-gated watches. Ship decisions wait on Tim's reads:
+**#28** (blind order A/B, 3 pairs) and **#54** (narrated-vs-bare, narration-4 copies).
 Dogfood target: languageforge/lexbox (C# + Svelte/TS); repo-agnostic (R-025).
