@@ -274,5 +274,6 @@ Next: **#64** (definition resolution + head path index + store + API — the M4 
 then #65 (bulk job + CLI) → #66 (web panel) → #67 (narration-input definitions block) → #68
 (dogfood 5) per blocking edges. #21/#27/#58 evidence-gated watches. Ship decisions wait on
 Tim's reads: **#28** (blind order A/B, 3 pairs) and **#54** (narrated-vs-bare, narration-4
-copies). A thin one-shot continuation trigger is armed for 09:25Z (Tim declined disabling it).
+copies). No continuation trigger is armed — Tim cleared all triggers at session end
+(2026-07-17 ~05:10Z); the next session starts on his say-so, from this pointer.
 Dogfood target: languageforge/lexbox (C# + Svelte/TS); repo-agnostic (R-025).
