@@ -131,6 +131,12 @@ describe('parseNarrationReply', () => {
     if (!result.ok) expect(result.error).toContain('unknown chunk id');
   });
 
+  it('strips a copied "chunk " render label from the key (#44 second variant)', () => {
+    const result = parseNarrationReply(sec, { intro: 'x', chunks: { [`chunk ${firstId}`]: 'line' } });
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.reply.chunks).toEqual({ [firstId]: 'line' });
+  });
+
   it('resolves a ::-boundary suffix to the full chunk id (#44 truncation)', () => {
     const tail = firstId.split('::').pop()!;
     const result = parseNarrationReply(sec, { intro: 'x', chunks: { [tail]: 'line' } });

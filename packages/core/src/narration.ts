@@ -324,7 +324,9 @@ export function parseNarrationReply(
  * `::` boundary is accepted; anything ambiguous or unmatched still rejects the reply.
  */
 function resolveChunkId(key: string, validIds: string[]): string | undefined {
-  if (validIds.includes(key)) return key;
-  const matches = validIds.filter((id) => id.endsWith(`::${key}`));
+  // Models also copy the rendered "chunk <id>" line label into the key (dogfood 4, second run).
+  const bare = key.replace(/^chunk\s+/, '');
+  if (validIds.includes(bare)) return bare;
+  const matches = validIds.filter((id) => id.endsWith(`::${bare}`));
   return matches.length === 1 ? matches[0] : undefined;
 }
