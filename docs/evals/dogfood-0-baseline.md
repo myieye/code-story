@@ -224,3 +224,41 @@ strip; needs a CORE_VERSION bump (graph change ⇒ overlay invalidation).
 
 Running tally: AI 8 / tier-0 1 across three subjects and three language mixes, with all
 Dogfood-2 caveats (K=3 directional, single-family judge) still standing.
+
+## Dogfood 4 (2026-07-17, issue #39) — first narration runs and the faithfulness floor
+
+Both prior subjects narrated (generator **opus**, prompt `narration-2`, ~3.5 min/subject,
+persist-per-section — the design survived a real container restart mid-window with zero loss)
+and graded with `tools/narration-eval.mjs` (judge **sonnet**, reports archived at
+`reports/narr-eval-{2309,2357}.json`; narrated exports + read instructions for Tim in
+`narration-read-2026-07-17/`).
+
+| Subject | Narrated | Register | Orientation | Faithfulness floor |
+| --- | --- | --- | --- | --- |
+| PR 2309 (Svelte/TS) | 14/15 sections, 11 chunk lines, opener failed register cap (recorded) | median **5** | median 4 | **FAILED** — 2 sections <4 |
+| PR 2357 (mixed) | 14/16 sections, 17 chunk lines, opener good | median **5** | median 4 | **FAILED** — 4 sections <4 |
+
+**The register bet paid off.** Median 5 on both subjects; spot-reads agree ("Check how it
+stops the store's echo of its own write from overwriting newer typing" — the debounce-race
+helper explained in one breath). The R-036 gate + prompt produce text Tim's spec asked for,
+and sparsity held (28 chunk lines across 240 chunks total — most chunks got no line, as
+designed).
+
+**The faithfulness floor did its job: HOLD.** Five of six below-floor claims are the same
+failure mode — the generator reads similar lines in disjoint `-U0` hunks as literal
+duplication ("a second copy of the [JsonConverter] attribute is added" — the diff adds it
+exactly once, verified; "appears twice here"; "leftover second return statement"). Context-free
+fragments invite duplication hallucinations. This is exactly what the floor (not a median)
+exists to catch: 24 of 28 graded sections scored 4–5 on faithfulness, and the tail still
+correctly holds the gate.
+
+**Verdict: narration stays opt-in.** Fix path is prompt iteration (`narration-3`: hunks are
+disjoint fragments; similar lines in different hunks are not duplicates; never claim
+counts/duplication unless visible within one hunk) — filed evidence-gated like #21/#27. The
+mechanical harvest already landed mid-dogfood: #44 (truncated reply keys, 42% section loss →
+fixed, re-run recovered them) and the silent-opener fix.
+
+Caveats: same as Dogfood 2/3 — K=1 grading pass per section, single-family judge, and the
+human half (the narrated-vs-bare read) is open: does this actually reduce the wall-of-diffs
+burden (spec 03 names "pleasant but not load-bearing" an acceptable null result that pivots
+M4 to code-context payloads).
