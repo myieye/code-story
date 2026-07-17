@@ -143,6 +143,8 @@ export function RowView({
           <div className="chunk-header">
             {state === 'reviewed' && <span className="check" aria-hidden="true">✓</span>}
             <span className="chunk-title">{chunkTitle(chunk)}</span>
+            {/* Cross-file provenance for a chapter occurrence whose chunk lives outside the anchor file. */}
+            {row.occurrence.label && <span className="chunk-from">from {row.occurrence.label}</span>}
             <span className={`badge kind-${chunk.kind}`}>{chunk.kind}</span>
             {lowSignal && <span className="badge generated">{lowSignalReason(chunk)}</span>}
             <span className="chunk-size">

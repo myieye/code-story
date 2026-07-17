@@ -24,6 +24,9 @@ export function useOrderOverlay(
 
   const orderedBook = useMemo((): Book => {
     if (decision !== 'apply' || overlay === null) return data.book;
+    // v2 (chapter mode) is recomposed server-side — the web has no chunk graph to apply it. The
+    // server sends the applied book as `data.aiBook`; its absence means the overlay didn't apply.
+    if (overlay.version === 2) return data.aiBook ?? data.book;
     return applyOrderOverlay(data.book, data.graph, data.chunks, overlay);
   }, [data, decision, overlay]);
   // The indicator must tell the truth: claim AI order only when the applier actually reordered,

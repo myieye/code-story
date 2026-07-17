@@ -253,7 +253,8 @@ export function BookPage({
     for (let i = first; i >= 0; i--) {
       const row = flat.rows[i];
       if (row?.kind === 'section') return row.title;
-      if (row?.kind === 'chunk') return row.sectionTitle;
+      // A chapter chunk may live outside its chapter's anchor file — name the file actually on screen.
+      if (row?.kind === 'chunk') return row.chunk.file;
     }
     return undefined;
   }, [items, flat]);
