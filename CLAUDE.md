@@ -290,9 +290,19 @@ build the GOOD version (chunk-level call-path flow) by whichever path is fastest
 flip only as a stepping stone if it truly speeds that; (2) test placement by kind is delegated
 to Claude's judgment, with a hard rider: one-keystroke more-context when a lone test without
 its setup isn't enough (R-008/R-009 — M4's context payloads serve exactly this).**
-Next (as of this writing — verify freshness on wake): **#72 spec pass FIRST** (spec 05
-candidate: consumer-first + call-path interleave + config + test-placement-by-kind; grill it;
-decide #71 sequencing and how much of M4 #64–#68 it pulls in — the context-payload machinery
-serves the test-context rider, so interleaving M4 slices may BE the fastest path). Then resume
-M4 per blocking edges. #21/#27/#58 evidence-gated watches.
+**Chunk graph arc (2026-07-17, ~08:15Z–12:35Z)**: Tim's graph-under-story idea recorded as
+**R-048/R-049** + the comment-doctrine-applies-to-narration insight as **R-047** (all verbatim
+in the addendum). Research 06 (`docs/research/06-chunk-graph-traversal.md`): combination
+unoccupied, ingredients validated (Stacksplorer/Prodet/GBSCI), three named risks with design
+answers; verdict = build, gated. **Spec 05 landed** (`docs/spec/05-chunk-graph-and-traversals
+.md`, PR #73, grilled — 14 findings folded; #72 closed into it): chapters = traversal-derived
+cross-file sections (new linearizer, chunk-position checkOrder, orderTestBlock rewrite),
+graph decoupled from M4 (only #63 + a changed-file resolver), frontier surfacing honestly
+display-only, slice-0 blind edge-precision audit (≥0.90, Tim audits) gates the UI slices.
+M5 slices = **#74–#80**.
+Next (as of this writing — verify freshness on wake): **#71 first** (AI order default-on,
+ships on CURRENT dependency-first axioms per spec 05's sequencing decision — Tim can veto),
+then **#75** (core ChunkGraph) → #74 (slice-0 experiment; needs Tim's 45-edge blind audit) →
+#76 (chapter linearizer). M4 **#64** proceeds in parallel (independent per spec 05). #77–#80
+per blocking edges. #21/#27/#58 evidence-gated watches; Tim's open read = #54.
 Dogfood target: languageforge/lexbox (C# + Svelte/TS); repo-agnostic (R-025).
