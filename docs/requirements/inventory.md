@@ -337,3 +337,39 @@ allowed to shine.
 > "we need to make sure we're not wasting tokens on things scripts can do, but also not (very important) failing to utilize AI's power to truly create something intuitive and readable."
 
 Status: `specced` — [spec 01](../spec/01-story-ordering.md) (tier ladder: tier 0 script, tier 1 AI gated by eval)
+
+## L. Ordering preferences, 2026-07-17 ([verbatim source](../vision/addendum-2026-07-17-ordering-preferences.md))
+
+### R-043 — Tests before the implementation they exercise
+Tim reads a test as the contract: it comes before its implementation in the book. (Corrects
+the spec-01 scoping answer, which Tim gave believing the question was about building
+code-story itself, not the product's ordering.)
+> "I want the tests first, actually."
+
+Amends: spec 01/02's tests-after-their-impl placement.
+
+### R-044 — Consumer-first flow along calling paths
+The preferred reading direction is consumers before dependencies — *conditional on
+chunk-level ordering being good enough* that the reader flows down each calling path (the
+callee arrives right after its call site) instead of carrying IOUs. This inverts the M1
+dependencies-first axiom and pulls spec 02's deferred chunk-level interleave toward the
+critical path: at whole-file granularity, consumer-first weakens; along call paths, it wins.
+> "consumers before dependencies is probably the right order if we truly get the chunk/change
+> ordering done well. Then I can smoothly flow through each calling path instead of keeping
+> IOU's in my head."
+
+### R-045 — Ordering is thoroughly configurable; defaults are Tim's preferences
+Direction (consumer-first vs dependency-first), test placement (before/after/end), and future
+ordering choices are user preferences with real configuration — and the shipped defaults are
+Tim's picks (R-043, R-044).
+> "these are probably user preferences. it would be excellent if they were thoroughly
+> configurable but that the defaults are what I prefer."
+
+### R-046 — Whatever is configured, AI calculates/augments it by default
+The configured ordering policy is the constraint set; by default an AI pass computes/refines
+the actual order within it (the M2 pattern — script skeleton, AI judgment on top — becomes the
+default posture for ordering, not an opt-in).
+> "whatever is configured, it sounds like it should be calculated/augmented, by default, by AI."
+
+Note: R-046 aligns with the #28 ship verdict (AI order default-on, #71); token cost remains a
+live concern Tim voiced in the same breath — bulk AI passes stay visible and controllable.
