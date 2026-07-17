@@ -225,7 +225,17 @@ renderer, `parseNarrationReply` (foreign chunk ids reject), server `narration-pr
 Subagent-worktree ops (hard-won): `.claude/worktrees/` is gitignored; every agent bash command
 must `cd` into its worktree (cwd resets leak into the main tree — one leak corrupted main-tree
 branch state, repaired) and push via `git push origin HEAD:refs/heads/<branch>`, never a local
-branch. Next: **#37** (resumable narration job + store + API + CLI), then #38 (web render),
-#39 (narration eval + dogfood 4). #28 still awaits Tim (now 3 pairs). The 02:09Z trigger
-message is stale-but-thin (its steps done early) — acknowledge and continue per this pointer.
+branch. **M3 complete same window** (#37 PR #42, #38 PR #46, #39 PR #49; suite core 156 /
+server 38 / web 33 = 227): resumable per-section narration job (survived a real container
+restart with zero loss — persist/resume proven), web render (one AI voice per section header,
+partial-state honesty), rubric eval. **Dogfood 4 verdict: register median 5 both subjects
+(R-036 bet paid off, sparsity held), orientation 4, faithfulness floor FAILED → narration
+stays opt-in.** Failure mode is nameable: duplication claims from -U0 fragment misreads
+("second copy of [JsonConverter]" — diff adds it once, verified) → **#48** (narration-3
+prompt iteration + re-eval, actionable now). Mid-dogfood harvest: #44 fixed (truncated reply
+keys, 42% section loss; PRs #45+#47 — suffix + "chunk "-label resolution, opener failures
+recorded on overlay). Tim's two reads are open: #28 (blind order A/B, 3 pairs) and the
+narrated-vs-bare read (`docs/evals/narration-read-2026-07-17/`, spec-03 gate half).
+Next: **#33** (.svelte.ts graph fix + CORE_VERSION bump) and **#32** (cycle-stall fallback)
+— small tier-0 fixes; then **#48**; then ship decisions wait on Tim's reads.
 Dogfood target: languageforge/lexbox (C# + Svelte/TS); repo-agnostic (R-025).
