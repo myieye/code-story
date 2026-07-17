@@ -1,5 +1,6 @@
 export * from './api.js';
 export * from './book.js';
+export * from './chapters.js';
 export * from './check-order.js';
 export * from './chunk-graph.js';
 export * from './chunker.js';
@@ -15,4 +16,5 @@ export * from './order.js';
 export * from './render.js';
 export * from './review.js';
 export * from './roles.js';
+export * from './story-config.js';
 export * from './symbols.js';

@@ -40,6 +40,12 @@ export interface Occurrence {
   chunkId: string;
   ordinal: number;
   role: OccurrenceRole;
+  /**
+   * Cross-file provenance for a chapter occurrence (spec 05): the source file path, set only when
+   * the occurrence's chunk lives outside its chapter's anchor file. Renderers show it as
+   * `from <file>`. Absent in file-mode books and for same-file chapter occurrences.
+   */
+  label?: string;
 }
 
 export interface Section {

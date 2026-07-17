@@ -62,3 +62,26 @@ always opens immediately in the deterministic tier-0 order and never blocks on t
 job fails (no `claude` CLI, no network) the book simply stays in tier-0 order. Pass
 `--no-ai-order` (or set `CODE_STORY_NO_AI_ORDER`) to disable the auto job. `--order tier0`
 forces tier-0 order on `--export`.
+
+### Story ordering (chapters)
+
+Two ordering axes (spec 05) are configurable, via CLI flags or a per-repo `.code-story.json`
+(top-level or under an `ordering` key; flags win over the file):
+
+- `--direction consumer-first|dependency-first` — `consumer-first` reads a caller before the
+  chunks it calls (flow down each call path); `dependency-first` reads callees first.
+- `--test-placement before|after|end` — where a test reads relative to the impl it exercises.
+
+Anything other than the defaults (`dependency-first`, `after`) switches on the **chapter
+linearizer**: call-path chapters whose occurrences may span files (cross-file chunks are labelled
+`from <file>` in the export). A diff with no resolvable call edges degrades to file-grouped git
+order. `.code-story.json` example:
+
+```json
+{ "ordering": { "direction": "consumer-first", "testPlacement": "before" } }
+```
+
+The defaults stay today's file-mode behaviour on purpose: `consumer-first` + tests-`before` are
+the *intended* defaults (Tim's preferences) but the flip waits on the AI-ordering slice so the
+shipped order prompt keeps passing its `--check-order` pre-gate. `--direction` / `--test-placement`
+are currently honoured by `--export` and `--check-order`; the daemon/web still serve file mode.

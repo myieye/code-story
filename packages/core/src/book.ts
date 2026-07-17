@@ -303,12 +303,13 @@ function fileStem(path: string): string {
   return dot > 0 ? name.slice(0, dot) : name;
 }
 
-function primary(chunk: Chunk): Occurrence {
+/** The single primary occurrence a chunk gets in a file-mode book (chapter mode adds `label`). */
+export function primary(chunk: Chunk): Occurrence {
   return { chunkId: chunk.id, ordinal: 0, role: 'primary' };
 }
 
 /** One chunk per contiguous run of primary-side changed lines that no chunk owns. */
-function leftoverChunks(file: FileDiff, chunks: Chunk[]): Chunk[] {
+export function leftoverChunks(file: FileDiff, chunks: Chunk[]): Chunk[] {
   const deleted = file.status === 'deleted';
   const owned = new Set<number>();
   for (const chunk of chunks) {
