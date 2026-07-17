@@ -247,7 +247,8 @@ CORE_VERSION bumps in one night invalidated all persisted overlays — regenerat
 overlay-dependent demo.
 Next: **#48** (narration-3 prompt vs duplication claims + re-run narration eval on both
 subjects — the concrete open slice); #21/#27 stay evidence-gated watches; ship decisions
-(M2 order default-on, M3 narration default-on) wait on Tim's two reads (#28 blind order A/B,
-`docs/evals/narration-read-2026-07-17/` narrated-vs-bare). After #48: M4 scoping (context
-payloads, R-006/R-008 — spec 03 non-goals name the door).
+(M2 order default-on, M3 narration default-on) wait on Tim's two reads — **#28** (blind
+order A/B, 3 pairs) and **#54** (narrated-vs-bare). After #48: M4 scoping (context
+payloads, R-006/R-008 — spec 03 non-goals name the door). Open issues = exactly
+{#21, #27, #28, #48, #54}; no open PRs; all remote claude/* branches are merged.
 Dogfood target: languageforge/lexbox (C# + Svelte/TS); repo-agnostic (R-025).
