@@ -1,4 +1,4 @@
-export const NARRATION_PROMPT_VERSION = 'narration-3';
+export const NARRATION_PROMPT_VERSION = 'narration-4';
 
 /**
  * The per-section narration prompt (spec 03). Asks for a short section intro and sparse per-chunk
@@ -59,8 +59,9 @@ reviewer reads first, before any file.
 Below is the whole-book manifest: every section (one per changed file) with its role, its chunks,
 and which other sections it imports.
 
-Write one opener. At most 3 sentences and 320 characters. Say what this change is about as a whole
-and what single thread to follow through the book.
+Write one opener: TWO short sentences (a hard validator rejects anything over 3 sentences or 320
+characters, so leave headroom — two is the target). First sentence: what this change is about as a
+whole. Second: what single thread to follow through the book.
 
 Rules:
 - Orient, don't judge. Never say the change looks good, is correct, safe, simple, clean, elegant, or
