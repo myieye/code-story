@@ -7,7 +7,7 @@ import { batchableSections, findUnreviewed, pendingStubCount } from './review-lo
 import { estimateRowHeight, RowView, type SectionAck } from './RowView.js';
 import { flattenBook, occurrenceKey, type Row } from './rows.js';
 import { ShortcutOverlay } from './ShortcutOverlay.js';
-import { affordanceLabel } from './context-panel-logic.js';
+import { affordanceLabel, type PayloadState } from './context-panel-logic.js';
 import { useBookKeymap } from './useBookKeymap.js';
 import { useContextPanels } from './useContextPanels.js';
 import { useNarration } from './useNarration.js';
@@ -35,8 +35,6 @@ export function BookPage({
     (sectionId: string, chunkId: string) => narration.chunkLine(sectionId, chunkId) !== undefined,
     [narration],
   );
-
-  const context = useContextPanels();
 
   const flat = useMemo(() => flattenBook(bookData.book, bookData.chunks), [bookData]);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -116,6 +114,17 @@ export function BookPage({
 
   const say = (msg: string) => setAnnounce((a) => ({ msg, seq: a.seq + 1 }));
 
+  // Focus + announce the definition panel. Shared by the immediate expand and the deferred one (the
+  // payload arriving after `d`) so keyboard/SR users get the same signal whether or not the fetch was warm.
+  const focusAndAnnouncePanel = (chunkId: string, payload: PayloadState) => {
+    say(`Showing ${affordanceLabel(payload)}. Escape returns to the chunk.`);
+    // Hand focus to the panel once the expand has rendered it (two frames, like row focus).
+    requestAnimationFrame(() =>
+      requestAnimationFrame(() => panelEls.current.get(chunkId)?.focus({ preventScroll: true })),
+    );
+  };
+  const context = useContextPanels(focusAndAnnouncePanel);
+
   useEffect(() => {
     if (!announce.msg) return;
     setToastVisible(true);
@@ -188,15 +197,8 @@ export function BookPage({
 
   const toggleDefinitionsFor = (chunk: Chunk) => {
     const outcome = context.toggle(chunk.id);
-    if (outcome === 'expanded') {
-      say(`Showing ${affordanceLabel(context.payloadFor(chunk.id))}. Escape returns to the chunk.`);
-      // Hand focus to the panel once the expand has rendered it (two frames, like row focus).
-      requestAnimationFrame(() =>
-        requestAnimationFrame(() => panelEls.current.get(chunk.id)?.focus({ preventScroll: true })),
-      );
-    } else if (outcome === 'collapsed') {
-      say('Definitions hidden.');
-    }
+    if (outcome === 'expanded') focusAndAnnouncePanel(chunk.id, context.payloadFor(chunk.id));
+    else if (outcome === 'collapsed') say('Definitions hidden.');
   };
 
   const toggleDefinitionsCurrent = () => {
