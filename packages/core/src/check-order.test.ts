@@ -200,4 +200,36 @@ describe('checkOrder', () => {
       expect(pos(helper2)).toBeLessThan(pos(e2e));
     });
   });
+
+  // PR-2309 (#52): a test's page-object/fixture helpers are test-role too; the tests-after-impl
+  // rule anchored the test by stem match but left its helpers in the unanchored tail, after it.
+  describe('PR-2309-shaped test-helper fixture', () => {
+    const page = 'frontend/src/routes/admin/+page.svelte';
+    const service = 'frontend/src/lib/service.ts';
+    const serviceTest = 'frontend/src/lib/service.test.ts';
+    const e2e = 'frontend/tests/pages/adminPage.test.ts';
+    const loginPage = 'frontend/tests/pages/loginPage.ts';
+    const envVars = 'frontend/tests/envVars.ts';
+    const dashboard = 'frontend/tests/pages/adminDashboardPage.ts';
+
+    // git order deliberately places the test and its helpers ahead of the impl.
+    const gitOrder = [e2e, loginPage, envVars, dashboard, page, service, serviceTest];
+    const files = gitOrder.map(file);
+    const chunks = gitOrder.map((p) => chunk(p));
+    const graph = graphOf([e2e, page], [e2e, loginPage], [e2e, envVars], [e2e, dashboard], [serviceTest, service]);
+
+    it('orders test-role helpers before the test that imports them', () => {
+      const { book, chunks: all } = compileBook({ files, chunks, graph, headSha: 'head' });
+      const report = checkOrder(book, graph, all);
+      expect(report.ok).toBe(true);
+      expect(report.importInversions).toEqual([]);
+      expect(report.testBeforeImpl).toEqual([]);
+
+      const pos = (id: string) => book.sections.findIndex((s) => s.id === id);
+      expect(pos(loginPage)).toBeLessThan(pos(e2e));
+      expect(pos(envVars)).toBeLessThan(pos(e2e));
+      expect(pos(dashboard)).toBeLessThan(pos(e2e));
+      expect(pos(service)).toBeLessThan(pos(serviceTest)); // normal impl+test anchoring still holds
+    });
+  });
 });
