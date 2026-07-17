@@ -170,4 +170,34 @@ describe('checkOrder', () => {
       expect(checkOrder(book, graph, all)).toMatchObject({ ok: true, importInversions: [], testBeforeImpl: [] });
     });
   });
+
+  // PR-2309 (#32): the old stall fallback dragged a cycle's dependents forward by git order.
+  describe('PR-2309-shaped cycle-stall fixture', () => {
+    const dep = 'frontend/src/lib/ProjectFilter.svelte';
+    const page = 'frontend/src/routes/admin/+page.svelte';
+    const projects = 'frontend/src/lib/AdminProjects.svelte';
+    const helper1 = 'frontend/src/e2e/loginPage.ts';
+    const helper2 = 'frontend/src/e2e/envVars.ts';
+    const e2e = 'frontend/src/e2e/adminPage.test.ts';
+
+    // git order deliberately places the dependent before the cycle so the old fallback fails.
+    const gitOrder = [dep, page, projects, helper1, helper2, e2e];
+    const files = gitOrder.map(file);
+    const chunks = gitOrder.map((p) => chunk(p));
+    const graph = graphOf([dep, page], [page, projects], [projects, page], [e2e, helper1], [e2e, helper2]);
+
+    it('drops the acyclic inversions, keeping only the same-cycle one', () => {
+      const { book, chunks: all } = compileBook({ files, chunks, graph, headSha: 'head' });
+      const report = checkOrder(book, graph, all);
+      expect(report.ok).toBe(true);
+      expect(report.importInversions).toEqual([]);
+      expect(report.testBeforeImpl).toEqual([]);
+      expect(report.cycleInversions).toEqual([{ earlier: page, later: projects }]);
+
+      const pos = (id: string) => book.sections.findIndex((s) => s.id === id);
+      expect(pos(dep)).toBeGreaterThan(pos(page)); // dependent reads after the dependency it imports
+      expect(pos(helper1)).toBeLessThan(pos(e2e));
+      expect(pos(helper2)).toBeLessThan(pos(e2e));
+    });
+  });
 });
