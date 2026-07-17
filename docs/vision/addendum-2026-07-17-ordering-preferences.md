@@ -31,3 +31,14 @@ placement. Tim, verbatim:
 > 2) yes, I trust your judgments on the varied test placements depending on kinds. remember it
 > should be easy to get more context if e.g. a user finds that seeing only a single specific
 > test without setup code is not sufficient.
+
+## Same conversation (~08:00Z): the comment doctrine applies to narration
+
+> It's very likely that the commenting instructions in your session are relevant for the
+> narration. what do you think?
+
+(Context: Tim's global agent instructions carry a strict code-commenting doctrine — "a comment
+is a confession that the code couldn't say it itself"; comment only what code can't carry;
+state each rationale exactly once; a wrong comment is worse than none; never state an
+unverified cause, a verifiable symptom beats an unverifiable cause; when unsure whether a
+comment earns its place, it doesn't.)

@@ -373,3 +373,11 @@ default posture for ordering, not an opt-in).
 
 Note: R-046 aligns with the #28 ship verdict (AI order default-on, #71); token cost remains a
 live concern Tim voiced in the same breath — bulk AI passes stay visible and controllable.
+
+### R-047 — Narration is held to the code-comment bar
+Tim's code-commenting doctrine (session instructions) applies to product narration: a line must
+say what the diff cannot say itself ("earns its place — when unsure, it doesn't"); each
+rationale is stated once, not repeated across sibling sections; a wrong line is worse than
+none; never assert an unverified cause — point at the verifiable symptom instead. Sharpens
+R-036 and the sparse-by-design rule; gives #58 (point-don't-assert) its principled form.
+> "It's very likely that the commenting instructions in your session are relevant for the narration."
