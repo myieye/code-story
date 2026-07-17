@@ -11,8 +11,12 @@ import {
   chunkLineCount,
   compileBook,
   compileChapterBook,
+  type ContextPayload,
   type ContextStoreFile,
   DEFAULT_STORY_CONFIG,
+  type FileContents,
+  type FileDiff,
+  type LineRange,
   exportBookMarkdown,
   filterFreshContext,
   filterFreshNarration,
@@ -27,6 +31,7 @@ import {
 import open from 'open';
 import { buildChunkGraph } from './chunk-graph-build.js';
 import { computeChunks } from './chunks.js';
+import { extractReferences } from './references.js';
 import { createContextResolver } from './context-resolve.js';
 import { eligibleContextChunks, runContextJob } from './context-job.js';
 import {
@@ -52,13 +57,22 @@ import { defaultDataHome, repoIdFrom } from './review-store.js';
 import { startServer } from './server.js';
 
 /** Human-readable dump of the fresh stored payloads (spec 04 `--dump-context` for dogfooding). */
-function dumpStoredContext(store: ContextStoreFile, book: Book, headSha: string, chunks: Chunk[]): void {
+async function dumpStoredContext(
+  store: ContextStoreFile,
+  book: Book,
+  headSha: string,
+  chunks: Chunk[],
+  // --verbose (#93): re-extract each chunk's references and list the names that resolved to nothing,
+  // so resolver-reach dogfoods don't need throwaway scripts.
+  verbose?: { contents: Map<string, FileContents>; files: FileDiff[] },
+): Promise<void> {
   const fresh = filterFreshContext(headSha, book, store);
   const ids = Object.keys(fresh);
   const label = (id: string) => {
     const c = chunks.find((k) => k.id === id);
     return c ? `${c.file}${c.symbolPath.length ? ' :: ' + c.symbolPath.join('.') : ''}` : id;
   };
+  const statusByFile = verbose && new Map(verbose.files.map((f) => [f.path, f.status]));
   for (const id of ids) {
     const payload = fresh[id]!;
     console.log(`\n▸ ${label(id)}  [${id}]`);
@@ -67,12 +81,38 @@ function dumpStoredContext(store: ContextStoreFile, book: Book, headSha: string,
       console.log(`  def ${d.symbol} — ${d.file}@${d.sha.slice(0, 8)} (L${d.lineStart}, ${d.changed ? 'changed' : 'unchanged'})`);
       for (const line of d.body.split('\n').slice(0, 3)) console.log(`      ${line}`);
     }
+    if (verbose && statusByFile) {
+      const chunk = chunks.find((k) => k.id === id);
+      const unresolved = chunk ? await unresolvedNames(chunk, payload, verbose.contents, statusByFile) : [];
+      if (unresolved.length > 0) console.log(`  unresolved: ${unresolved.join(', ')}`);
+    }
     const { imports, importedBy } = payload.facts.edges;
     if (imports.length || importedBy.length) {
       console.log(`  edges: imports [${imports.join(', ')}] importedBy [${importedBy.join(', ')}]`);
     }
   }
   console.log(`\n${ids.length} chunks with fresh payloads (of ${Object.keys(store.payloads).length} stored)`);
+}
+
+/** Reference names in the chunk's changed lines that resolved to no definition, in source order. */
+async function unresolvedNames(
+  chunk: Chunk,
+  payload: ContextPayload,
+  contents: Map<string, FileContents>,
+  statusByFile: Map<string, FileDiff['status']>,
+): Promise<string[]> {
+  const side = statusByFile.get(chunk.file) === 'deleted' ? 'base' : 'head';
+  const lines = side === 'base' ? contents.get(chunk.file)?.base : contents.get(chunk.file)?.head;
+  if (lines === undefined) return [];
+  const ranges: LineRange[] = [];
+  for (const h of chunk.hunks) {
+    const start = side === 'head' ? h.headStart : h.baseStart;
+    const count = side === 'head' ? h.headCount : h.baseCount;
+    if (count > 0) ranges.push({ start, end: start + count - 1 });
+  }
+  const refs = await extractReferences(chunk.file, lines.join('\n'), ranges);
+  const resolved = new Set(payload.facts.definitions.map((d) => d.symbol));
+  return [...new Set(refs.map((r) => r.name))].filter((n) => !resolved.has(n));
 }
 
 const args = process.argv.slice(2);
@@ -89,6 +129,7 @@ const narrate = args.includes('--narrate');
 const narration = args.includes('--narration');
 const contextFlag = args.includes('--context');
 const dumpContext = args.includes('--dump-context');
+const verboseFlag = args.includes('--verbose');
 const exportIndex = args.indexOf('--export');
 const exportPath = exportIndex >= 0 ? args[exportIndex + 1] : undefined;
 const portIndex = args.indexOf('--port');
@@ -136,7 +177,7 @@ if (
   (testPlacementArg !== undefined && !['before', 'after', 'end'].includes(testPlacementArg))
 ) {
   console.error(
-    'Usage: code-story <base>..<head> [--export book.md] [--narration] [--order tier0|ai] [--ai-order] [--no-ai-order] [--narrate] [--context] [--dump-context] [--model <id>] [--port <n>] [--direction consumer-first|dependency-first] [--test-placement before|after|end] [--dump-diff] [--dump-chunks] [--dump-graph] [--dump-chunk-graph] [--check-order] [--dump-manifest] [--no-open]\n' +
+    'Usage: code-story <base>..<head> [--export book.md] [--narration] [--order tier0|ai] [--ai-order] [--no-ai-order] [--narrate] [--context] [--dump-context [--verbose]] [--model <id>] [--port <n>] [--direction consumer-first|dependency-first] [--test-placement before|after|end] [--dump-diff] [--dump-chunks] [--dump-graph] [--dump-chunk-graph] [--check-order] [--dump-manifest] [--no-open]\n' +
       '\n' +
       'AI reading order is the default: the daemon runs the ordering job in the background on\n' +
       'compile and applies it on the next book load. --no-ai-order (or CODE_STORY_NO_AI_ORDER)\n' +
@@ -261,7 +302,7 @@ if (dumpManifest) {
 
 if (contextFlag) {
   const files = await diffRange(repo, resolved);
-  const { chunks, graph } = await computeChunks(repo, resolved, files);
+  const { chunks, contents, graph } = await computeChunks(repo, resolved, files);
   const { book, chunks: compiled } = compileBook({ files, chunks, graph, headSha: resolved.head });
   const dataHome = defaultDataHome();
   const repoId = repoIdFrom(repo, await rootCommit(repo), await originUrl(repo));
@@ -328,18 +369,26 @@ if (contextFlag) {
     throw e;
   }
 
-  if (dumpContext) dumpStoredContext(await loadContextStore(contextFile), book, resolved.head, compiled);
+  if (dumpContext) {
+    await dumpStoredContext(
+      await loadContextStore(contextFile),
+      book,
+      resolved.head,
+      compiled,
+      verboseFlag ? { contents, files } : undefined,
+    );
+  }
   process.exit(0);
 }
 
 if (dumpContext) {
   const files = await diffRange(repo, resolved);
-  const { chunks, graph } = await computeChunks(repo, resolved, files);
+  const { chunks, contents, graph } = await computeChunks(repo, resolved, files);
   const { book, chunks: compiled } = compileBook({ files, chunks, graph, headSha: resolved.head });
   const dataHome = defaultDataHome();
   const repoId = repoIdFrom(repo, await rootCommit(repo), await originUrl(repo));
   const store = await loadContextStore(contextFilePath(dataHome, repoId, resolved));
-  dumpStoredContext(store, book, resolved.head, compiled);
+  await dumpStoredContext(store, book, resolved.head, compiled, verboseFlag ? { contents, files } : undefined);
   process.exit(0);
 }
 
