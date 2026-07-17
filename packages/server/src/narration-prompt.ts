@@ -1,4 +1,4 @@
-export const NARRATION_PROMPT_VERSION = 'narration-1';
+export const NARRATION_PROMPT_VERSION = 'narration-2';
 
 /**
  * The per-section narration prompt (spec 03). Asks for a short section intro and sparse per-chunk
@@ -33,8 +33,9 @@ Rules for every line you write:
 Reply with STRICT JSON only, no other text:
 {"intro": "<the section intro>", "chunks": {"<chunk id>": "<line>"}}
 
-Include only the chunk ids you chose to write a line for; omit every other chunk. Use the exact
-chunk ids shown below, unchanged.
+Include only the chunk ids you chose to write a line for; omit every other chunk. A chunk id is
+the ENTIRE string after "chunk " below, including the file path and every "::" part — copy it
+whole and unchanged. A shortened id loses the line.
 
 Section:
 

@@ -131,6 +131,33 @@ describe('parseNarrationReply', () => {
     if (!result.ok) expect(result.error).toContain('unknown chunk id');
   });
 
+  it('resolves a ::-boundary suffix to the full chunk id (#44 truncation)', () => {
+    const tail = firstId.split('::').pop()!;
+    const result = parseNarrationReply(sec, { intro: 'x', chunks: { [tail]: 'line' } });
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.reply.chunks).toEqual({ [firstId]: 'line' });
+  });
+
+  it('rejects a suffix that matches more than one chunk id', () => {
+    const twin = {
+      ...sec,
+      occurrences: [
+        { chunkId: 'a.ts::one::x', ordinal: 0, role: 'primary' as const },
+        { chunkId: 'a.ts::two::x', ordinal: 1, role: 'primary' as const },
+      ],
+    };
+    const result = parseNarrationReply(twin, { intro: 'x', chunks: { x: 'line' } });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toContain('unknown chunk id');
+  });
+
+  it('does not match a fragment that crosses a :: boundary', () => {
+    const tail = firstId.split('::').pop()!;
+    const result = parseNarrationReply(sec, { intro: 'x', chunks: { [tail.slice(1)]: 'line' } });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toContain('unknown chunk id');
+  });
+
   it('rejects a missing or non-string intro', () => {
     expect(parseNarrationReply(sec, { chunks: {} }).ok).toBe(false);
     expect(parseNarrationReply(sec, { intro: 5 }).ok).toBe(false);

@@ -91,7 +91,8 @@ export async function runNarrationJob(input: NarrationJobInput): Promise<Narrati
   } else {
     const manifest = renderOrderManifest(buildOrderManifest(input.book, input.graph, input.chunks));
     const result = await generate(openerNarrationPrompt(manifest), parseOpener, gateText('opener'), { invoke, model: input.model, cwd: input.cwd });
-    overlay.opener = { text: 'value' in result ? result.value : '', key: openerKey };
+    overlay.opener =
+      'value' in result ? { text: result.value, key: openerKey } : { text: '', key: openerKey, failures: result.failures };
   }
   await persist();
 
