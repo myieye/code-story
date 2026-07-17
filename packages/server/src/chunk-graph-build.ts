@@ -16,7 +16,7 @@ import {
   type SymbolSpan,
   testImplAnchors,
 } from '@code-story/core';
-import { extractReferences, justifiedUniqueFile } from './references.js';
+import { extractReferences, resolveDefiningSpan } from './references.js';
 import { extractSymbols } from './treesitter.js';
 
 export interface ChunkGraphBuildInput {
@@ -71,18 +71,7 @@ export async function buildChunkGraph(input: ChunkGraphBuildInput): Promise<Chun
     infoByFile.set(file, { side, content, chunks, symbols });
   }
 
-  // name -> defining declarations across changed files (all nesting levels; first span per file).
-  const defsByName = new Map<string, { file: string; span: SymbolSpan }[]>();
-  for (const [file, info] of infoByFile) {
-    const seen = new Set<string>();
-    for (const span of flattenSpans(info.symbols)) {
-      if (seen.has(span.name)) continue;
-      seen.add(span.name);
-      const list = defsByName.get(span.name) ?? [];
-      list.push({ file, span });
-      defsByName.set(span.name, list);
-    }
-  }
+  const symbolsByFile: [string, SymbolSpan[]][] = [...infoByFile].map(([file, info]) => [file, info.symbols]);
 
   const raw: ChunkEdge[] = [];
   for (const [file, info] of infoByFile) {
@@ -93,7 +82,7 @@ export async function buildChunkGraph(input: ChunkGraphBuildInput): Promise<Chun
       if (ranges.length === 0) continue;
       const refs = await extractReferences(file, info.content, ranges);
       for (const ref of refs) {
-        const target = resolveTarget(ref.name, caller, defsByName, imported, infoByFile);
+        const target = resolveTarget(ref.name, caller, symbolsByFile, imported, infoByFile);
         if (!target) continue;
         raw.push({ from: caller.id, to: target.id, kind, fromLines: [{ start: ref.line, end: ref.line }], source: 'references' });
       }
@@ -114,40 +103,28 @@ export async function buildChunkGraph(input: ChunkGraphBuildInput): Promise<Chun
 }
 
 /**
- * Resolves a referenced name to the single changed chunk that defines it, or undefined. The defining
- * file must pass `justifiedUniqueFile` (the #91 rule the sibling context resolver uses). The chosen
- * file's span must sit in exactly one changed chunk (the defining chunk). A reference back into the
- * caller's own chunk is dropped (self-call, not navigation).
+ * Resolves a referenced name to the single changed chunk that defines it, or undefined. The name is
+ * resolved to a unique justified defining span (`resolveDefiningSpan`), whose span must then sit in
+ * exactly one changed chunk. A reference back into the caller's own chunk is dropped (self-call, not
+ * navigation).
  */
 function resolveTarget(
   name: string,
   caller: Chunk,
-  defsByName: Map<string, { file: string; span: SymbolSpan }[]>,
+  symbolsByFile: Iterable<readonly [string, SymbolSpan[]]>,
   imported: Set<string>,
   infoByFile: Map<string, FileInfo>,
 ): Chunk | undefined {
-  const cands = defsByName.get(name);
-  if (!cands || cands.length === 0) return undefined;
+  const chosen = resolveDefiningSpan(name, caller.file, imported, symbolsByFile);
+  if (!chosen) return undefined;
 
-  const files = [...new Set(cands.map((c) => c.file))];
-  const chosenFile = justifiedUniqueFile(caller.file, imported, files);
-  if (chosenFile === undefined) return undefined;
-
-  const span = cands.find((c) => c.file === chosenFile)!.span;
-  const info = infoByFile.get(chosenFile)!;
-  const owning = info.chunks.filter((c) => ownedLines(c.hunks, info.side).some((r) => span.startLine >= r.start && span.startLine <= r.end));
+  const info = infoByFile.get(chosen.file)!;
+  const owning = info.chunks.filter((c) =>
+    ownedLines(c.hunks, info.side).some((r) => chosen.span.startLine >= r.start && chosen.span.startLine <= r.end),
+  );
   if (owning.length !== 1) return undefined;
   const target = owning[0]!;
   return target.id === caller.id ? undefined : target;
-}
-
-function flattenSpans(spans: SymbolSpan[]): SymbolSpan[] {
-  const out: SymbolSpan[] = [];
-  for (const s of spans) {
-    out.push(s);
-    out.push(...flattenSpans(s.children));
-  }
-  return out;
 }
 
 /** A chunk's owned line ranges on the given side (the exact hunk coverage). */

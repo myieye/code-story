@@ -1,5 +1,5 @@
 import path from 'node:path';
-import { type LineRange } from '@code-story/core';
+import { type LineRange, type SymbolSpan } from '@code-story/core';
 import { parseWith, svelteScriptBlocks, type TSNode, wasmForExtension } from './treesitter.js';
 
 /** A candidate symbol reference found in a chunk's changed lines (spec 04 resolution pipeline step 1). */
@@ -123,17 +123,57 @@ function push(node: TSNode | undefined, offset: number, out: ReferenceHit[]): vo
   out.push({ name: node.text, line: node.startPosition.row + 1 + offset });
 }
 
+/** A referenced name resolved to the single file + span that defines it. */
+export interface DefiningSpan {
+  file: string;
+  span: SymbolSpan;
+}
+
 /**
- * The #91 discipline, shared by the context and chunk-graph resolvers: a cross-file definition
- * candidate must be justified by an import edge from the consuming file (its own file always
- * qualifies); after the filter, a unique candidate wins, anything else stays unresolved. A wrong
- * definition/edge is worse than a missing one.
+ * Resolve a referenced name to its one justified defining span across a set of candidate files,
+ * shared by the context and chunk-graph resolvers. Uniqueness is two-layered, and either failure
+ * yields nothing — a wrong definition/edge is worse than a missing one (spec 05):
+ *   - within a file, more than one same-name span at any nesting is an unresolvable overload set
+ *     (#86: the second overload could otherwise never be the target); that file contributes no
+ *     candidate.
+ *   - across files, the defining file must be justified by an import edge from the consumer (its own
+ *     file always qualifies) and be the only one left (#91: a lone in-diff match for a repo-wide
+ *     name otherwise resolves confidently to the wrong class).
+ * `skip` drops a per-file candidate before justification (context-resolve uses it to ignore a symbol
+ * the chunk declares itself).
  */
-export function justifiedUniqueFile(
+export function resolveDefiningSpan(
+  name: string,
   consumerFile: string,
   imported: ReadonlySet<string>,
-  files: readonly string[],
-): string | undefined {
-  const justified = files.filter((f) => f === consumerFile || imported.has(f));
-  return justified.length === 1 ? justified[0] : undefined;
+  symbolsByFile: Iterable<readonly [string, SymbolSpan[] | undefined]>,
+  skip?: (file: string, span: SymbolSpan) => boolean,
+): DefiningSpan | undefined {
+  const perFile = new Map<string, SymbolSpan>();
+  for (const [file, symbols] of symbolsByFile) {
+    const span = uniqueSpanInFile(symbols, name);
+    if (span && !skip?.(file, span)) perFile.set(file, span);
+  }
+  const justified = [...perFile.keys()].filter((f) => f === consumerFile || imported.has(f));
+  if (justified.length !== 1) return undefined;
+  const file = justified[0]!;
+  return { file, span: perFile.get(file)! };
+}
+
+/** The one span named `name` at any nesting depth, or undefined when there are zero or several. */
+function uniqueSpanInFile(symbols: SymbolSpan[] | undefined, name: string): SymbolSpan | undefined {
+  let found: SymbolSpan | undefined;
+  for (const span of walkSpans(symbols)) {
+    if (span.name !== name) continue;
+    if (found) return undefined;
+    found = span;
+  }
+  return found;
+}
+
+function* walkSpans(symbols: SymbolSpan[] | undefined): Generator<SymbolSpan> {
+  for (const s of symbols ?? []) {
+    yield s;
+    yield* walkSpans(s.children);
+  }
 }

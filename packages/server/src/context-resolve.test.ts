@@ -147,6 +147,31 @@ export function run() { return build(); }
     expect(payload.facts.definitions.find((d) => d.symbol === 'build')).toBeUndefined();
   });
 
+  it('gives no definition when the defining file holds two same-name spans (#86 overloads)', async () => {
+    const svc = `namespace App;
+public class Svc {
+  public void Run() { Helper.Go(); }
+}
+`;
+    const helper = `namespace App;
+public static class Helper {
+  public static void Go() {}
+  public static void Go(int n) {}
+}
+`;
+    const resolver = resolverOver({
+      'Svc.cs': { head: svc, base: 'namespace App; public class Svc {}\n' },
+      'Helper.cs': { head: helper, base: helper },
+    });
+    const changed: ChangedFile[] = [
+      { path: 'Svc.cs', status: 'modified' },
+      { path: 'Helper.cs', status: 'modified' },
+    ];
+    const graph: ImportGraph = { edges: [{ from: 'Svc.cs', to: 'Helper.cs' }], unresolved: 0 };
+    const payload = await resolver.resolve(chunk('c1', 'Svc.cs', 3, 3), changed, graph);
+    expect(payload.facts.definitions.find((d) => d.symbol === 'Go')).toBeUndefined();
+  });
+
   it('does not resolve a symbol the chunk itself declares (circular)', async () => {
     const file = `export function helper() { return 1; }
 export function main() { return helper(); }
