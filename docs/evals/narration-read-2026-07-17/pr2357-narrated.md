@@ -2,17 +2,13 @@
 
 125 chunks · 30 sections · head 277e418d
 
-> AI: This change adds an activity feed with author and change-type filters plus sorting. It starts in the backend HistoryService and flows out to the JS wrapper and Svelte views. Follow one filter, like author, from the query to the on-screen list.
-
 ## backend/FwLite/LcmCrdt/HistoryService.cs
 
-> AI: Adds author/change-type listing, plus query-based filtering and sorting, to project activity. Look at the SQLite json_extract expressions and the empty-filter cases.
+> AI: Adds activity filtering, sorting, author/change-type listing to HistoryService. Look at how filters and sort build SQL over commit metadata JSON.
 
 ### lines 8–38
 
 other · +6 -0
-
-> AI: A second copy of the [JsonConverter] attribute is added on the enum.
 
 ```diff
 @@ -7,0 +8,1 @@
@@ -91,6 +87,8 @@ other · +5 -0
 ### ProjectActivity.ChangeTypes
 
 method · +1 -0
+
+> AI: New ChangeTypes property derives distinct change-type keys from the commit's changes.
 
 ```diff
 @@ -20,0 +46,1 @@
@@ -176,7 +174,7 @@ method · +22 -0
 
 method · +8 -9
 
-> AI: The diff shows the query setup lines twice; check whether that is a real duplication.
+> AI: Rewrites the query; note the doubled query init and dbContext lines shown in the diff.
 
 ```diff
 @@ -134,0 +134,1 @@
@@ -207,7 +205,7 @@ method · +8 -9
 
 method-fragment · +35 -0
 
-> AI: An empty AuthorFilterKeys array returns no commits; keys split into ids, names, and unknown.
+> AI: Empty author-filter array returns no commits; keys split into ids, name-prefixed names, and unknown.
 
 ```diff
 @@ -89,0 +152,35 @@
@@ -270,7 +268,7 @@ method-fragment · +10 -0
 
 method · +24 -0
 
-> AI: Synced sorts read SyncDate from ExtraMetadata JSON and put nulls last or first.
+> AI: Synced sorts order by the JSON SyncDate, with nulls pushed last.
 
 ```diff
 @@ -198,0 +198,24 @@
@@ -346,6 +344,8 @@ method · +11 -0
 ```
 
 ## backend/FwLite/LcmCrdt.Tests/HistoryServiceActivityTests.cs
+
+> AI: New test file covering HistoryService activity queries: author/change-type listings, author and change-type filters, sort orders, sync-date ordering, and pagination.
 
 ### lines 1–9
 
@@ -587,6 +587,8 @@ method · +13 -0
 
 method · +11 -0
 
+> AI: SetSyncDate marks one commit as synced to check unsynced sorts before synced.
+
 ```diff
 @@ -95,0 +95,11 @@
 +    [Fact]
@@ -665,6 +667,8 @@ method · +12 -0
 
 method · +14 -0
 
+> AI: First asserts the part-of-speech change shows up unfiltered before checking the multi-type filter excludes it.
+
 ```diff
 @@ -145,0 +145,14 @@
 +    [Fact]
@@ -703,6 +707,8 @@ method · +9 -0
 ### HistoryServiceActivityTests.AddEntryCommit
 
 method · +7 -0
+
+> AI: Headword null path builds a faked entry via AutoFaker instead of a fixed one.
 
 ```diff
 @@ -170,0 +170,7 @@
@@ -763,13 +769,13 @@ method · +8 -0
 
 ## backend/FwLite/FwLiteShared/Services/HistoryServiceJsInvokable.cs
 
-> AI: The JS-invokable wrapper for history queries. Look at the new filter/sort parameters on ProjectActivity and the two new list methods.
+> AI: Widens the JS-invokable ProjectActivity to take filter/sort args and adds passthrough methods for listing authors and change types. Check the new ActivityQuery build.
 
 ### HistoryServiceJsInvokable.ProjectActivity
 
 method · +9 -2
 
-> AI: Adds author, change-type, and sort params; check the leftover second return statement in the diff.
+> AI: The old single-arg call is dropped and replaced by the ActivityQuery version.
 
 ```diff
 @@ -17,1 +17,6 @@
@@ -825,7 +831,7 @@ method · +4 -0
 
 ## backend/FwLite/FwLiteShared/TypeGen/ReinforcedFwLiteTypingConfig.cs
 
-> AI: Registers new activity types for TypeScript generation. Look for the added type exports and the new enum export.
+> AI: This file registers new history/activity types for TypeScript generation. Check that the added types and enum match the new activity API.
 
 ### ReinforcedFwLiteTypingConfig.ConfigureFwLiteSharedTypes
 
@@ -842,7 +848,7 @@ method · +4 -0
 
 ## backend/FwLite/FwLiteWeb/Routes/ActivityRoutes.cs
 
-> AI: The activity route now takes filter, sort, and paging query params, and adds endpoints to list authors and change types. Check the new defaults and how they map to ProjectActivity.
+> AI: The activity endpoint gains query params for filtering and sorting, plus two new routes for authors and change types.
 
 ### ActivityRoutes.MapActivities
 
@@ -865,11 +871,13 @@ method · +10 -1
 
 ## frontend/viewer/src/lib/activity/utils.ts
 
-> AI: New activity utils: filter types, constants, and helpers for authors, sorting, and building server queries. Check the filter-key and multi-select logic.
+> AI: New shared utils for the activity feature: filter types, constants, server-query mapping, and author sort helpers. Check the filter selection logic.
 
 ### lines 1–98
 
 other · +38 -0
+
+> AI: Declares the constants, types, and empty-load default the rest of the file and its callers build on.
 
 ```diff
 @@ -0,0 +1,28 @@
@@ -1020,8 +1028,6 @@ method · +5 -0
 
 method · +6 -0
 
-> AI: Sets author order: unknown first, FieldWorks second, everyone else last.
-
 ```diff
 @@ -71,0 +71,6 @@
 +function authorSortRank(author: IActivityAuthor): number {
@@ -1049,7 +1055,7 @@ method · +5 -0
 
 method · +14 -0
 
-> AI: Handles the 'all' toggle: picking all-key flips between empty and 'all'.
+> AI: Clicking the 'all' key toggles between selecting all and clearing to empty.
 
 ```diff
 @@ -84,0 +84,14 @@
@@ -1080,8 +1086,6 @@ method · +2 -0
 ```
 
 ## frontend/viewer/src/lib/activity/ActivityItemChangePreview.svelte
-
-> AI: Reworks the change-preview layout to wrap text and switch from a container grid to flex-wrap. Look at the class changes on the dropdown trigger and the entry rows.
 
 ### template
 
@@ -1151,7 +1155,7 @@ markup-region · +26 -28
 
 ## frontend/viewer/src/lib/services/history-service.ts
 
-> AI: History service drops the fetch fallbacks and calls the JS invokable directly. Look at new activity query params and the ensureLoaded type assert.
+> AI: This service drops the fetch fallbacks and now calls the JS invokable directly, guarded by ensureLoaded. Look at the new activity filter args and author/change-type methods.
 
 ### lines 1–32
 
@@ -1181,7 +1185,7 @@ other · +14 -1
 
 method · +0 -6
 
-> AI: Removes the dev-only random undefined return that tested the fallback path.
+> AI: Removes the dev-only code that randomly returned undefined.
 
 ```diff
 @@ -22,6 +35,0 @@
@@ -1235,7 +1239,7 @@ method · +2 -3
 
 method · +4 -3
 
-> AI: Old activity method is replaced by listActivityAuthors; the old projectCode arg is gone.
+> AI: The old activity method is replaced here by listActivityAuthors; activity moves to a later chunk.
 
 ```diff
 @@ -65,3 +72,4 @@
@@ -1264,7 +1268,7 @@ method · +4 -0
 
 method · +8 -0
 
-> AI: New activity passes author, change-type, and sort filters to projectActivity.
+> AI: New activity passes filter keys and a sort defaulting to NewestFirst.
 
 ```diff
 @@ -82,0 +82,8 @@
@@ -1295,7 +1299,7 @@ method · +2 -2
 
 method · +1 -1
 
-> AI: ensureLoaded now asserts loaded and a defined historyApi for callers.
+> AI: ensureLoaded now asserts loaded and historyApi so callers can drop null checks.
 
 ```diff
 @@ -75,1 +97,1 @@
@@ -1305,11 +1309,13 @@ method · +1 -1
 
 ## frontend/viewer/src/lib/activity/ActivityFilter.svelte
 
-> AI: New ActivityFilter component: loads authors and change types, then renders two multi-selects and a sort menu bound to a filters object. Check the filter key resolving and select-change handlers.
+> AI: New ActivityFilter component: multi-select author and change-type dropdowns plus a sort menu, all reading and writing a bindable filters prop.
 
 ### script.fragment 1
 
 other · +37 -0
+
+> AI: filters prop is $bindable, defaulting to createDefaultActivityFilters().
 
 ```diff
 @@ -0,0 +1,37 @@
@@ -1356,7 +1362,7 @@ other · +37 -0
 
 other · +36 -0
 
-> AI: Sets up author/changeType resources and derives the selected keys and sort labels from filters.
+> AI: Loads authors and change types from the history service and derives select values and sort labels.
 
 ```diff
 @@ -38,0 +38,36 @@
@@ -1598,7 +1604,7 @@ markup-region · +24 -0
 
 ## frontend/viewer/src/lib/activity/ActivityItem.svelte
 
-> AI: This file adds an optional per-change History button and sync-status icons to activity items. Look at how openHistoryId drives the embedded HistoryView dialog.
+> AI: Adds an optional History button on each change and a HistoryView dialog it opens; also adds cloud icons to the synced/not-synced labels.
 
 ### script
 
@@ -1620,8 +1626,6 @@ other · +6 -0
 ### template
 
 markup-region · +26 -9
-
-> AI: The History button sets openHistoryId from the change snapshot, which opens the HistoryView dialog.
 
 ```diff
 @@ -75,5 +81,10 @@
@@ -1668,9 +1672,13 @@ markup-region · +26 -9
 
 ## frontend/viewer/src/lib/activity/ActivityView.svelte
 
+> AI: Reworks activity loading to use a filter panel and server-side query with page-based paging, plus loading/error UI. Check the resource rewrite and the auto-paging effects.
+
 ### script.fragment 1
 
 other · +36 -16
+
+> AI: Drops projectCode/loadCount paging for filter-driven queryKey, serverQuery, and pageCount inputs.
 
 ```diff
 @@ -4,3 +4,1 @@
@@ -1785,6 +1793,8 @@ other · +30 -7
 
 other · +30 -0
 
+> AI: Effects reset selectedRow, bump pageCount to fill filtered results, and reset pages when the query changes.
+
 ```diff
 @@ -45,0 +89,30 @@
 +
@@ -1837,6 +1847,8 @@ method · +3 -3
 ### template
 
 markup-region · +32 -17
+
+> AI: Adds loading/error branches, an unsynced-changes icon, and an Unknown author fallback.
 
 ```diff
 @@ -56,3 +129,2 @@
@@ -1900,7 +1912,7 @@ markup-region · +32 -17
 
 ## frontend/viewer/src/lib/history/HistoryView.svelte
 
-> AI: Rewrites HistoryView to Svelte 5 runes and replaces the local `record` with a bindable `selectedCommitId`. Check how `record` is now derived and that selection stays in sync.
+> AI: Rewrites HistoryView to Svelte 5 runes and drives selection through a new bindable selectedCommitId prop instead of a local record.
 
 ### script.Props
 
@@ -1921,7 +1933,7 @@ other · +5 -2
 
 other · +16 -7
 
-> AI: Reactive blocks become `$effect`/`$derived`; `record` is now found from `selectedCommitId`.
+> AI: record is now derived from selectedCommitId, and load/reset run inside an $effect.
 
 ```diff
 @@ -16,0 +16,6 @@
@@ -1958,7 +1970,7 @@ other · +16 -7
 
 method · +2 -1
 
-> AI: Only defaults `selectedCommitId` to the first commit when none is set.
+> AI: load now seeds selectedCommitId from the first commit only when none is set.
 
 ```diff
 @@ -35,1 +39,2 @@
@@ -1991,7 +2003,7 @@ method · +1 -1
 
 markup-region · +9 -7
 
-> AI: ActivityItem now also passes `changeTypes: []`.
+> AI: Mostly reformatting; note the added changeTypes: [] passed to ActivityItem.
 
 ```diff
 @@ -56,1 +69,2 @@
@@ -2020,7 +2032,7 @@ markup-region · +9 -7
 
 ## frontend/viewer/src/lib/components/ui/select/select-item.svelte
 
-> AI: This select item now takes an optional selectedIndicator snippet. Look at how the snippet overrides the default check icon when a row is selected.
+> AI: Adds an optional `selectedIndicator` snippet prop so callers can override the default check icon. Check the new Props type and the template branch.
 
 ### script
 
@@ -2054,11 +2066,13 @@ markup-region · +3 -1
 
 ## frontend/viewer/src/lib/components/ui/select/select-trigger.svelte
 
-> AI: Adds ellipsis and margin classes to the select trigger's styling. Check how the new classes interact with the existing button variant styles.
+> AI: This file's Select trigger gets a styling tweak. Look at the added class on the trigger element.
 
 ### template
 
 markup-region · +1 -0
+
+> AI: Adds ellipsis truncation and right margin to the trigger.
 
 ```diff
 @@ -37,0 +38,1 @@
@@ -2067,7 +2081,7 @@ markup-region · +1 -0
 
 ## frontend/viewer/src/lib/services/service-provider-dotnet.ts
 
-> AI: This file wraps dotnet service calls in a proxy. The change adds a try/catch that logs the error before rethrowing.
+> AI: This file wraps dotnet proxy calls. Look at the added try/catch around invokeMethodAsync that logs and rethrows errors.
 
 ### wrapInProxy.get
 
@@ -2090,7 +2104,7 @@ method · +8 -3
 
 ## frontend/viewer/src/locales/en.po
 
-> AI: New translation strings for the activity filter, sort options, and activity view states. Check the new msgids and their source references.
+> AI: New activity filter/view UI strings added to the English catalog. Check the new msgids and their source-file references.
 
 ### fragment 1
 
@@ -2151,7 +2165,7 @@ other · +40 -0
 
 other · +31 -2
 
-> AI: "No activity matches these filters" appears twice here, replacing the old "No activity found" entry.
+> AI: "No activity found" is dropped and replaced by a second "No activity matches these filters" entry.
 
 ```diff
 @@ -1277,0 +1318,1 @@

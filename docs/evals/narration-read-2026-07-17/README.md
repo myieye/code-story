@@ -22,6 +22,7 @@ A "pleasant but I'd not miss it" verdict is a named acceptable outcome: it shelv
 narration and pivots M4 toward code-context payloads (R-008) instead. Record the verdict in the
 baseline doc's Dogfood 4 section; the judge-model scores are already there for comparison.
 
-Known gaps in these copies (deliberate, recorded in the overlays): PR 2309 has no opener (it
-failed the 3-sentence cap twice — the failure is recorded, not hidden) and one section without
-narration; PR 2357 has two sections without narration (register-cap failures).
+Known gaps in these copies (deliberate, recorded in the overlays; regenerated 2026-07-17 with
+`narration-4` after the duplication-claim and register-cap fixes): PR 2309 is fully narrated.
+PR 2357 has one section without an intro and no opener — opus overflowed the 3-sentence opener
+cap on all three asks; the failure is recorded, not hidden ("faithful or silent").

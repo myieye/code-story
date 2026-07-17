@@ -2,15 +2,112 @@
 
 37 chunks · 16 sections · head 39a14e93
 
+> AI: This change adds shared filter bars with debounced input and query-param handling across several pages. Follow the debouncedFilter and query-params utilities first, then watch how each filter component and page wires them in.
+
+## frontend/src/lib/util/debouncedFilter.svelte.ts
+
+> AI: New helper that two-way binds a text input to a URL-backed filter store with debounced writes. Watch the echo-tracking that keeps external writes from being clobbered.
+
+### lines 1–16
+
+other · +16 -0
+
+````diff
+@@ -0,0 +1,16 @@
++import {Debounced} from 'runed';
++import {untrack} from 'svelte';
++
++/**
++ * Two-way bindable wrapper between a text input and a URL-backed filter store:
++ * `value` updates per keystroke, `filters[key]` after `debounceMs` of idle typing,
++ * and external writes to `filters[key]` (deep links, back button, programmatic)
++ * sync back into the input — without the store's echo of our own debounced write
++ * clobbering newer typing.
++ *
++ * Coerce nullish input so the value stays a string:
++ * ```svelte
++ * const search = debouncedFilter(filters, 'userSearch', 400);
++ * <input bind:value={() => search.value, (v) => (search.value = v ?? '')} />
++ * ```
++ */
+````
+
+### debouncedFilter
+
+method · +36 -0
+
+```diff
+@@ -17,0 +17,34 @@
++export function debouncedFilter<T extends Record<string, unknown>, K extends keyof T>(
++  filters: T,
++  key: K,
++  debounceMs: number,
++): {value: T[K]} {
++  let local: T[K] = $state(untrack(() => filters[key]));
++  let pendingEcho: T[K] | undefined = undefined;
++
++  // Flush typing → upstream store, debounced.
++  const flushed = new Debounced(() => local, debounceMs);
++  $effect(() => {
++    const value = flushed.current;
++    // untracked: re-firing on external filters[key] writes (e.g. the clear-✕ button)
++    // would replay the still-stale flushed.current over them
++    untrack(() => {
++      if (filters[key] === value) return;
++      pendingEcho = value;
++      filters[key] = value;
++    });
++  });
++
++  // Sync upstream changes back into local, except when echoing our own write.
++  $effect(() => {
++    const fromStore = filters[key];
++    untrack(() => {
++      if (fromStore === pendingEcho) {
++        pendingEcho = undefined;
++      } else if (pendingEcho === undefined && fromStore !== local) {
++        local = fromStore;
++      }
++    });
++  });
++
++  return {
+@@ -57,0 +57,2 @@
++  };
++}
+```
+
+### debouncedFilter.value
+
+method · +3 -0
+
+```diff
+@@ -51,0 +51,3 @@
++    get value() {
++      return local;
++    },
+```
+
+### debouncedFilter.value
+
+method · +3 -0
+
+```diff
+@@ -54,0 +54,3 @@
++    set value(v: T[K]) {
++      local = v;
++    },
+```
+
 ## frontend/src/lib/components/FilterBar/FilterBar.svelte
 
-> AI: FilterBar now takes `filters` as a plain object instead of a Writable store and hands search debouncing to `debouncedFilter`. Watch how filter mutation and clearing were rewritten.
+> AI: FilterBar switches from a Writable store to a plain filters object and moves search debouncing into the debouncedFilter helper. Watch how filter reads and writes change shape.
 
 ### script
 
 other · +9 -19
 
-> AI: Diff shows duplicated import lines; check the final import set is what you expect.
+> AI: Search setup now calls debouncedFilter with a computed debounce time instead of the old Debounced/watch pair.
 
 ```diff
 @@ -19,1 +18,0 @@
@@ -64,8 +161,6 @@ other · +1 -1
 
 method · +2 -8
 
-> AI: resetFilter now writes one key on the filters object in place rather than replacing the store.
-
 ```diff
 @@ -76,8 +67,2 @@
 -  function onClearFiltersClick(): void {
@@ -100,8 +195,6 @@ method · +3 -5
 
 method · +4 -4
 
-> AI: Loop now iterates the default keys instead of the value keys.
-
 ```diff
 @@ -95,3 +78,3 @@
 -    for (const key in values) {
@@ -132,7 +225,7 @@ markup-region · +3 -3
 
 ## frontend/src/lib/components/Users/UserFilter.svelte
 
-> AI: Switches the `filters` prop from a Writable store to a plain bindable object. Check that store subscriptions (`$filters`) are all replaced by direct access.
+> AI: The `filters` prop changes from a Writable store to a plain bindable object. Check that all `$filters` store access is switched to direct property access.
 
 ### script.Props
 
@@ -148,7 +241,7 @@ other · +1 -1
 
 other · +1 -2
 
-> AI: Drops the Writable import and marks `filters` as `$bindable()`.
+> AI: Drops the Writable import and makes `filters` a `$bindable()` prop.
 
 ```diff
 @@ -12,1 +11,0 @@
@@ -173,7 +266,7 @@ markup-region · +2 -2
 
 ## frontend/src/lib/util/query-params.ts
 
-> AI: Rewrites query-params to use runed's `useSearchParams` instead of sveltekit-search-params. Check the new `queryParam` builders and the null/undefined adapting logic.
+> AI: This file swaps the query-param backend from sveltekit-search-params to runed's useSearchParams. Check the new typed queryParam builders and the null/undefined adapting.
 
 ### lines 1–36
 
@@ -246,7 +339,7 @@ other · +33 -22
 
 method · +30 -27
 
-> AI: queryParamValues now uses getter/setter properties mapping runed's null reads/writes to undefined.
+> AI: Watch the getter/setter that maps runed's null reads and writes to undefined.
 
 ```diff
 @@ -37,0 +37,6 @@
@@ -315,13 +408,13 @@ method · +30 -27
 
 ## frontend/src/routes/(authenticated)/+page.svelte
 
-> AI: Adds a confidentiality filter to the project list. Check the new query param wiring and the filterProjects call.
+> AI: This page wires a new confidentiality filter into the project list. Look at the query-param setup and the change in how filters get passed to filterProjects.
 
 ### script
 
 other · +4 -2
 
-> AI: Adds a `confidential` filter param; note the filterProjects call now passes `filters`, not `$filters`.
+> AI: The filterProjects call switches from the store `$filters` to plain `filters`.
 
 ```diff
 @@ -11,0 +12,1 @@
@@ -338,7 +431,7 @@ other · +4 -2
 
 ## frontend/src/routes/(authenticated)/org/[org_id]/+page.svelte
 
-> AI: This page switches its tab state from a store subscription ($queryParamValues) to a plain object (queryParamValues). Check the binding and each tab branch.
+> AI: This page switches queryParamValues from a store to a plain object. Check that every tab read and bind drops the $ prefix.
 
 ### template
 
@@ -364,7 +457,7 @@ markup-region · +5 -5
 
 ## frontend/src/routes/(authenticated)/org/list/+page.svelte
 
-> AI: Org list page switches its search filter to read from a plain object instead of a store. Check the queryParamValues access matches its new shape.
+> AI: This file switches how the org list reads the search param when filtering. Look at the change from a store access to a plain property.
 
 ### script
 
@@ -376,9 +469,63 @@ other · +1 -1
 +  let filteredOrgs = $derived($orgs ? filterOrgs($orgs, queryParamValues.search) : []);
 ```
 
+## frontend/src/routes/(authenticated)/admin/+page.svelte
+
+> AI: This file switches from the `$queryParamValues` store-access form to plain `queryParamValues` property access throughout. Check the reads and writes stay consistent.
+
+### script
+
+other · +2 -2
+
+```diff
+@@ -56,1 +56,1 @@
+-  let tab = $derived($queryParamValues.tab);
++  let tab = $derived(queryParamValues.tab);
+@@ -64,1 +64,1 @@
+-        (key) => (fromUrl.searchParams.get(key) ?? defaultQueryParamValues[key])?.toString() !== $queryParamValues[key],
++        (key) => (fromUrl.searchParams.get(key) ?? defaultQueryParamValues[key])?.toString() !== queryParamValues[key]?.toString(),
+```
+
+### script.filterProjectsByUser
+
+method · +4 -4
+
+```diff
+@@ -82,1 +82,1 @@
+-    $queryParamValues.memberSearch = user.email ?? user.username ?? undefined;
++    queryParamValues.memberSearch = user.email ?? user.username ?? undefined;
+@@ -84,3 +84,3 @@
+-    $queryParamValues.projectSearch = '';
+-    $queryParamValues.projectType = undefined;
+-    $queryParamValues.tab = 'projects';
++    queryParamValues.projectSearch = '';
++    queryParamValues.projectType = undefined;
++    queryParamValues.tab = 'projects';
+```
+
+### script.onUserCreated
+
+method · +1 -1
+
+```diff
+@@ -124,1 +124,1 @@
+-    $queryParamValues.userSearch = user.emailOrUsername;
++    queryParamValues.userSearch = user.emailOrUsername;
+```
+
+### template
+
+markup-region · +1 -1
+
+```diff
+@@ -139,1 +139,1 @@
+-      <AdminTabs activeTab="users" onClickTab={(tab) => ($queryParamValues.tab = tab)}>
++      <AdminTabs activeTab="users" onClickTab={(tab) => (queryParamValues.tab = tab)}>
+```
+
 ## frontend/src/lib/components/Projects/ProjectFilter.svelte
 
-> AI: Switches the `filters` prop from a Svelte store to a plain bindable object. Look for any remaining `$filters` store reads and store-only behavior lost by the change.
+> AI: Switches the `filters` prop from a Svelte store to a plain bindable object. Check that every `$filters` store access became a direct `filters` property read.
 
 ### script.Props
 
@@ -394,7 +541,7 @@ other · +1 -1
 
 other · +1 -2
 
-> AI: Drops the Writable import and makes `filters` bindable.
+> AI: Drops the Writable import and marks `filters` as `$bindable()`.
 
 ```diff
 @@ -44,1 +43,0 @@
@@ -435,67 +582,15 @@ markup-region · +8 -8
 +          <input bind:checked={filters.emptyProjects} type="checkbox" class="toggle toggle-warning" />
 ```
 
-## frontend/src/routes/(authenticated)/admin/+page.svelte
-
-> AI: Switches queryParamValues from a store ($-prefixed) to plain property access across reads and writes. Check the filterProjectsByUser cleanup for dropped duplicate lines.
-
-### script
-
-other · +2 -2
-
-```diff
-@@ -56,1 +56,1 @@
--  let tab = $derived($queryParamValues.tab);
-+  let tab = $derived(queryParamValues.tab);
-@@ -64,1 +64,1 @@
--        (key) => (fromUrl.searchParams.get(key) ?? defaultQueryParamValues[key])?.toString() !== $queryParamValues[key],
-+        (key) => (fromUrl.searchParams.get(key) ?? defaultQueryParamValues[key])?.toString() !== queryParamValues[key]?.toString(),
-```
-
-### script.filterProjectsByUser
-
-method · +4 -4
-
-> AI: Removes the duplicated filter-clearing lines and keeps one set with plain property access.
-
-```diff
-@@ -82,1 +82,1 @@
--    $queryParamValues.memberSearch = user.email ?? user.username ?? undefined;
-+    queryParamValues.memberSearch = user.email ?? user.username ?? undefined;
-@@ -84,3 +84,3 @@
--    $queryParamValues.projectSearch = '';
--    $queryParamValues.projectType = undefined;
--    $queryParamValues.tab = 'projects';
-+    queryParamValues.projectSearch = '';
-+    queryParamValues.projectType = undefined;
-+    queryParamValues.tab = 'projects';
-```
-
-### script.onUserCreated
-
-method · +1 -1
-
-```diff
-@@ -124,1 +124,1 @@
--    $queryParamValues.userSearch = user.emailOrUsername;
-+    queryParamValues.userSearch = user.emailOrUsername;
-```
-
-### template
-
-markup-region · +1 -1
-
-```diff
-@@ -139,1 +139,1 @@
--      <AdminTabs activeTab="users" onClickTab={(tab) => ($queryParamValues.tab = tab)}>
-+      <AdminTabs activeTab="users" onClickTab={(tab) => (queryParamValues.tab = tab)}>
-```
-
 ## frontend/src/routes/(authenticated)/admin/AdminProjects.svelte
+
+> AI: This file switches filter state from store subscriptions to plain derived values from queryParams. Check that every filter read drops the `$` prefix.
 
 ### script
 
 other · +4 -5
+
+> AI: `filters` and `filterDefaults` become `const $derived` and reads switch from `$filters` to `filters`.
 
 ```diff
 @@ -36,3 +36,2 @@
@@ -522,15 +617,78 @@ markup-region · +1 -1
 +  <AdminTabs activeTab="projects" onClickTab={(tab) => (queryParams.queryParamValues.tab = tab)}>
 ```
 
+## frontend/tests/envVars.ts
+
+> AI: Test env config gains a TEST_HTTPS override that forces https even on localhost. Check the new condition on httpScheme.
+
+### lines 3–4
+
+other · +2 -1
+
+```diff
+@@ -3,1 +3,2 @@
+-export const httpScheme = isDev ? 'http://' : 'https://';
++// TEST_HTTPS=1 forces https even on localhost (for running against the dev https-proxy on :3050).
++export const httpScheme = (isDev && process.env.TEST_HTTPS !== '1') ? 'http://' : 'https://';
+```
+
+## frontend/tests/pages/adminDashboardPage.ts
+
+> AI: Adds a page-object getter for the second filter-bar textbox on the admin dashboard. Check the nth(1) index matches the user filter.
+
+### AdminDashboardPage.userFilterBarInput
+
+method · +1 -0
+
+```diff
+@@ -8,0 +9,1 @@
++  get userFilterBarInput(): Locator { return this.page.locator('.filter-bar').nth(1).getByRole('textbox'); }
+```
+
+## frontend/tests/pages/loginPage.ts
+
+> AI: Adds a static loginAsAdmin helper to LoginPage that logs in with the default password and waits for the URL to leave /login.
+
+### lines 4–4
+
+other · +1 -0
+
+```diff
+@@ -3,0 +4,1 @@
++import { defaultPassword } from '../envVars';
+```
+
+### LoginPage.loginAsAdmin
+
+method · +5 -0
+
+```diff
+@@ -18,0 +20,5 @@
++  static async loginAsAdmin(page: Page): Promise<void> {
++    const loginPage = await new LoginPage(page).goto();
++    await loginPage.fillForm('admin', defaultPassword);
++    await Promise.all([page.waitForURL((url) => !url.pathname.startsWith('/login')), loginPage.submit()]);
++  }
+```
+
+### LoginPage
+
+other · +1 -0 · low-signal (whitespace)
+
+```diff
+@@ -25,0 +25,1 @@
++
+```
+
 ## frontend/tests/adminPage.test.ts
 
-> AI: New Playwright tests for the #2224 user-filter fix. Check that they cover both rapid typing not dropping characters and external URL changes syncing into the input.
+> AI: New Playwright tests for the #2224 filter-typing fix. Check that they assert dropped-character and external-sync behavior for both user and project filters.
 
 ### fragment 1
 
 other · +38 -1
 
-> AI: Adds typing tests: rapid keystrokes keep all characters, and the ✕ clear works mid-debounce.
+> AI: Adds rapid-typing and mid-typing-clear tests; note the clear test skips the debounce wait on purpose.
 
 ```diff
 @@ -1,1 +1,1 @@
@@ -579,8 +737,6 @@ other · +38 -1
 ### fragment 2
 
 other · +34 -0
-
-> AI: External-sync tests: URL mount, post-mount store writes via pushState/popstate, and clear-then-external.
 
 ```diff
 @@ -50,0 +50,34 @@
@@ -643,74 +799,9 @@ other · +15 -0
 +});
 ```
 
-## frontend/tests/envVars.ts
-
-> AI: Test env var setup. New TEST_HTTPS flag can force https on localhost; check the scheme logic.
-
-### lines 3–4
-
-other · +2 -1
-
-```diff
-@@ -3,1 +3,2 @@
--export const httpScheme = isDev ? 'http://' : 'https://';
-+// TEST_HTTPS=1 forces https even on localhost (for running against the dev https-proxy on :3050).
-+export const httpScheme = (isDev && process.env.TEST_HTTPS !== '1') ? 'http://' : 'https://';
-```
-
-## frontend/tests/pages/adminDashboardPage.ts
-
-> AI: Adds a page-object getter for the user filter bar input in the admin dashboard test helper.
-
-### AdminDashboardPage.userFilterBarInput
-
-method · +1 -0
-
-```diff
-@@ -8,0 +9,1 @@
-+  get userFilterBarInput(): Locator { return this.page.locator('.filter-bar').nth(1).getByRole('textbox'); }
-```
-
-## frontend/tests/pages/loginPage.ts
-
-> AI: Adds a static loginAsAdmin helper to LoginPage that logs in with the admin user and waits to leave the login page.
-
-### lines 4–4
-
-other · +1 -0
-
-```diff
-@@ -3,0 +4,1 @@
-+import { defaultPassword } from '../envVars';
-```
-
-### LoginPage.loginAsAdmin
-
-method · +5 -0
-
-> AI: Uses defaultPassword and waits for the URL to move off /login after submit.
-
-```diff
-@@ -18,0 +20,5 @@
-+  static async loginAsAdmin(page: Page): Promise<void> {
-+    const loginPage = await new LoginPage(page).goto();
-+    await loginPage.fillForm('admin', defaultPassword);
-+    await Promise.all([page.waitForURL((url) => !url.pathname.startsWith('/login')), loginPage.submit()]);
-+  }
-```
-
-### LoginPage
-
-other · +1 -0 · low-signal (whitespace)
-
-```diff
-@@ -25,0 +25,1 @@
-+
-```
-
 ## frontend/package.json
 
-> AI: This file drops the sveltekit-search-params dependency. Check that nothing still needs it.
+> AI: This file drops the sveltekit-search-params dependency; check that nothing still needs it.
 
 ### lines 111–111
 
@@ -719,103 +810,6 @@ config · +0 -1
 ```diff
 @@ -111,1 +110,0 @@
 -    "sveltekit-search-params": "^3.0.0",
-```
-
-## frontend/src/lib/util/debouncedFilter.svelte.ts
-
-> AI: New helper that two-way binds a text input to a URL-backed filter store with debounce. Check how it stops the store's echo of its own write from overwriting newer typing.
-
-### lines 1–16
-
-other · +16 -0
-
-````diff
-@@ -0,0 +1,16 @@
-+import {Debounced} from 'runed';
-+import {untrack} from 'svelte';
-+
-+/**
-+ * Two-way bindable wrapper between a text input and a URL-backed filter store:
-+ * `value` updates per keystroke, `filters[key]` after `debounceMs` of idle typing,
-+ * and external writes to `filters[key]` (deep links, back button, programmatic)
-+ * sync back into the input — without the store's echo of our own debounced write
-+ * clobbering newer typing.
-+ *
-+ * Coerce nullish input so the value stays a string:
-+ * ```svelte
-+ * const search = debouncedFilter(filters, 'userSearch', 400);
-+ * <input bind:value={() => search.value, (v) => (search.value = v ?? '')} />
-+ * ```
-+ */
-````
-
-### debouncedFilter
-
-method · +36 -0
-
-> AI: Two effects: one debounces typing to the store, one syncs store changes back unless it's the pending echo.
-
-```diff
-@@ -17,0 +17,34 @@
-+export function debouncedFilter<T extends Record<string, unknown>, K extends keyof T>(
-+  filters: T,
-+  key: K,
-+  debounceMs: number,
-+): {value: T[K]} {
-+  let local: T[K] = $state(untrack(() => filters[key]));
-+  let pendingEcho: T[K] | undefined = undefined;
-+
-+  // Flush typing → upstream store, debounced.
-+  const flushed = new Debounced(() => local, debounceMs);
-+  $effect(() => {
-+    const value = flushed.current;
-+    // untracked: re-firing on external filters[key] writes (e.g. the clear-✕ button)
-+    // would replay the still-stale flushed.current over them
-+    untrack(() => {
-+      if (filters[key] === value) return;
-+      pendingEcho = value;
-+      filters[key] = value;
-+    });
-+  });
-+
-+  // Sync upstream changes back into local, except when echoing our own write.
-+  $effect(() => {
-+    const fromStore = filters[key];
-+    untrack(() => {
-+      if (fromStore === pendingEcho) {
-+        pendingEcho = undefined;
-+      } else if (pendingEcho === undefined && fromStore !== local) {
-+        local = fromStore;
-+      }
-+    });
-+  });
-+
-+  return {
-@@ -57,0 +57,2 @@
-+  };
-+}
-```
-
-### debouncedFilter.value
-
-method · +3 -0
-
-```diff
-@@ -51,0 +51,3 @@
-+    get value() {
-+      return local;
-+    },
-```
-
-### debouncedFilter.value
-
-method · +3 -0
-
-```diff
-@@ -54,0 +54,3 @@
-+    set value(v: T[K]) {
-+      local = v;
-+    },
 ```
 
 ## frontend/pnpm-lock.yaml
