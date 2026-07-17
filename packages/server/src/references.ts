@@ -122,3 +122,18 @@ function push(node: TSNode | undefined, offset: number, out: ReferenceHit[]): vo
   if (!node || isNoise(node.text)) return;
   out.push({ name: node.text, line: node.startPosition.row + 1 + offset });
 }
+
+/**
+ * The #91 discipline, shared by the context and chunk-graph resolvers: a cross-file definition
+ * candidate must be justified by an import edge from the consuming file (its own file always
+ * qualifies); after the filter, a unique candidate wins, anything else stays unresolved. A wrong
+ * definition/edge is worse than a missing one.
+ */
+export function justifiedUniqueFile(
+  consumerFile: string,
+  imported: ReadonlySet<string>,
+  files: readonly string[],
+): string | undefined {
+  const justified = files.filter((f) => f === consumerFile || imported.has(f));
+  return justified.length === 1 ? justified[0] : undefined;
+}

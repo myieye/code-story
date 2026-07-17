@@ -66,6 +66,23 @@ describe('buildChunkGraph', () => {
     expect(cg.edges.some((e) => e.kind === 'file-imports' && e.from === 'consumer' && e.to === 'helper')).toBe(true);
   });
 
+  it('emits no edge for a lone cross-file match with no import edge to justify it (#91)', async () => {
+    const consumer = 'export function route(name) {\n  return slugify(name);\n}\n';
+    const helper = 'export function slugify(s) {\n  return s.toLowerCase();\n}\n';
+    const consumerChunk = chunk('consumer', 'consumer.ts', 1, 3, ['route']);
+    const helperChunk = chunk('helper', 'helper.ts', 1, 3, ['slugify']);
+    const cg = await build({
+      files: [fileDiff('consumer.ts', [consumerChunk]), fileDiff('helper.ts', [helperChunk])],
+      chunks: [consumerChunk, helperChunk],
+      contents: new Map([
+        ['consumer.ts', { head: consumer.split('\n') }],
+        ['helper.ts', { head: helper.split('\n') }],
+      ]),
+      graph: { edges: [], unresolved: 0 },
+    });
+    expect(cg.edges.filter((e) => e.source === 'references')).toEqual([]);
+  });
+
   it('emits no edge when a called name is defined in two changed files with no disambiguating import', async () => {
     const consumer = 'export function run() {\n  return build();\n}\n';
     const consumerChunk = chunk('c', 'consumer.ts', 1, 3, ['run']);

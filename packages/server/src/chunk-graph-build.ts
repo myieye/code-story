@@ -16,7 +16,7 @@ import {
   type SymbolSpan,
   testImplAnchors,
 } from '@code-story/core';
-import { extractReferences } from './references.js';
+import { extractReferences, justifiedUniqueFile } from './references.js';
 import { extractSymbols } from './treesitter.js';
 
 export interface ChunkGraphBuildInput {
@@ -114,10 +114,10 @@ export async function buildChunkGraph(input: ChunkGraphBuildInput): Promise<Chun
 }
 
 /**
- * Resolves a referenced name to the single changed chunk that defines it, or undefined. One defining
- * changed file wins outright; several are disambiguated to the unique one the caller's file imports.
- * The chosen file's span must sit in exactly one changed chunk (the defining chunk). A reference back
- * into the caller's own chunk is dropped (self-call, not navigation).
+ * Resolves a referenced name to the single changed chunk that defines it, or undefined. The defining
+ * file must pass `justifiedUniqueFile` (the #91 rule the sibling context resolver uses). The chosen
+ * file's span must sit in exactly one changed chunk (the defining chunk). A reference back into the
+ * caller's own chunk is dropped (self-call, not navigation).
  */
 function resolveTarget(
   name: string,
@@ -130,12 +130,7 @@ function resolveTarget(
   if (!cands || cands.length === 0) return undefined;
 
   const files = [...new Set(cands.map((c) => c.file))];
-  let chosenFile: string | undefined;
-  if (files.length === 1) chosenFile = files[0];
-  else {
-    const preferred = files.filter((f) => imported.has(f));
-    chosenFile = preferred.length === 1 ? preferred[0] : undefined;
-  }
+  const chosenFile = justifiedUniqueFile(caller.file, imported, files);
   if (chosenFile === undefined) return undefined;
 
   const span = cands.find((c) => c.file === chosenFile)!.span;

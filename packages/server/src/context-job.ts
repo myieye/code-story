@@ -64,7 +64,14 @@ export async function runContextJob(deps: ContextJobDeps): Promise<ContextJobRes
       deps.onProgress?.(done, total);
       continue;
     }
-    const payload = await deps.resolve(chunk);
+    let payload: ContextPayload;
+    try {
+      payload = await deps.resolve(chunk);
+    } catch {
+      // Fail-open per chunk: one bad parse must not fail the whole fill; the chunk stays
+      // payload-less (not counted done — a later run or on-demand GET retries it).
+      continue;
+    }
     const { persisted } = await deps.persist(payload);
     if (!persisted) {
       return { chunksTotal: total, chunksDone: done, computed, skipped, capped: true, cappedCount: total - done };

@@ -488,11 +488,16 @@ export function startServer(options: ServerOptions, requestedPort = 0): Promise<
     const fresh = filterFreshContext(options.range.head, book, store)[chunkId];
     if (fresh) return c.json({ payload: fresh } satisfies ContextResponse);
 
-    const { resolver, changedFiles } = await contextResolveInputs();
-    const payload = await resolver.resolve(chunk, changedFiles, graph);
-    // At the cap the payload is served without persisting — on-demand context never stops working.
-    await persistPayload(contextFile, payload);
-    return c.json({ payload } satisfies ContextResponse);
+    try {
+      const { resolver, changedFiles } = await contextResolveInputs();
+      const payload = await resolver.resolve(chunk, changedFiles, graph);
+      // At the cap the payload is served without persisting — on-demand context never stops working.
+      await persistPayload(contextFile, payload);
+      return c.json({ payload } satisfies ContextResponse);
+    } catch {
+      // Fail-open to absent: a resolution error must read as "no context", never a 500.
+      return c.json({ payload: null } satisfies ContextResponse);
+    }
   });
 
   // The bulk context fill, modeled on the order/narration jobs minus the model calls. One in flight
