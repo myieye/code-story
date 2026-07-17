@@ -300,9 +300,23 @@ cross-file sections (new linearizer, chunk-position checkOrder, orderTestBlock r
 graph decoupled from M4 (only #63 + a changed-file resolver), frontier surfacing honestly
 display-only, slice-0 blind edge-precision audit (≥0.90, Tim audits) gates the UI slices.
 M5 slices = **#74–#80**.
-Next (as of this writing — verify freshness on wake): **#71 first** (AI order default-on,
-ships on CURRENT dependency-first axioms per spec 05's sequencing decision — Tim can veto),
-then **#75** (core ChunkGraph) → #74 (slice-0 experiment; needs Tim's 45-edge blind audit) →
-#76 (chapter linearizer). M4 **#64** proceeds in parallel (independent per spec 05). #77–#80
-per blocking edges. #21/#27/#58 evidence-gated watches; Tim's open read = #54.
-Dogfood target: languageforge/lexbox (C# + Svelte/TS); repo-agnostic (R-025).
+**Third window (2026-07-17, ~12:45Z–, "be fully autonomous until quota")**: **#71 done**
+(PR #81): daemon auto-kicks the order job on compile when no fresh overlay (`shouldAutoKickOrder`
+pure decision + shared `kickOrderJob`; failed-fingerprint Set stops retry storms per daemon
+lifetime), `--no-ai-order` / `CODE_STORY_NO_AI_ORDER` opt-out, book never blocks (tier 0
+immediately, overlay applies on next load — gradual call recorded in spec 02), `orderInvoke`
+test seam. Dogfooded live on lexbox 8dd70ba~1..8dd70ba: auto-job done in ~36s, overlay + rationales
+served fresh (comment on #71). **#64 done** (PR #82): server `context-resolve.ts`
+(createContextResolver: changed-file lookup all languages w/ import-edge disambiguation
+unique-or-nothing; unchanged-file lookup path-specifier languages only via head path index
+`git ls-tree` + core `resolveTsSpecifier` extracted from buildImportGraph; deleted files at
+base; (sha,path) memoized; fail-open), store `reviews/<b12>..<h12>.context.json`,
+`GET /api/context?chunk=` compute-on-miss; demo test = util NOT in diff resolves. Tests 270
+(core 171 / server 66 / web 33).
+Next (as of this writing — verify freshness on wake): **#75** (core ChunkGraph) and **#66**
+(web definition panel) in flight via worktree agents → then #74 (slice-0 experiment; needs
+Tim's 45-edge blind audit) → #76 (chapter linearizer); #65 (bulk context job) after #75
+merges (both touch server/cli). #77–#80 per blocking edges. #21/#27/#58 evidence-gated
+watches; Tim's open read = #54.
+Dogfood target: languageforge/lexbox (C# + Svelte/TS); repo-agnostic (R-025). lexbox clone
+lives at /home/user/lexbox this container (pr-2309 ref fetched; range c0448522..pr-2309).
