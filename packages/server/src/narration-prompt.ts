@@ -1,0 +1,71 @@
+export const NARRATION_PROMPT_VERSION = 'narration-1';
+
+/**
+ * The per-section narration prompt (spec 03). Asks for a short section intro and sparse per-chunk
+ * orientation lines, in the R-036 register, orienting not judging. Bump NARRATION_PROMPT_VERSION on
+ * any edit; overlays record it so stale-prompt narration can be told apart.
+ */
+export function sectionNarrationPrompt(renderedInput: string): string {
+  return `You are writing short orientation notes for one file's section of a code-review "book".
+A tired reviewer reads the book top to bottom, once. Your notes help them know what this file's
+part of the story is and where to look. The notes never replace reading the diff.
+
+Below is this section: its role, which other changed files it imports or is imported by, and each
+chunk with its exact id and diff.
+
+Write two things:
+
+1. A section intro. At most 2 sentences and 200 characters. Say what this file's part of the
+   change is and what to look for. Describe only this section's own diff — do NOT mention or refer
+   to any other file or section.
+
+2. Chunk lines. At most 1 sentence and 110 characters each. Be SPARSE: omit the line for any chunk
+   whose diff already speaks for itself. A line must add something the diff does not already say; if
+   it would only restate the code, leave it out. Most chunks should get no line at all.
+
+Rules for every line you write:
+- Orient, don't judge. Never say a change looks good, is correct, safe, simple, clean, elegant, or
+  trivial. Evaluative or reassuring words are rejected by a validator and waste the whole reply.
+- Never imply the change is complete or that anything is not worth looking at.
+- Register: short sentences, everyday words, high-school English, written for a tired reviewer.
+  Dense prose is a defect even when it is accurate.
+
+Reply with STRICT JSON only, no other text:
+{"intro": "<the section intro>", "chunks": {"<chunk id>": "<line>"}}
+
+Include only the chunk ids you chose to write a line for; omit every other chunk. Use the exact
+chunk ids shown below, unchanged.
+
+Section:
+
+${renderedInput}`;
+}
+
+/**
+ * The book opener prompt (spec 03). Its input is the whole-book order manifest (renderOrderManifest
+ * output); slice 3 passes that rendered manifest here. Same register and no-judgment rules as the
+ * section prompt. Bump NARRATION_PROMPT_VERSION on any edit.
+ */
+export function openerNarrationPrompt(renderedManifest: string): string {
+  return `You are writing the opening note for a code-review "book" — one short paragraph a tired
+reviewer reads first, before any file.
+
+Below is the whole-book manifest: every section (one per changed file) with its role, its chunks,
+and which other sections it imports.
+
+Write one opener. At most 3 sentences and 320 characters. Say what this change is about as a whole
+and what single thread to follow through the book.
+
+Rules:
+- Orient, don't judge. Never say the change looks good, is correct, safe, simple, clean, elegant, or
+  trivial. Evaluative or reassuring words are rejected by a validator and waste the whole reply.
+- Never imply the change is complete or that anything is not worth looking at.
+- Register: short sentences, everyday words, high-school English, written for a tired reviewer.
+
+Reply with STRICT JSON only, no other text:
+{"opener": "<the opener>"}
+
+Manifest:
+
+${renderedManifest}`;
+}
