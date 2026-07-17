@@ -1,0 +1,944 @@
+# Code story — 39a14e93~1..39a14e93
+
+37 chunks · 16 sections · head 39a14e93
+
+## frontend/src/lib/components/FilterBar/FilterBar.svelte
+
+> AI: FilterBar now takes `filters` as a plain object instead of a Writable store and hands search debouncing to `debouncedFilter`. Watch how filter mutation and clearing were rewritten.
+
+### script
+
+other · +9 -19
+
+> AI: Diff shows duplicated import lines; check the final import set is what you expect.
+
+```diff
+@@ -19,1 +18,0 @@
+-  import type {Writable} from 'svelte/store';
+@@ -21,1 +20,2 @@
+-  import {Previous, Debounced, watch} from 'runed';
++  import {Previous} from 'runed';
++  import {untrack} from 'svelte';
+@@ -22,0 +23,1 @@
++  import {debouncedFilter} from '$lib/util/debouncedFilter.svelte';
+@@ -49,1 +50,1 @@
+-    filters: allFilters,
++    filters,
+@@ -59,1 +59,0 @@
+-  let undebouncedSearch: string | undefined = $derived($allFilters[searchKey]);
+@@ -61,13 +61,4 @@
+-  const watcher = $derived.by(() => {
+-    if (debounce === false) {
+-      return () => undebouncedSearch;
+-    } else {
+-      const debounceTime: number = debounce === true ? DEFAULT_DEBOUNCE_TIME : debounce;
+-      const debouncer = new Debounced(() => undebouncedSearch, debounceTime);
+-      return () => debouncer.current;
+-    }
+-  })
+-
+-  watch(() => watcher(), (value) => {
+-    if ($allFilters[searchKey] === value) return;
+-    $allFilters[searchKey] = value as Filters[typeof searchKey];
++  // `untrack`: these props are intentionally read once at setup (silences state_referenced_locally)
++  const search = untrack(() => {
++    const debounceMs = debounce === true ? DEFAULT_DEBOUNCE_TIME : debounce === false ? 0 : debounce;
++    return debouncedFilter(filters, searchKey, debounceMs);
+@@ -104,2 +87,1 @@
+-  let filters = $derived(Object.freeze(filterKeys ? pick($allFilters, filterKeys) : $allFilters));
+-  let filterDefaults = $derived(Object.freeze(filterKeys ? pick(allFilterDefaults, filterKeys) : allFilterDefaults));
++  let filterDefaults = $derived(filterKeys ? pick(allFilterDefaults, filterKeys) : allFilterDefaults);
+```
+
+### script.Props
+
+other · +1 -1
+
+```diff
+@@ -32,1 +33,1 @@
+-    filters: Writable<Filters>;
++    filters: Filters;
+```
+
+### script.resetFilter
+
+method · +2 -8
+
+> AI: resetFilter now writes one key on the filters object in place rather than replacing the store.
+
+```diff
+@@ -76,8 +67,2 @@
+-  function onClearFiltersClick(): void {
+-    if (!searchInput) return;
+-    searchInput.clear();
+-    $allFilters = {
+-      ...$allFilters,
+-      ...filterDefaults,
+-    };
+-    searchInput.focus();
++  function resetFilter(key: string): void {
++    (filters as Record<string, unknown>)[key] = (filterDefaults as Record<string, unknown>)[key];
+```
+
+### script.onClearFiltersClick
+
+method · +3 -5
+
+```diff
+@@ -86,5 +71,3 @@
+-  function resetFilter(key: string): void {
+-    $allFilters = {
+-      ...$allFilters,
+-      [key]: filterDefaults[key],
+-    };
++  function onClearFiltersClick(): void {
++    Object.keys(filterDefaults).forEach(resetFilter);
++    searchInput?.focus();
+```
+
+### script.pickActiveFilters
+
+method · +4 -4
+
+> AI: Loop now iterates the default keys instead of the value keys.
+
+```diff
+@@ -95,3 +78,3 @@
+-    for (const key in values) {
+-      const value = values[key];
+-      if (value !== defaultValues[key]) {
++    for (const key of Object.keys(defaultValues)) {
++      const value = (values as Record<string, unknown>)[key];
++      if (value !== (defaultValues as Record<string, unknown>)[key]) {
+@@ -101,1 +84,1 @@
+-    return Object.freeze(filters);
++    return filters;
+```
+
+### template
+
+markup-region · +3 -3
+
+```diff
+@@ -122,1 +104,1 @@
+-      bind:value={undebouncedSearch}
++      bind:value={() => search.value, (v) => (search.value = v ?? '')}
+@@ -134,2 +116,2 @@
+-      <!-- The user sees the "undebounced" search value, so the X button should consider that (and not the debounced value) -->
+-      {#if !!undebouncedSearch || activeFilters.find((f) => f.key !== searchKey)}
++      <!-- show the X if the input has unflushed typed text, or any non-search filter is active -->
++      {#if search.value || activeFilters.some((f) => f.key !== searchKey)}
+```
+
+## frontend/src/lib/components/Users/UserFilter.svelte
+
+> AI: Switches the `filters` prop from a Writable store to a plain bindable object. Check that store subscriptions (`$filters`) are all replaced by direct access.
+
+### script.Props
+
+other · +1 -1
+
+```diff
+@@ -21,1 +20,1 @@
+-    filters: Writable<Filters>;
++    filters: Filters;
+```
+
+### script
+
+other · +1 -2
+
+> AI: Drops the Writable import and marks `filters` as `$bindable()`.
+
+```diff
+@@ -12,1 +11,0 @@
+-  import type { Writable } from 'svelte/store';
+@@ -31,1 +30,1 @@
+-    filters,
++    filters = $bindable(),
+```
+
+### template
+
+markup-region · +2 -2
+
+```diff
+@@ -86,1 +85,1 @@
+-          <UserTypeSelect bind:value={$filters.userType} undefinedOptionLabel={$t('common.any')}/>
++          <UserTypeSelect bind:value={filters.userType} undefinedOptionLabel={$t('common.any')}/>
+@@ -96,1 +95,1 @@
+-            <input bind:checked={$filters.usersICreated} type="checkbox" class="toggle toggle-warning" />
++            <input bind:checked={filters.usersICreated} type="checkbox" class="toggle toggle-warning" />
+```
+
+## frontend/src/lib/util/query-params.ts
+
+> AI: Rewrites query-params to use runed's `useSearchParams` instead of sveltekit-search-params. Check the new `queryParam` builders and the null/undefined adapting logic.
+
+### lines 1–36
+
+other · +33 -22
+
+```diff
+@@ -1,2 +1,2 @@
+-import type { StandardEnum, StringifyValues } from '$lib/type.utils';
+-import { queryParameters, ssp } from 'sveltekit-search-params';
++import type {StandardEnum, StringifyValues} from '$lib/type.utils';
++import {createSearchParamsSchema, type SearchParamsOptions, useSearchParams} from 'runed/kit';
+@@ -4,4 +4,2 @@
+-import type { ConditionalPick } from 'type-fest';
+-import type { EncodeAndDecodeOptions } from 'sveltekit-search-params/sveltekit-search-params';
+-import type { PrimitiveRecord } from './types';
+-import type { Writable } from 'svelte/store';
++import type {ConditionalPick} from 'type-fest';
++import type {PrimitiveRecord} from './types';
+@@ -9,4 +7,7 @@
+-// Require default values
+-type QueryParamOptions<T> = Required<EncodeAndDecodeOptions<T>>;
+-type QueryParamConfig<T> = { [Key in keyof T]: QueryParamOptions<T[Key]> };
+-export type QueryParams<T> = { queryParamValues: Writable<T>, defaultQueryParamValues: T };
++// The phantom `T` only carries the value type (`UserType`, etc.) through to
++// `getSearchParams<T>`; runed's runtime just sees 'string'/'boolean'/'number'.
++type ParamSpec<T> = (
++  | {type: 'string'; default?: string | undefined}
++  | {type: 'number'; default?: number | undefined}
++  | {type: 'boolean'; default?: boolean | undefined}
++) & {phantomT?: T};
+@@ -14,2 +15,22 @@
+-// A more type-smart version of ssp that requires defaults to be provided
+-export const queryParam = ssp as {
++type ParamConfig<T> = {[K in keyof T]: ParamSpec<T[K]>};
++
++export type QueryParams<T> = {
++  queryParamValues: T;
++  defaultQueryParamValues: T;
++};
++
++export const queryParam = {
++  string: <T extends string | undefined>(defaultValue: T) =>
++    ({type: 'string', default: defaultValue}) as ParamSpec<T>,
++  boolean: <T extends boolean | undefined>(defaultValue: T) =>
++    ({type: 'boolean', default: defaultValue}) as ParamSpec<T>,
++  number: <T extends number | undefined>(defaultValue: T) =>
++    ({type: 'number', default: defaultValue}) as ParamSpec<T>,
++};
++
++/**
++ * Build a URL-backed reactive params object (via runed's `useSearchParams`) plus a
++ * plain-object snapshot of the defaults. Mutate it directly
++ * (`queryParamValues.userSearch = 'abc'`); reads are $state-backed, so `bind:value`
++ * and `$derived` both work. Unset params are always `undefined`.
++ */
+@@ -54,10 +77,0 @@
+-function getDefaults<T extends Record<string, unknown>>(
+-  options: QueryParamConfig<T>): T {
+-  const defaultValues: Partial<T> = {};
+-  for (const key in options) {
+-    const option = options[key];
+-    defaultValues[key] = option.defaultValue;
+-  }
+-  return defaultValues as T;
+-}
+-
+```
+
+### getSearchParams
+
+method · +30 -27
+
+> AI: queryParamValues now uses getter/setter properties mapping runed's null reads/writes to undefined.
+
+```diff
+@@ -37,0 +37,6 @@
++export function getSearchParams<T extends Record<string, unknown>>(
++  config: ParamConfig<T>,
++  options?: SearchParamsOptions,
++): QueryParams<T> {
++  // `as any`: ParamSpec carries a phantom `T` for typing only; runed wants its exact
++  // SchemaTypeConfig discriminated union, which doesn't accept the wider phantom-bearing shape.
+@@ -17,8 +44,6 @@
+-  [Property in keyof typeof ssp]: (typeof ssp)[Property] extends (defaultValue: any) => EncodeAndDecodeOptions<infer P>
+-  ? <V extends P | undefined>(defaultValue: V) => QueryParamOptions<
+-    NonNullable<V> extends never // default is undefined, that's obviously too specific to be the parameter type, so we hang onto P
+-    ? P | V : V>
+-  : (typeof ssp)[Property] extends typeof ssp.array
+-  ? typeof ssp.array // special case we can worry about if we ever need it
+-  : never;
+-}
++  const schema = createSearchParamsSchema(config as any);
++  const params = useSearchParams(schema, {
++    pushHistory: false,
++    noScroll: true,
++    ...options,
++  });
+@@ -26,14 +51,15 @@
+-export function getSearchParams<T extends Record<string, unknown>>(options: QueryParamConfig<T>) : QueryParams<T> {
+-  // pull the defaults out before we delete them
+-  const defaultValues = getDefaults(options);
+-  for (const key in options) {
+-    const { encode, decode, defaultValue } = options[key];
+-    // Teach the encoder to exclude defaults from the URL
+-    options[key].encode = (value) => value === defaultValue ? undefined : encode.call(options[key], value);
+-    // Teach the decoder to return defaults
+-    options[key].decode = (urlValue) => {
+-      const value = decode.call(options[key], urlValue);
+-      return value === null ? defaultValue : value;
+-    };
+-    // get rid of defaults, so the sveltekit-search-params lib gives us an object right away
+-    delete (options[key] as EncodeAndDecodeOptions<T[typeof key]>).defaultValue;
++  // runed is asymmetric about unset params: reads return `null`, but only a write of
++  // `undefined` unsets one (a written `null` gets stringified to "null"). Adapt both
++  // directions to `undefined` so consumers and their `X | undefined` types never see that.
++  const raw = params as Record<string, unknown>;
++  const queryParamValues = {} as T;
++  const defaults: Partial<T> = {};
++  for (const key in config) {
++    defaults[key] = config[key].default as T[typeof key];
++    Object.defineProperty(queryParamValues, key, {
++      enumerable: true,
++      get: () => raw[key] ?? undefined,
++      set: (value: unknown) => {
++        raw[key] = value ?? undefined;
++      },
++    });
+@@ -42,2 +67,0 @@
+-  const queryParams = queryParameters<QueryParamConfig<T>>(options, { pushHistory: false });
+-
+@@ -45,3 +69,3 @@
+-    queryParamValues: queryParams as Writable<T>,
+-    defaultQueryParamValues: defaultValues,
+-  }
++    queryParamValues,
++    defaultQueryParamValues: defaults as T,
++  };
+```
+
+## frontend/src/routes/(authenticated)/+page.svelte
+
+> AI: Adds a confidentiality filter to the project list. Check the new query param wiring and the filterProjects call.
+
+### script
+
+other · +4 -2
+
+> AI: Adds a `confidential` filter param; note the filterProjects call now passes `filters`, not `$filters`.
+
+```diff
+@@ -11,0 +12,1 @@
++    type Confidentiality,
+@@ -30,1 +31,1 @@
+-  type Filters = Pick<ProjectFilters, 'projectSearch' | 'projectType'>;
++  type Filters = Pick<ProjectFilters, 'projectSearch' | 'projectType' | 'confidential'>;
+@@ -34,0 +36,1 @@
++    confidential: queryParam.string<Confidentiality | undefined>(undefined),
+@@ -45,1 +47,1 @@
+-  const filteredProjects: ProjectItemWithDraftStatus[] = $derived(filterProjects(allProjects, $filters));
++  const filteredProjects: ProjectItemWithDraftStatus[] = $derived(filterProjects(allProjects, filters));
+```
+
+## frontend/src/routes/(authenticated)/org/[org_id]/+page.svelte
+
+> AI: This page switches its tab state from a store subscription ($queryParamValues) to a plain object (queryParamValues). Check the binding and each tab branch.
+
+### template
+
+markup-region · +5 -5
+
+```diff
+@@ -212,1 +212,1 @@
+-      bind:activeTab={$queryParamValues.tab}
++      bind:activeTab={queryParamValues.tab}
+@@ -219,1 +219,1 @@
+-    {#if $queryParamValues.tab === 'projects'}
++    {#if queryParamValues.tab === 'projects'}
+@@ -250,1 +250,1 @@
+-    {:else if $queryParamValues.tab === 'members'}
++    {:else if queryParamValues.tab === 'members'}
+@@ -259,1 +259,1 @@
+-    {:else if $queryParamValues.tab === 'history'}
++    {:else if queryParamValues.tab === 'history'}
+@@ -264,1 +264,1 @@
+-    {:else if $queryParamValues.tab === 'settings'}
++    {:else if queryParamValues.tab === 'settings'}
+```
+
+## frontend/src/routes/(authenticated)/org/list/+page.svelte
+
+> AI: Org list page switches its search filter to read from a plain object instead of a store. Check the queryParamValues access matches its new shape.
+
+### script
+
+other · +1 -1
+
+```diff
+@@ -67,1 +67,1 @@
+-  let filteredOrgs = $derived($orgs ? filterOrgs($orgs, $queryParamValues.search) : []);
++  let filteredOrgs = $derived($orgs ? filterOrgs($orgs, queryParamValues.search) : []);
+```
+
+## frontend/src/lib/components/Projects/ProjectFilter.svelte
+
+> AI: Switches the `filters` prop from a Svelte store to a plain bindable object. Look for any remaining `$filters` store reads and store-only behavior lost by the change.
+
+### script.Props
+
+other · +1 -1
+
+```diff
+@@ -58,1 +57,1 @@
+-    filters: Writable<Filters>;
++    filters: Filters;
+```
+
+### script
+
+other · +1 -2
+
+> AI: Drops the Writable import and makes `filters` bindable.
+
+```diff
+@@ -44,1 +43,0 @@
+-  import type {Writable} from 'svelte/store';
+@@ -68,1 +67,1 @@
+-    filters,
++    filters = $bindable(),
+```
+
+### template
+
+markup-region · +8 -8
+
+```diff
+@@ -148,1 +147,1 @@
+-        {#if $filters.memberSearch}
++        {#if filters.memberSearch}
+@@ -150,1 +149,1 @@
+-            <input class="input input-bordered join-item flex-grow" readonly value={$filters.memberSearch} />
++            <input class="input input-bordered join-item flex-grow" readonly value={filters.memberSearch} />
+@@ -152,1 +151,1 @@
+-              <IconButton icon="i-mdi-close" onclick={() => ($filters.memberSearch = undefined)} />
++              <IconButton icon="i-mdi-close" onclick={() => (filters.memberSearch = undefined)} />
+@@ -175,1 +174,1 @@
+-        <ProjectTypeSelect bind:value={$filters.projectType} undefinedOptionLabel={$t('common.any')} includeUnknown />
++        <ProjectTypeSelect bind:value={filters.projectType} undefinedOptionLabel={$t('common.any')} includeUnknown />
+@@ -180,1 +179,1 @@
+-        <ProjectConfidentialityFilterSelect bind:value={$filters.confidential} />
++        <ProjectConfidentialityFilterSelect bind:value={filters.confidential} />
+@@ -190,1 +189,1 @@
+-          <input bind:checked={$filters.showDeletedProjects} type="checkbox" class="toggle toggle-error" />
++          <input bind:checked={filters.showDeletedProjects} type="checkbox" class="toggle toggle-error" />
+@@ -204,1 +203,1 @@
+-          <input bind:checked={$filters.hideDraftProjects} type="checkbox" class="toggle toggle-warning" />
++          <input bind:checked={filters.hideDraftProjects} type="checkbox" class="toggle toggle-warning" />
+@@ -215,1 +214,1 @@
+-          <input bind:checked={$filters.emptyProjects} type="checkbox" class="toggle toggle-warning" />
++          <input bind:checked={filters.emptyProjects} type="checkbox" class="toggle toggle-warning" />
+```
+
+## frontend/src/routes/(authenticated)/admin/+page.svelte
+
+> AI: Switches queryParamValues from a store ($-prefixed) to plain property access across reads and writes. Check the filterProjectsByUser cleanup for dropped duplicate lines.
+
+### script
+
+other · +2 -2
+
+```diff
+@@ -56,1 +56,1 @@
+-  let tab = $derived($queryParamValues.tab);
++  let tab = $derived(queryParamValues.tab);
+@@ -64,1 +64,1 @@
+-        (key) => (fromUrl.searchParams.get(key) ?? defaultQueryParamValues[key])?.toString() !== $queryParamValues[key],
++        (key) => (fromUrl.searchParams.get(key) ?? defaultQueryParamValues[key])?.toString() !== queryParamValues[key]?.toString(),
+```
+
+### script.filterProjectsByUser
+
+method · +4 -4
+
+> AI: Removes the duplicated filter-clearing lines and keeps one set with plain property access.
+
+```diff
+@@ -82,1 +82,1 @@
+-    $queryParamValues.memberSearch = user.email ?? user.username ?? undefined;
++    queryParamValues.memberSearch = user.email ?? user.username ?? undefined;
+@@ -84,3 +84,3 @@
+-    $queryParamValues.projectSearch = '';
+-    $queryParamValues.projectType = undefined;
+-    $queryParamValues.tab = 'projects';
++    queryParamValues.projectSearch = '';
++    queryParamValues.projectType = undefined;
++    queryParamValues.tab = 'projects';
+```
+
+### script.onUserCreated
+
+method · +1 -1
+
+```diff
+@@ -124,1 +124,1 @@
+-    $queryParamValues.userSearch = user.emailOrUsername;
++    queryParamValues.userSearch = user.emailOrUsername;
+```
+
+### template
+
+markup-region · +1 -1
+
+```diff
+@@ -139,1 +139,1 @@
+-      <AdminTabs activeTab="users" onClickTab={(tab) => ($queryParamValues.tab = tab)}>
++      <AdminTabs activeTab="users" onClickTab={(tab) => (queryParamValues.tab = tab)}>
+```
+
+## frontend/src/routes/(authenticated)/admin/AdminProjects.svelte
+
+### script
+
+other · +4 -5
+
+```diff
+@@ -36,3 +36,2 @@
+-  let queryParamValues = $derived(queryParams.queryParamValues);
+-  let filters = $derived(queryParamValues);
+-  let filterDefaults = $derived(queryParams.defaultQueryParamValues);
++  const filters = $derived(queryParams.queryParamValues);
++  const filterDefaults = $derived(queryParams.defaultQueryParamValues);
+@@ -49,1 +48,1 @@
+-        (key) => (fromUrl.searchParams.get(key) ?? filterDefaults?.[key])?.toString() !== $filters?.[key]?.toString(),
++        (key) => (fromUrl.searchParams.get(key) ?? filterDefaults?.[key])?.toString() !== filters?.[key]?.toString(),
+@@ -65,1 +64,1 @@
+-  const filteredProjects: ProjectItemWithDraftStatus[] = $derived(filterProjects(allProjects, $filters));
++  const filteredProjects: ProjectItemWithDraftStatus[] = $derived(filterProjects(allProjects, filters));
+```
+
+### template
+
+markup-region · +1 -1
+
+```diff
+@@ -86,1 +85,1 @@
+-  <AdminTabs activeTab="projects" onClickTab={(tab) => ($queryParamValues.tab = tab)}>
++  <AdminTabs activeTab="projects" onClickTab={(tab) => (queryParams.queryParamValues.tab = tab)}>
+```
+
+## frontend/tests/adminPage.test.ts
+
+> AI: New Playwright tests for the #2224 user-filter fix. Check that they cover both rapid typing not dropping characters and external URL changes syncing into the input.
+
+### fragment 1
+
+other · +38 -1
+
+> AI: Adds typing tests: rapid keystrokes keep all characters, and the ✕ clear works mid-debounce.
+
+```diff
+@@ -1,1 +1,1 @@
+-import { test } from '@playwright/test';
++import { expect, test } from '@playwright/test';
+@@ -12,0 +13,37 @@
++
++// Regression tests for #2224: characters typed in quick succession used to get dropped when a
++// URL round-trip reset the input mid-typing.
++test.describe('user filter typing', () => {
++  test.use({ ignoreHTTPSErrors: true });
++
++  test('does not lose characters while typing rapidly', async ({ page }) => {
++    await LoginPage.loginAsAdmin(page);
++    const adminPage = await new AdminDashboardPage(page).waitFor();
++
++    const input = adminPage.userFilterBarInput;
++    await input.click();
++
++    const text = 'abcdefghij';
++    const PER_KEYSTROKE_DELAY_MS = 25;
++    await input.pressSequentially(text, { delay: PER_KEYSTROKE_DELAY_MS });
++
++    await expect(input, 'input must contain every character typed').toHaveValue(text);
++  });
++
++  test('clearing the debounced user filter mid-typing clears the input', async ({ page }) => {
++    await LoginPage.loginAsAdmin(page);
++    const adminPage = await new AdminDashboardPage(page).waitFor();
++
++    await adminPage.userFilterBarInput.fill('abc');
++    // no wait — the ✕ must clear within the debounce window (a wait would test the already-covered flushed path)
++    await page.locator('.filter-bar').nth(1).getByRole('button', { name: '✕' }).click();
++
++    await expect(adminPage.userFilterBarInput).toHaveValue('');
++  });
++});
++
++// Covers the other half of the #2224 fix: external changes to the URL-backed filter store
++// (deep links, browser back/forward) must still sync into the input.
++test.describe('user filter external sync', () => {
++  test.use({ ignoreHTTPSErrors: true });
++
+```
+
+### fragment 2
+
+other · +34 -0
+
+> AI: External-sync tests: URL mount, post-mount store writes via pushState/popstate, and clear-then-external.
+
+```diff
+@@ -50,0 +50,34 @@
++  test('shows userSearch from URL on initial mount', async ({ page }) => {
++    await LoginPage.loginAsAdmin(page);
++    await page.goto('/admin?userSearch=external');
++    const adminPage = await new AdminDashboardPage(page).waitFor();
++    await expect(adminPage.userFilterBarInput).toHaveValue('external');
++  });
++
++  test('syncs into input when store is written after mount', async ({ page }) => {
++    await LoginPage.loginAsAdmin(page);
++    const adminPage = await new AdminDashboardPage(page).waitFor();
++
++    await adminPage.userFilterBarInput.fill('typed');
++    // Let the debounced write settle so the next store change isn't mistaken for our own echo.
++    await page.waitForURL((url) => url.searchParams.get('userSearch') === 'typed');
++
++    // Simulate an external URL change (deep link / browser back-forward): pushState + popstate
++    // propagate through SvelteKit's $app/state `page`, which runed's useSearchParams observes.
++    await page.evaluate(() => {
++      history.pushState({}, '', '/admin?userSearch=external');
++      dispatchEvent(new PopStateEvent('popstate'));
++    });
++
++    await expect(adminPage.userFilterBarInput).toHaveValue('external');
++  });
++
++  // Defends against ✕-clear trapping debouncedFilter's pendingEcho, which silently blocked
++  // later external writes to the same key (uses the project filter: no `debounce` prop).
++  test('external write after clearing the filter still reaches the input', async ({ page }) => {
++    await LoginPage.loginAsAdmin(page);
++    const adminPage = await new AdminDashboardPage(page).waitFor();
++
++    await adminPage.projectFilterBarInput.fill('typed');
++    await page.waitForURL((url) => url.searchParams.get('projectSearch') === 'typed');
++
+```
+
+### fragment 3
+
+other · +15 -0
+
+```diff
+@@ -84,0 +84,15 @@
++    const projectFilterBar = page.locator('.filter-bar').nth(0);
++    await projectFilterBar.getByRole('button', { name: '✕' }).click();
++    await expect(adminPage.projectFilterBarInput).toHaveValue('');
++    // Wait for the X-click's goto to finish too — otherwise pushState below races
++    // with the in-flight navigation removing projectSearch from the URL.
++    await page.waitForURL((url) => !url.searchParams.has('projectSearch'));
++
++    await page.evaluate(() => {
++      history.pushState({}, '', '/admin?projectSearch=external');
++      dispatchEvent(new PopStateEvent('popstate'));
++    });
++
++    await expect(adminPage.projectFilterBarInput).toHaveValue('external');
++  });
++});
+```
+
+## frontend/tests/envVars.ts
+
+> AI: Test env var setup. New TEST_HTTPS flag can force https on localhost; check the scheme logic.
+
+### lines 3–4
+
+other · +2 -1
+
+```diff
+@@ -3,1 +3,2 @@
+-export const httpScheme = isDev ? 'http://' : 'https://';
++// TEST_HTTPS=1 forces https even on localhost (for running against the dev https-proxy on :3050).
++export const httpScheme = (isDev && process.env.TEST_HTTPS !== '1') ? 'http://' : 'https://';
+```
+
+## frontend/tests/pages/adminDashboardPage.ts
+
+> AI: Adds a page-object getter for the user filter bar input in the admin dashboard test helper.
+
+### AdminDashboardPage.userFilterBarInput
+
+method · +1 -0
+
+```diff
+@@ -8,0 +9,1 @@
++  get userFilterBarInput(): Locator { return this.page.locator('.filter-bar').nth(1).getByRole('textbox'); }
+```
+
+## frontend/tests/pages/loginPage.ts
+
+> AI: Adds a static loginAsAdmin helper to LoginPage that logs in with the admin user and waits to leave the login page.
+
+### lines 4–4
+
+other · +1 -0
+
+```diff
+@@ -3,0 +4,1 @@
++import { defaultPassword } from '../envVars';
+```
+
+### LoginPage.loginAsAdmin
+
+method · +5 -0
+
+> AI: Uses defaultPassword and waits for the URL to move off /login after submit.
+
+```diff
+@@ -18,0 +20,5 @@
++  static async loginAsAdmin(page: Page): Promise<void> {
++    const loginPage = await new LoginPage(page).goto();
++    await loginPage.fillForm('admin', defaultPassword);
++    await Promise.all([page.waitForURL((url) => !url.pathname.startsWith('/login')), loginPage.submit()]);
++  }
+```
+
+### LoginPage
+
+other · +1 -0 · low-signal (whitespace)
+
+```diff
+@@ -25,0 +25,1 @@
++
+```
+
+## frontend/package.json
+
+> AI: This file drops the sveltekit-search-params dependency. Check that nothing still needs it.
+
+### lines 111–111
+
+config · +0 -1
+
+```diff
+@@ -111,1 +110,0 @@
+-    "sveltekit-search-params": "^3.0.0",
+```
+
+## frontend/src/lib/util/debouncedFilter.svelte.ts
+
+> AI: New helper that two-way binds a text input to a URL-backed filter store with debounce. Check how it stops the store's echo of its own write from overwriting newer typing.
+
+### lines 1–16
+
+other · +16 -0
+
+````diff
+@@ -0,0 +1,16 @@
++import {Debounced} from 'runed';
++import {untrack} from 'svelte';
++
++/**
++ * Two-way bindable wrapper between a text input and a URL-backed filter store:
++ * `value` updates per keystroke, `filters[key]` after `debounceMs` of idle typing,
++ * and external writes to `filters[key]` (deep links, back button, programmatic)
++ * sync back into the input — without the store's echo of our own debounced write
++ * clobbering newer typing.
++ *
++ * Coerce nullish input so the value stays a string:
++ * ```svelte
++ * const search = debouncedFilter(filters, 'userSearch', 400);
++ * <input bind:value={() => search.value, (v) => (search.value = v ?? '')} />
++ * ```
++ */
+````
+
+### debouncedFilter
+
+method · +36 -0
+
+> AI: Two effects: one debounces typing to the store, one syncs store changes back unless it's the pending echo.
+
+```diff
+@@ -17,0 +17,34 @@
++export function debouncedFilter<T extends Record<string, unknown>, K extends keyof T>(
++  filters: T,
++  key: K,
++  debounceMs: number,
++): {value: T[K]} {
++  let local: T[K] = $state(untrack(() => filters[key]));
++  let pendingEcho: T[K] | undefined = undefined;
++
++  // Flush typing → upstream store, debounced.
++  const flushed = new Debounced(() => local, debounceMs);
++  $effect(() => {
++    const value = flushed.current;
++    // untracked: re-firing on external filters[key] writes (e.g. the clear-✕ button)
++    // would replay the still-stale flushed.current over them
++    untrack(() => {
++      if (filters[key] === value) return;
++      pendingEcho = value;
++      filters[key] = value;
++    });
++  });
++
++  // Sync upstream changes back into local, except when echoing our own write.
++  $effect(() => {
++    const fromStore = filters[key];
++    untrack(() => {
++      if (fromStore === pendingEcho) {
++        pendingEcho = undefined;
++      } else if (pendingEcho === undefined && fromStore !== local) {
++        local = fromStore;
++      }
++    });
++  });
++
++  return {
+@@ -57,0 +57,2 @@
++  };
++}
+```
+
+### debouncedFilter.value
+
+method · +3 -0
+
+```diff
+@@ -51,0 +51,3 @@
++    get value() {
++      return local;
++    },
+```
+
+### debouncedFilter.value
+
+method · +3 -0
+
+```diff
+@@ -54,0 +54,3 @@
++    set value(v: T[K]) {
++      local = v;
++    },
+```
+
+## frontend/pnpm-lock.yaml
+
+### lines 15918–15933
+
+config · +2 -97 · low-signal (lockfile)
+
+```diff
+@@ -175,3 +174,0 @@
+-      sveltekit-search-params:
+-        specifier: ^3.0.0
+-        version: 3.0.0(@sveltejs/kit@2.60.1(@opentelemetry/api@1.9.0)(@sveltejs/vite-plugin-svelte@6.2.4(svelte@5.56.0(@typescript-eslint/types@8.56.1))(vite@7.3.3(@types/node@24.10.1)(jiti@1.21.7)(lightningcss@1.31.1)(yaml@2.8.2)))(svelte@5.56.0(@typescript-eslint/types@8.56.1))(typescript@5.9.3)(vite@7.3.3(@types/node@24.10.1)(jiti@1.21.7)(lightningcss@1.31.1)(yaml@2.8.2)))(svelte@5.56.0(@typescript-eslint/types@8.56.1))(vite@7.3.3(@types/node@24.10.1)(jiti@1.21.7)(lightningcss@1.31.1)(yaml@2.8.2))
+@@ -3219,8 +3215,0 @@
+-  '@sveltejs/vite-plugin-svelte-inspector@2.1.0':
+-    resolution: {integrity: sha512-9QX28IymvBlSCqsCll5t0kQVxipsfhFFL+L2t3nTWfXnddYwxBuAEtTtlaVQpRz9c37BhJjltSeY4AJSC03SSg==}
+-    engines: {node: ^18.0.0 || >=20}
+-    peerDependencies:
+-      '@sveltejs/vite-plugin-svelte': ^3.0.0
+-      svelte: ^4.0.0 || ^5.0.0-next.0
+-      vite: ^5.0.0
+-
+@@ -3235,7 +3223,0 @@
+-  '@sveltejs/vite-plugin-svelte@3.1.2':
+-    resolution: {integrity: sha512-Txsm1tJvtiYeLUVRNqxZGKR/mI+CzuIQuc2gn+YCs9rMTowpNZ2Nqt53JdL8KF9bLhAf2ruR/dr9eZCwdTriRA==}
+-    engines: {node: ^18.0.0 || >=20}
+-    peerDependencies:
+-      svelte: ^4.0.0 || ^5.0.0-next.0
+-      vite: ^5.0.0
+-
+@@ -6020,5 +6001,0 @@
+-  nanoid@3.3.11:
+-    resolution: {integrity: sha512-N8SpfPUnUp1bK+PMYW8qSWdl9U+wwNWI4QKxOYDy9JAro3WMX7p2OeVRF9v+347pnakNevPmiHhNmZ2HbFA76w==}
+-    engines: {node: ^10 || ^12 || ^13.7 || ^14 || >=15.0.1}
+-    hasBin: true
+-
+@@ -6405,4 +6381,0 @@
+-  postcss@8.5.6:
+-    resolution: {integrity: sha512-3Ybi1tAuwAP9s0r1UQ2J4n5Y0G05bJkpUIO0/bI9MhwmD70S5aTWbXGBwxHrelT+XM1k6dM0pk+SwNkpTRN7Pg==}
+-    engines: {node: ^10 || ^12 || >=14}
+-
+@@ -6973,6 +6945,0 @@
+-  svelte-hmr@0.16.0:
+-    resolution: {integrity: sha512-Gyc7cOS3VJzLlfj7wKS0ZnzDVdv3Pn2IuVeJPk9m2skfhcu5bq3wtIZyQGggr7/Iim5rH5cncyQft/kRLupcnA==}
+-    engines: {node: ^12.20 || ^14.13.1 || >= 16}
+-    peerDependencies:
+-      svelte: ^3.19.0 || ^4.0.0
+-
+@@ -7073,6 +7039,0 @@
+-  sveltekit-search-params@3.0.0:
+-    resolution: {integrity: sha512-wq1Yo5zITev8ty9CWGmHgvAh+Xb3mCUewyUmvCdv6MJWi+/aZ4o79Y6SjuduDL0Cfd/KYHkqt4f/wQ4FtokSdw==}
+-    peerDependencies:
+-      '@sveltejs/kit': ^1.0.0 || ^2.0.0
+-      svelte: ^3.55.0 || ^4.0.0 || ^5.0.0
+-
+@@ -7518,8 +7478,0 @@
+-  vitefu@0.2.5:
+-    resolution: {integrity: sha512-SgHtMLoqaeeGnd2evZ849ZbACbnwQCIwRH57t18FxcXoZop0uQu0uzlIhJBlF/eWVzuce0sHeqPcDo+evVcg8Q==}
+-    peerDependencies:
+-      vite: ^3.0.0 || ^4.0.0 || ^5.0.0
+-    peerDependenciesMeta:
+-      vite:
+-        optional: true
+-
+@@ -10810,9 +10762,0 @@
+-  '@sveltejs/vite-plugin-svelte-inspector@2.1.0(@sveltejs/vite-plugin-svelte@3.1.2(svelte@5.56.0(@typescript-eslint/types@8.56.1))(vite@7.3.3(@types/node@24.10.1)(jiti@1.21.7)(lightningcss@1.31.1)(yaml@2.8.2)))(svelte@5.56.0(@typescript-eslint/types@8.56.1))(vite@7.3.3(@types/node@24.10.1)(jiti@1.21.7)(lightningcss@1.31.1)(yaml@2.8.2))':
+-    dependencies:
+-      '@sveltejs/vite-plugin-svelte': 3.1.2(svelte@5.56.0(@typescript-eslint/types@8.56.1))(vite@7.3.3(@types/node@24.10.1)(jiti@1.21.7)(lightningcss@1.31.1)(yaml@2.8.2))
+-      debug: 4.4.3
+-      svelte: 5.56.0(@typescript-eslint/types@8.56.1)
+-      vite: 7.3.3(@types/node@24.10.1)(jiti@1.21.7)(lightningcss@1.31.1)(yaml@2.8.2)
+-    transitivePeerDependencies:
+-      - supports-color
+-
+@@ -10833,14 +10776,0 @@
+-  '@sveltejs/vite-plugin-svelte@3.1.2(svelte@5.56.0(@typescript-eslint/types@8.56.1))(vite@7.3.3(@types/node@24.10.1)(jiti@1.21.7)(lightningcss@1.31.1)(yaml@2.8.2))':
+-    dependencies:
+-      '@sveltejs/vite-plugin-svelte-inspector': 2.1.0(@sveltejs/vite-plugin-svelte@3.1.2(svelte@5.56.0(@typescript-eslint/types@8.56.1))(vite@7.3.3(@types/node@24.10.1)(jiti@1.21.7)(lightningcss@1.31.1)(yaml@2.8.2)))(svelte@5.56.0(@typescript-eslint/types@8.56.1))(vite@7.3.3(@types/node@24.10.1)(jiti@1.21.7)(lightningcss@1.31.1)(yaml@2.8.2))
+-      debug: 4.4.3
+-      deepmerge: 4.3.1
+-      kleur: 4.1.5
+-      magic-string: 0.30.21
+-      svelte: 5.56.0(@typescript-eslint/types@8.56.1)
+-      svelte-hmr: 0.16.0(svelte@5.56.0(@typescript-eslint/types@8.56.1))
+-      vite: 7.3.3(@types/node@24.10.1)(jiti@1.21.7)(lightningcss@1.31.1)(yaml@2.8.2)
+-      vitefu: 0.2.5(vite@7.3.3(@types/node@24.10.1)(jiti@1.21.7)(lightningcss@1.31.1)(yaml@2.8.2))
+-    transitivePeerDependencies:
+-      - supports-color
+-
+@@ -14375,2 +14304,0 @@
+-  nanoid@3.3.11: {}
+-
+@@ -14732,6 +14659,0 @@
+-  postcss@8.5.6:
+-    dependencies:
+-      nanoid: 3.3.11
+-      picocolors: 1.1.1
+-      source-map-js: 1.2.1
+-
+@@ -15431,4 +15352,0 @@
+-  svelte-hmr@0.16.0(svelte@5.56.0(@typescript-eslint/types@8.56.1)):
+-    dependencies:
+-      svelte: 5.56.0(@typescript-eslint/types@8.56.1)
+-
+@@ -15546,9 +15463,0 @@
+-  sveltekit-search-params@3.0.0(@sveltejs/kit@2.60.1(@opentelemetry/api@1.9.0)(@sveltejs/vite-plugin-svelte@6.2.4(svelte@5.56.0(@typescript-eslint/types@8.56.1))(vite@7.3.3(@types/node@24.10.1)(jiti@1.21.7)(lightningcss@1.31.1)(yaml@2.8.2)))(svelte@5.56.0(@typescript-eslint/types@8.56.1))(typescript@5.9.3)(vite@7.3.3(@types/node@24.10.1)(jiti@1.21.7)(lightningcss@1.31.1)(yaml@2.8.2)))(svelte@5.56.0(@typescript-eslint/types@8.56.1))(vite@7.3.3(@types/node@24.10.1)(jiti@1.21.7)(lightningcss@1.31.1)(yaml@2.8.2)):
+-    dependencies:
+-      '@sveltejs/kit': 2.60.1(@opentelemetry/api@1.9.0)(@sveltejs/vite-plugin-svelte@6.2.4(svelte@5.56.0(@typescript-eslint/types@8.56.1))(vite@7.3.3(@types/node@24.10.1)(jiti@1.21.7)(lightningcss@1.31.1)(yaml@2.8.2)))(svelte@5.56.0(@typescript-eslint/types@8.56.1))(typescript@5.9.3)(vite@7.3.3(@types/node@24.10.1)(jiti@1.21.7)(lightningcss@1.31.1)(yaml@2.8.2))
+-      '@sveltejs/vite-plugin-svelte': 3.1.2(svelte@5.56.0(@typescript-eslint/types@8.56.1))(vite@7.3.3(@types/node@24.10.1)(jiti@1.21.7)(lightningcss@1.31.1)(yaml@2.8.2))
+-      svelte: 5.56.0(@typescript-eslint/types@8.56.1)
+-    transitivePeerDependencies:
+-      - supports-color
+-      - vite
+-
+@@ -16009,1 +15918,1 @@
+-      postcss: 8.5.6
++      postcss: 8.5.15
+@@ -16024,1 +15933,1 @@
+-      postcss: 8.5.6
++      postcss: 8.5.15
+@@ -16034,4 +15942,0 @@
+-  vitefu@0.2.5(vite@7.3.3(@types/node@24.10.1)(jiti@1.21.7)(lightningcss@1.31.1)(yaml@2.8.2)):
+-    optionalDependencies:
+-      vite: 7.3.3(@types/node@24.10.1)(jiti@1.21.7)(lightningcss@1.31.1)(yaml@2.8.2)
+-
+```
