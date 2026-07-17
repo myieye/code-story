@@ -11,7 +11,7 @@ type Parser = {
   parse(text: string): { rootNode: TSNode } | null;
 };
 
-interface TSNode {
+export interface TSNode {
   type: string;
   startPosition: { row: number };
   endPosition: { row: number };
@@ -76,7 +76,12 @@ async function getRuntime() {
   return runtime;
 }
 
-async function parseWith(wasm: string, content: string): Promise<TSNode | undefined> {
+/** wasm grammar file for a lowercased extension, or undefined for unsupported languages. */
+export function wasmForExtension(ext: string): string | undefined {
+  return LANGUAGES[ext]?.wasm;
+}
+
+export async function parseWith(wasm: string, content: string): Promise<TSNode | undefined> {
   const { Parser, Language } = await getRuntime();
   let lang = languages.get(wasm);
   if (!lang) {
@@ -144,6 +149,22 @@ export async function extractSymbols(filePath: string, content: string): Promise
 }
 
 const SVELTE_BLOCK = /<(script|style)([^>]*)>([\s\S]*?)<\/\1>/g;
+
+/**
+ * TS-parseable `<script>` block bodies of a Svelte file, each with the line offset (0-based) of its
+ * body within the file. Reference extraction reuses the chunker's script/template split; template
+ * markup has no grammar and gets no references (spec 04 non-goal).
+ */
+export function svelteScriptBlocks(content: string): { body: string; lineOffset: number }[] {
+  const lineOf = (index: number) => content.slice(0, index).split('\n').length;
+  const blocks: { body: string; lineOffset: number }[] = [];
+  for (const m of content.matchAll(SVELTE_BLOCK)) {
+    const [full, tag, , body] = m as unknown as [string, string, string, string];
+    if (tag !== 'script') continue;
+    blocks.push({ body, lineOffset: lineOf(m.index + full.indexOf(body)) - 1 });
+  }
+  return blocks;
+}
 
 /**
  * No Svelte grammar ships in @vscode/tree-sitter-wasm, so M0 splits the file itself: script
