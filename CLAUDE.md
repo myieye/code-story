@@ -276,9 +276,19 @@ deciding — treat #54 as open, decision pending. (3) **Nightly recurring trigge
 (22:00 UTC ≈ midnight CEST, trig_019Riu3NUsaPMLgtQmofJvWy): its message deliberately assumes
 NOTHING about the next task — every night, re-read this block + open issues fresh and
 reconcile with actual repo state before working (the repo may progress between sessions).
+**Ordering axioms amended (Tim, 2026-07-17 ~07:00Z)**: new verbatim addendum
+(`docs/vision/addendum-2026-07-17-ordering-preferences.md`) traced as **R-043–R-046** — tests
+BEFORE their impl (his spec-01 answer was a misunderstanding about what was being asked),
+consumer-first direction (conditional on chunk-level call-path interleaving being good — at
+section grain it's the weak version), thoroughly configurable with Tim's picks as defaults,
+AI-augmented ordering by default. Work = **#72** (spec pass first — checkOrder inversion
+semantics, Kahn direction, test anchor, order prompt hard rule, and the eval rubric all encode
+dependency-first today). **#72 interacts with #71**: don't implement #71's default-on around
+axioms #72 is about to flip — coordinate or sequence them. Two questions are pending WITH TIM
+(interim direction before interleave exists; e2e-vs-unit test placement) — check the chat
+before starting #72.
 Next (as of this writing — verify freshness on wake): **#64** (definition resolution + head
 path index + store + API — the M4 heart; spec 04 "Resolution pipeline" step 2 is the
 contract, #62's model + #63's extraction are its inputs), then #65 → #66 → #67 → #68 per
-blocking edges; **#71** (AI order default-on) is newly filed and slots naturally after or
-alongside #64. #21/#27/#58 evidence-gated watches.
+blocking edges; #71/#72 per the note above. #21/#27/#58 evidence-gated watches.
 Dogfood target: languageforge/lexbox (C# + Svelte/TS); repo-agnostic (R-025).
