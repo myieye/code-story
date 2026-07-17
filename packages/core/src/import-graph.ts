@@ -61,16 +61,26 @@ function isCSharp(path: string): boolean {
 }
 
 function resolveTs(file: FileImports, changed: Set<string>, addEdge: (from: string, to: string) => void): number {
-  const dir = dirname(file.path);
   let unresolved = 0;
   for (const spec of file.specifiers) {
-    const target = spec.startsWith('.')
-      ? resolveRelative(joinNormalize(dir, spec), changed)
-      : resolveAlias(spec, changed);
+    const target = resolveTsSpecifier(file.path, spec, changed);
     if (target === undefined) unresolved++;
     else if (target !== file.path) addEdge(file.path, target);
   }
   return unresolved;
+}
+
+/**
+ * Resolves one TS/Svelte import specifier written in `fromPath` to a member of `candidates`, or
+ * undefined. Relative specifiers join+normalize against the importer's directory; `$`-alias
+ * specifiers suffix-match with the uniqueness requirement. Shared with the M4 context resolver,
+ * which passes the full head listing rather than just the changed files (more misses, still
+ * precise). Non-`.`/`$` (bare package) specifiers never resolve.
+ */
+export function resolveTsSpecifier(fromPath: string, spec: string, candidates: Set<string>): string | undefined {
+  return spec.startsWith('.')
+    ? resolveRelative(joinNormalize(dirname(fromPath), spec), candidates)
+    : resolveAlias(spec, candidates);
 }
 
 function resolveRelative(base: string, changed: Set<string>): string | undefined {

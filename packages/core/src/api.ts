@@ -1,3 +1,4 @@
+import type { ContextPayload } from './context.js';
 import type { ImportGraph } from './import-graph.js';
 import type { Book, Chunk } from './model.js';
 import type { NarrationOverlay } from './narration.js';
@@ -30,6 +31,14 @@ export interface OrderResponse {
     finishedAt?: string;
     error?: string;
   } | null;
+}
+
+/**
+ * `GET /api/context?chunk=<id>`: the chunk's facts payload, computed on miss then cached (spec 04).
+ * `null` when the chunk id is unknown to this book — resolution never throws into the book flow.
+ */
+export interface ContextResponse {
+  payload: ContextPayload | null;
 }
 
 /** `PATCH /api/order`: the reviewer's banner decision (spec 02 — never re-ask on reload). */

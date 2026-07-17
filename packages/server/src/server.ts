@@ -11,9 +11,12 @@ import {
   type Chunk,
   CORE_VERSION,
   compileBook,
+  type ContextPayload,
+  type ContextResponse,
   exportBookMarkdown,
   type FileContents,
   type FileDiff,
+  filterFreshContext,
   type ImportGraph,
   filterFreshNarration,
   isOverlayFresh,
@@ -26,7 +29,9 @@ import {
 } from '@code-story/core';
 import { Hono } from 'hono';
 import { computeChunks } from './chunks.js';
-import { diffRange, originUrl, type ResolvedRange, rootCommit } from './git.js';
+import { createContextResolver } from './context-resolve.js';
+import { contextFilePath, loadContextStore } from './context-store.js';
+import { diffRange, fileAt, listTree, originUrl, type ResolvedRange, rootCommit } from './git.js';
 import { runNarrationJob } from './narration-job.js';
 import { NARRATION_PROMPT_VERSION } from './narration-prompt.js';
 import {
@@ -119,6 +124,7 @@ export function startServer(options: ServerOptions, requestedPort = 0): Promise<
         jobFile: string;
         narrationFile: string;
         narrationJobFile: string;
+        contextFile: string;
       }>
     | undefined;
   const getStore = () =>
@@ -133,9 +139,18 @@ export function startServer(options: ServerOptions, requestedPort = 0): Promise<
           jobFile: orderJobFilePath(dataHome, repoId, options.range),
           narrationFile: narrationFilePath(dataHome, repoId, options.range),
           narrationJobFile: narrationJobFilePath(dataHome, repoId, options.range),
+          contextFile: contextFilePath(dataHome, repoId, options.range),
         };
       })(),
       () => (storeCache = undefined),
+    ));
+
+  // The head path index (`git ls-tree`) is constant for the range — one call, cached.
+  let headPathsCache: Promise<Set<string>> | undefined;
+  const getHeadPaths = () =>
+    (headPathsCache ??= uncacheOnError(
+      listTree(options.repo, options.range.head).then((paths) => new Set(paths)),
+      () => (headPathsCache = undefined),
     ));
 
   let reviewCache: Promise<{ file: string; review: ReviewFile }> | undefined;
@@ -339,6 +354,43 @@ export function startServer(options: ServerOptions, requestedPort = 0): Promise<
     saveChain = save.catch(() => undefined);
     await save;
     return c.json({ ok: true });
+  });
+
+  // Serializes the read-modify-write of the shared context store so two concurrent compute-on-miss
+  // GETs for different chunks don't clobber each other's payload.
+  let contextSaveChain = Promise.resolve();
+  const persistPayload = (file: string, payload: ContextPayload) => {
+    const op = contextSaveChain.then(async () => {
+      const current = await loadContextStore(file);
+      current.payloads[payload.chunkId] = payload;
+      await saveJson(file, current);
+    });
+    contextSaveChain = op.catch(() => undefined);
+    return op;
+  };
+
+  app.get('/api/context', async (c) => {
+    const chunkId = c.req.query('chunk');
+    if (!chunkId) return c.json({ error: 'missing chunk query parameter' }, 400);
+
+    const [{ chunks, graph, book }, files, { contextFile }] = await Promise.all([getBook(), getDiff(), getStore()]);
+    const chunk = chunks.find((ch) => ch.id === chunkId);
+    if (!chunk) return c.json({ payload: null } satisfies ContextResponse);
+
+    const store = await loadContextStore(contextFile);
+    const fresh = filterFreshContext(options.range.head, book, store)[chunkId];
+    if (fresh) return c.json({ payload: fresh } satisfies ContextResponse);
+
+    const resolver = createContextResolver({
+      fileAt: async (sha, filePath) => fileAt(options.repo, sha, filePath).catch(() => undefined),
+      headPaths: await getHeadPaths(),
+      headSha: options.range.head,
+      baseSha: options.range.base,
+    });
+    const changedFiles = files.map((f) => ({ path: f.path, status: f.status }));
+    const payload = await resolver.resolve(chunk, changedFiles, graph);
+    await persistPayload(contextFile, payload);
+    return c.json({ payload } satisfies ContextResponse);
   });
 
   // `?order=ai` must never silently fall back to tier 0 — an eval comparing "both orders"
