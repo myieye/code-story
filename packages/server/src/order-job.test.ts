@@ -1,6 +1,6 @@
 import type { Book, Chunk, ImportGraph } from '@code-story/core';
 import { describe, expect, test } from 'vitest';
-import { OrderJobError, runOrderJob } from './order-job.js';
+import { OrderJobError, runOrderJob, shouldAutoKickOrder } from './order-job.js';
 
 function chunk(file: string, stub = false): Chunk {
   return {
@@ -75,6 +75,34 @@ describe('runOrderJob', () => {
     ).rejects.toMatchObject({ failure: 'invalid-output' });
   });
 
+});
+
+describe('shouldAutoKickOrder', () => {
+  const base = { enabled: true, hasFreshOverlay: false, jobInFlight: false, fingerprint: 'fp', failedFingerprints: new Set<string>() };
+
+  test('kicks when enabled, no fresh overlay, nothing in flight, not previously failed', () => {
+    expect(shouldAutoKickOrder(base)).toBe(true);
+  });
+
+  test('disabled opt-out never kicks', () => {
+    expect(shouldAutoKickOrder({ ...base, enabled: false })).toBe(false);
+  });
+
+  test('a fresh overlay means the work is already done', () => {
+    expect(shouldAutoKickOrder({ ...base, hasFreshOverlay: true })).toBe(false);
+  });
+
+  test('an in-flight job is not duplicated', () => {
+    expect(shouldAutoKickOrder({ ...base, jobInFlight: true })).toBe(false);
+  });
+
+  test('a fingerprint that already failed this lifetime is not retried', () => {
+    expect(shouldAutoKickOrder({ ...base, failedFingerprints: new Set(['fp']) })).toBe(false);
+    expect(shouldAutoKickOrder({ ...base, failedFingerprints: new Set(['other']) })).toBe(true);
+  });
+});
+
+describe('runOrderJob edge', () => {
   test('too few story sections refuses without invoking the model', async () => {
     const tiny: Book = { headSha: 'deadbeef', sections: book.sections.slice(0, 2) };
     let invoked = false;

@@ -139,3 +139,18 @@ function tryBuildOverlay(
 function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }
+
+export interface AutoOrderDecision {
+  /** The `--no-ai-order` / CODE_STORY_NO_AI_ORDER opt-out, negated. */
+  enabled: boolean;
+  hasFreshOverlay: boolean;
+  jobInFlight: boolean;
+  fingerprint: string;
+  /** Fingerprints whose job already failed this daemon lifetime — no retry storm on a broken CLI. */
+  failedFingerprints: ReadonlySet<string>;
+}
+
+/** Whether the daemon should auto-run the ordering job on book compile (default-on, #71). */
+export function shouldAutoKickOrder(d: AutoOrderDecision): boolean {
+  return d.enabled && !d.hasFreshOverlay && !d.jobInFlight && !d.failedFingerprints.has(d.fingerprint);
+}
