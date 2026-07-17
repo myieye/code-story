@@ -313,10 +313,51 @@ unique-or-nothing; unchanged-file lookup path-specifier languages only via head 
 base; (sha,path) memoized; fail-open), store `reviews/<b12>..<h12>.context.json`,
 `GET /api/context?chunk=` compute-on-miss; demo test = util NOT in diff resolves. Tests 270
 (core 171 / server 66 / web 33).
-Next (as of this writing — verify freshness on wake): **#75** (core ChunkGraph) and **#66**
-(web definition panel) in flight via worktree agents → then #74 (slice-0 experiment; needs
-Tim's 45-edge blind audit) → #76 (chapter linearizer); #65 (bulk context job) after #75
-merges (both touch server/cli). #77–#80 per blocking edges. #21/#27/#58 evidence-gated
-watches; Tim's open read = #54.
+**Window continued (~13:00Z–15:00Z): M4 COMPLETE, M5 slices 0–2 done — ten PRs (#81–#90,
+#94), all self-merged green.** #66 (PR #83): web definition panel — `d` expands a focusable
+sibling region (never inside CM6), fetch-on-cursor-focus cached per chunk, Esc back, TanStack
+measureElement handles row growth; verified in real headless Chromium on 2309. #75 (PR #84):
+core `chunk-graph.ts` (ChunkEdge kinds calls/file-imports/exercises — NON-exhaustive per
+R-050, `edgesOfKinds` structural filter is the only selector, `CALLS_DFS_KINDS` excludes
+exercises in one home) + server `chunk-graph-build.ts` (changed-file resolver, test-path →
+exercises never calls, ambiguity = no edge) + store + `--dump-chunk-graph`. #74 (PR #85,
+issue OPEN for Tim): slice-0 audit materials in `docs/evals/chunk-graph-audit-2026-07-17/` —
+**Tim labels tim-audit-{2309,2357,2379}.md (27 cards), THEN opens claude-labels-SEALED.md;
+gate ≥0.90**. Claude-side 41/42=0.976; calls layer THIN on 2/3 subjects (2309 = 1 edge —
+Svelte templates invisible, no grammar); free-glance proxy ~30–42% of marks have ≥1 reviewed
+neighbor; 61–82% chunks ≤10 lines. #65 (PR #87): resumable POST /api/context-job (per-chunk
+persist, kill-proven), `--context`/`--dump-context`, 2MB cap (bulk stops persisting, GET keeps
+computing). #67 (PR #88): narration input gains additive-budget definitions block (~2k, diff
+text never shrinks — byte-identity tested); server callers don't populate payloads yet (2-line
+wiring deferred); prompt UNCHANGED (rides #58). #76 (PR #89): core `chapters.ts`
+`compileChapterBook` — call-path chapters via Kahn over `calls` edges (naive DFS REJECTED:
+shared-callee IOU violations; consumer-first demands topo) + Tarjan, anchors routes-first,
+tests woven by kind via exercises (unit before impl, e2e closes, page-objects just-in-time);
+`checkOrder(direction, testPlacement)` chunk-position semantics in chapter mode;
+`story-config.ts` + `--direction`/`--test-placement` + per-repo `.code-story.json`; R-001
+fast-check-tested in chapter mode. **DEFAULTS UNCHANGED — file mode/dependency-first/tests-
+after; byte-identical default export verified vs main (NO CORE_VERSION bump). The flip to
+Tim's axioms (consumer-first, tests-before, chapter mode) is #77's job, WITH the new order
+prompt — flipping without it makes every AI overlay fail the checkOrder pre-gate.** Daemon/web
+serve file mode only this slice. #68 (PR #90): dogfood 5 — context payloads hit 7/35 chunks
+(2309, incl. 2 unchanged-file wins: pick, goto) and 11/33 (2379, in-diff only = spec's SCIP
+door); cold fill ~1s, warm GET ~2ms; verdict "d earns its keystroke, unevenly"; harvest =
+**#91 fixed same-window** (PR #94: cross-file changed matches now REQUIRE an import edge —
+CreateEntry×6 confident-wrong killed, 2379 recall 30→16 all-justified), #92 (Svelte template
+reach, evidence tag), #93 (--dump-context --verbose). PR #94 also fixed the three-job-GET
+orphan TOCTOU (fast job finishes between record read and handle check → re-read once before
+declaring orphan; server suite was ~1-in-3 flaky, now 6/6) — found via a CI flake whose
+error-surfacing assert was added deliberately. Composition hazard learned: #71's default-on
+auto-order made every pre-#71 server test spawn REAL claude (fixed 6c62a44: `autoOrder:
+false` everywhere; new server tests MUST pass it unless testing auto-order). Suite now
+**335** (core 210 / server 82 / web 43). Review pass over the whole window commissioned
+(docs/reviews/2026-07-17-m4-m5-review.md — read it before touching M4/M5 code).
+Next (as of this writing — verify freshness on wake): **#77** (AI traversal augmentation:
+order prompt v2 against configured axioms, default flip to consumer-first/tests-before/chapter
+mode, judge eval re-run ~70k plan-tokens/subject — **the eval spend is the thing Tim was
+nervous about; confirm with him or let the nightly own it**), then #78–#80 (UI slices, GATED
+on Tim's #74 labels ≥0.90). Waiting on Tim: #74 blind labels, #54 narration read, #21/#27/#58/
+#86/#92 evidence-gated. Suite 335; main green.
 Dogfood target: languageforge/lexbox (C# + Svelte/TS); repo-agnostic (R-025). lexbox clone
-lives at /home/user/lexbox this container (pr-2309 ref fetched; range c0448522..pr-2309).
+lives at /home/user/lexbox this container (refs pr-2309, pr-2357 fetched; ranges
+c0448522..pr-2309, 277e418d8~1..277e418d8, 8dd70ba~1..8dd70ba).
