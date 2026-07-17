@@ -151,9 +151,21 @@ function joinNormalize(dir: string, rel: string): string {
   return out.join('/');
 }
 
+// Strip repeatedly so a Svelte 5 runes module (`foo.svelte.ts`) reduces to `foo`, matching a
+// specifier written with the `.svelte` module suffix.
 function stripCodeExt(segment: string): string {
-  for (const ext of RESOLVE_EXTENSIONS) if (segment.endsWith(ext)) return segment.slice(0, -ext.length);
-  return segment;
+  let out = segment;
+  for (let stripped = true; stripped; ) {
+    stripped = false;
+    for (const ext of RESOLVE_EXTENSIONS) {
+      if (out.endsWith(ext)) {
+        out = out.slice(0, -ext.length);
+        stripped = true;
+        break;
+      }
+    }
+  }
+  return out;
 }
 
 function endsWithSegments(segs: string[], suffix: string[]): boolean {
