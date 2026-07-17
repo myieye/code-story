@@ -42,3 +42,23 @@ is a confession that the code couldn't say it itself"; comment only what code ca
 state each rationale exactly once; a wrong comment is worse than none; never state an
 unverified cause, a verifiable symptom beats an unverifiable cause; when unsure whether a
 comment earns its place, it doesn't.)
+
+## Same conversation (~08:15Z): the chunk graph under the story
+
+> I'm wondering if a linear review path/story is enough. maybe it's a really good backbone.
+> but, perhaps it's supported by a thorough code graph of chunks. each chunk is aware of what
+> chunks it's related to, which lines are responsible for that relationship and then it's
+> clearly visible whether that related/linked chunk is already approved/reviewed or maybe only
+> the next step, but not everything behind it etc. and the current chunk CAN be marked
+> reviewed before all linked chunks are reviewed.
+>
+> then the reviewer can traverse the change graph a bit like a mindless lawn mower robot that
+> eventually covers everything, criss-crossing through the graph as they seem most
+> appropriate. small chunks can be marked as reviewed, to try to radically minimize every
+> rereviewing the same chunk twice.
+>
+> I want you to do thorough research of this idea. compare it to existing tools while
+> definitely not letting existing tools tell us it's bad just because no one has done it.
+>
+> if you're also confident that this is worth doing, then go ahead and incorporate it into
+> the spec

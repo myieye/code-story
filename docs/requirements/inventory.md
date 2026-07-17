@@ -381,3 +381,26 @@ rationale is stated once, not repeated across sibling sections; a wrong line is 
 none; never assert an unverified cause — point at the verifiable symptom instead. Sharpens
 R-036 and the sparse-by-design rule; gives #58 (point-don't-assert) its principled form.
 > "It's very likely that the commenting instructions in your session are relevant for the narration."
+
+### R-048 — The chunk relationship graph (line-provenance edges, status-visible)
+Beneath the linear story (which stays "a really good backbone", R-005), a thorough graph of
+chunk-to-chunk relationships: each chunk knows its related chunks, *which lines* are
+responsible for each relationship, and each link visibly carries the linked chunk's review
+state (reviewed / next-step-only / unexplored-behind-it). A chunk CAN be marked reviewed
+before its linked chunks are.
+> "each chunk is aware of what chunks it's related to, which lines are responsible for that
+> relationship and then it's clearly visible whether that related/linked chunk is already
+> approved/reviewed or maybe only the next step, but not everything behind it etc. and the
+> current chunk CAN be marked reviewed before all linked chunks are reviewed."
+
+### R-049 — Lawn-mower traversal: free criss-cross with guaranteed coverage, minimal re-review
+The reviewer traverses the change graph in whatever order seems most appropriate,
+criss-crossing freely, and the system guarantees everything is eventually covered (R-001) —
+with small, independently-markable chunks radically minimizing ever re-reviewing the same
+chunk twice.
+> "traverse the change graph a bit like a mindless lawn mower robot that eventually covers
+> everything, criss-crossing through the graph as they seem most appropriate. small chunks can
+> be marked as reviewed, to try to radically minimize every rereviewing the same chunk twice."
+
+Research mandate (same message): compare to existing tools "while definitely not letting
+existing tools tell us it's bad just because no one has done it."
