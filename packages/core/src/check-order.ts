@@ -2,7 +2,7 @@ import { CALLS_DFS_KINDS, type ChunkGraph, edgesOfKinds } from './chunk-graph.js
 import { type ImportGraph } from './import-graph.js';
 import { type Book, type Chunk, isLowSignal, LEFTOVERS_SECTION_ID } from './model.js';
 import { isTestPath } from './roles.js';
-import { DEFAULT_STORY_CONFIG, type StoryConfig } from './story-config.js';
+import { FILE_MODE_STORY_CONFIG, type StoryConfig } from './story-config.js';
 
 export interface OrderReport {
   ok: boolean;
@@ -39,7 +39,7 @@ export interface CheckOrderOptions {
  *   `exercises` edges (test placement per config). The direction and test gates invert with config.
  */
 export function checkOrder(book: Book, graph: ImportGraph, chunks: Chunk[], options?: CheckOrderOptions): OrderReport {
-  const config = options?.config ?? DEFAULT_STORY_CONFIG;
+  const config = options?.config ?? FILE_MODE_STORY_CONFIG;
   return options?.chunkGraph
     ? checkChunkOrder(book, options.chunkGraph, chunks, config)
     : checkFileOrder(book, graph, chunks);

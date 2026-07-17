@@ -21,7 +21,7 @@ import {
   exportBookMarkdown,
   filterFreshContext,
   filterFreshNarration,
-  isDefaultStoryConfig,
+  isFileModeConfig,
   isLowSignal,
   type NarrationOverlay,
   lowSignalReason,
@@ -275,7 +275,7 @@ if (checkOrderFlag) {
 
   let book;
   let report;
-  if (isDefaultStoryConfig(config)) {
+  if (isFileModeConfig(config)) {
     book = fileBook;
     report = checkOrder(book, graph, chunks);
   } else {
@@ -485,7 +485,7 @@ if (aiOrder || narrate || exportPath) {
     let exportChunks = compiledChunks;
     let narrationOverlay: NarrationOverlay | undefined;
 
-    if (!isDefaultStoryConfig(config)) {
+    if (!isFileModeConfig(config)) {
       // Chapter mode: AI order / narration overlays are keyed to the file-mode book, so they can't
       // apply here — this export is the deterministic chapter linearization.
       const cg = await buildChunkGraph({

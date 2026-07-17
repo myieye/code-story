@@ -9,7 +9,7 @@ import { type FileDiff } from './diff.js';
 import { type ImportGraph } from './import-graph.js';
 import { type Book, type Chunk } from './model.js';
 import { bookFingerprint, isOverlayFresh, type OrderOverlay } from './order.js';
-import { type StoryConfig, TIM_STORY_CONFIG } from './story-config.js';
+import { DEFAULT_STORY_CONFIG, type StoryConfig } from './story-config.js';
 
 function fileDiff(path: string, start: number, count: number, status: FileDiff['status'] = 'modified'): FileDiff {
   return { path, status, binary: false, hunks: [{ baseStart: 1, baseCount: 0, headStart: start, headCount: count }] };
@@ -140,7 +140,7 @@ describe('compileChapterBook', () => {
     ];
     const { book, chunks: all } = compileChapterBook(
       { files, chunks, graph: importGraph(), chunkGraph: chunkGraph(), headSha: 'h' },
-      TIM_STORY_CONFIG,
+      DEFAULT_STORY_CONFIG,
     );
     const ids = book.sections.map((s) => s.id);
     expect(ids.at(-1)).toBe('(leftovers)');
@@ -159,7 +159,7 @@ describe('compileChapterBook', () => {
     const fileBook = compileBook({ files, chunks, graph, headSha: 'h' });
     const chapterBook = compileChapterBook(
       { files, chunks, graph, chunkGraph: chunkGraph(cedge('c1', 'c2'), cedge('t', 'c2', 'exercises')), headSha: 'h' },
-      TIM_STORY_CONFIG,
+      DEFAULT_STORY_CONFIG,
     );
     expect(new Set(flat(chapterBook.book))).toEqual(new Set(flat(fileBook.book)));
     expect(bookFingerprint(chapterBook.book)).not.toBe(bookFingerprint(fileBook.book));
@@ -172,7 +172,7 @@ describe('compileChapterBook', () => {
     const fileBook = compileBook({ files, chunks, graph, headSha: 'h' });
     const chapterBook = compileChapterBook(
       { files, chunks, graph, chunkGraph: chunkGraph(cedge('a', 'b')), headSha: 'h' },
-      TIM_STORY_CONFIG,
+      DEFAULT_STORY_CONFIG,
     ).book;
     const overlay: OrderOverlay = {
       version: 1,
