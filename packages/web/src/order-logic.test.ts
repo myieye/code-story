@@ -1,4 +1,4 @@
-import type { ChunkReview, OrderOverlay } from '@code-story/core';
+import type { ChunkReview, OrderOverlay, OrderOverlayV2 } from '@code-story/core';
 import { describe, expect, it } from 'vitest';
 import { orderDecision } from './order-logic.js';
 
@@ -10,6 +10,19 @@ function overlay(fields: Partial<OrderOverlay> = {}): OrderOverlay {
     rationales: {},
     model: 'opus',
     promptVersion: 'v1',
+    createdAt: '2026-07-16T00:00:00Z',
+    ...fields,
+  };
+}
+
+function overlayV2(fields: Partial<OrderOverlayV2> = {}): OrderOverlayV2 {
+  return {
+    version: 2,
+    bookFingerprint: 'fp',
+    chapters: [['a'], ['b']],
+    rationales: {},
+    model: 'opus',
+    promptVersion: 'order-chapter-1',
     createdAt: '2026-07-16T00:00:00Z',
     ...fields,
   };
@@ -50,5 +63,12 @@ describe('orderDecision', () => {
 
   it('is offer once any chunk is reviewed and the overlay has not been applied or dismissed', () => {
     expect(orderDecision(overlay(), reviewed('a'))).toBe('offer');
+  });
+
+  it('applies the same lifecycle to a v2 (chapter) overlay — the decision is version-agnostic', () => {
+    expect(orderDecision(overlayV2(), {})).toBe('apply');
+    expect(orderDecision(overlayV2(), reviewed('a'))).toBe('offer');
+    expect(orderDecision(overlayV2({ appliedAt: '2026-07-16T01:00:00Z' }), reviewed('a'))).toBe('apply');
+    expect(orderDecision(overlayV2({ dismissedAt: '2026-07-16T01:00:00Z' }), {})).toBe('none');
   });
 });
