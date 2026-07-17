@@ -76,8 +76,9 @@ function orderFiles(gitOrder: string[], roles: Map<string, FileRole>, graph: Imp
 
 /**
  * Dependencies-first topological sort. Greedy Kahn picking the git-earliest ready file keeps
- * ties in git order; when a cycle leaves nothing ready, the git-earliest remaining file is
- * emitted anyway — cycles fall back to git order.
+ * ties in git order. When a cycle leaves nothing ready, only one node from a single cyclic SCC
+ * is force-emitted (see `cycleBreakIndex`) before Kahn resumes — so a file that merely depends
+ * *into* a cycle still waits for its dependency instead of being dragged forward with it.
  */
 function topoSort(files: string[], graph: ImportGraph): string[] {
   const deps = new Map<string, string[]>(files.map((f) => [f, []]));
@@ -88,13 +89,94 @@ function topoSort(files: string[], graph: ImportGraph): string[] {
   const remaining = [...files];
   const emitted = new Set<string>();
   const result: string[] = [];
-  while (remaining.length > 0) {
-    const ready = remaining.findIndex((f) => deps.get(f)!.every((d) => emitted.has(d)));
-    const [file] = remaining.splice(Math.max(ready, 0), 1);
+  const emit = (index: number) => {
+    const [file] = remaining.splice(index, 1);
     emitted.add(file!);
     result.push(file!);
+  };
+  while (remaining.length > 0) {
+    const ready = remaining.findIndex((f) => deps.get(f)!.every((d) => emitted.has(d)));
+    emit(ready >= 0 ? ready : cycleBreakIndex(remaining, deps));
   }
   return result;
+}
+
+/**
+ * A Kahn stall means the still-unemitted files hold at least one import cycle. Break the cycle
+ * whose members have the fewest dependencies pending outside it (a condensation source, so
+ * emitting into it forces no avoidable inversion; ties resolve by git order of the SCC's
+ * earliest member), and within that cycle emit the git-earliest member. Resuming Kahn then
+ * unwinds the rest, leaving only the one unavoidable same-cycle inversion (informational per
+ * checkOrder's cycleInversions). Returns the index in `remaining` of the node to emit.
+ */
+function cycleBreakIndex(remaining: string[], deps: Map<string, string[]>): number {
+  const present = new Set(remaining);
+  const rank = new Map(remaining.map((f, i) => [f, i]));
+
+  let best: { members: Set<string>; externalInDegree: number; firstRank: number } | undefined;
+  for (const scc of stronglyConnected(remaining, deps)) {
+    const isCycle = scc.length > 1 || deps.get(scc[0]!)!.includes(scc[0]!);
+    if (!isCycle) continue;
+    const members = new Set(scc);
+    let externalInDegree = 0;
+    for (const f of scc) {
+      for (const d of deps.get(f)!) if (present.has(d) && !members.has(d)) externalInDegree++;
+    }
+    const firstRank = Math.min(...scc.map((f) => rank.get(f)!));
+    if (
+      best === undefined ||
+      externalInDegree < best.externalInDegree ||
+      (externalInDegree === best.externalInDegree && firstRank < best.firstRank)
+    ) {
+      best = { members, externalInDegree, firstRank };
+    }
+  }
+
+  // A stalled remainder always contains a cycle, so `best` is always set; the git-order fallback
+  // only exists to bound the loop rather than trust that invariant.
+  if (best === undefined) return 0;
+  return best.firstRank;
+}
+
+/** Tarjan SCCs of the subgraph induced on `nodes`; deterministic given node and edge order. */
+function stronglyConnected(nodes: string[], deps: Map<string, string[]>): string[][] {
+  const present = new Set(nodes);
+  const index = new Map<string, number>();
+  const low = new Map<string, number>();
+  const onStack = new Set<string>();
+  const stack: string[] = [];
+  const sccs: string[][] = [];
+  let counter = 0;
+
+  const connect = (v: string) => {
+    index.set(v, counter);
+    low.set(v, counter);
+    counter++;
+    stack.push(v);
+    onStack.add(v);
+    for (const w of deps.get(v)!) {
+      if (!present.has(w)) continue;
+      if (!index.has(w)) {
+        connect(w);
+        low.set(v, Math.min(low.get(v)!, low.get(w)!));
+      } else if (onStack.has(w)) {
+        low.set(v, Math.min(low.get(v)!, index.get(w)!));
+      }
+    }
+    if (low.get(v) === index.get(v)) {
+      const scc: string[] = [];
+      let w: string;
+      do {
+        w = stack.pop()!;
+        onStack.delete(w);
+        scc.push(w);
+      } while (w !== v);
+      sccs.push(scc);
+    }
+  };
+
+  for (const v of nodes) if (!index.has(v)) connect(v);
+  return sccs;
 }
 
 /** The impl section a test goes after: the LAST impl it imports, else the best stem match. */
