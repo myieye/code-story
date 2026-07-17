@@ -2,7 +2,11 @@
 
 **Status: grilled same-day (14 findings, verdict "needs surgery" — surgery folded in below;
 the fingerprint redesign, the top-tier generator default, and the sparse-chunk-line rule all
-came out of the grill). Slices filed when this lands.**
+came out of the grill). Slices #35–#39 all built same-day. Dogfood-4 gate result (issue #39,
+baseline doc): register median 5 and orientation 4 on both subjects, but the faithfulness
+floor FAILED (duplication claims from -U0 fragment misreads — #48 is the evidence-gated
+narration-3 iteration). Narration is opt-in and stays opt-in; Tim's narrated-vs-bare read
+(`docs/evals/narration-read-2026-07-17/`) is the open human half.**
 
 ## Why this milestone
 

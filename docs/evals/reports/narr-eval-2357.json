@@ -1,0 +1,514 @@
+{
+  "promptVersion": "narration-eval-1",
+  "judgeModel": "sonnet",
+  "inputs": {
+    "overlay": "/root/.code-story/languageforge-lexbox-32093c12aded/reviews/5ae055461ef1..277e418d87c1.narration.json",
+    "bookExport": "/tmp/claude-0/-home-user-code-story/0e4fa192-08e1-59ac-a59c-4837f8fdf3fd/scratchpad/pr2357-plain.md"
+  },
+  "generatorModel": "opus",
+  "generatorPromptVersion": "narration-2",
+  "timestamp": "2026-07-17T02:00:02.777Z",
+  "scriptGate": {
+    "hardFailuresPresent": false,
+    "texts": [
+      {
+        "kind": "opener",
+        "section": null,
+        "chunkId": null,
+        "text": "This change adds an activity feed with author and change-type filters plus sorting. It starts in the backend HistoryService and flows out to the JS wrapper and Svelte views. Follow one filter, like author, from the query to the on-screen list.",
+        "failures": [],
+        "flesch": 69.2
+      },
+      {
+        "kind": "intro",
+        "section": "backend/FwLite/LcmCrdt/HistoryService.cs",
+        "chunkId": null,
+        "text": "Adds author/change-type listing, plus query-based filtering and sorting, to project activity. Look at the SQLite json_extract expressions and the empty-filter cases.",
+        "failures": [],
+        "flesch": 18.9
+      },
+      {
+        "kind": "chunkLine",
+        "section": "backend/FwLite/LcmCrdt/HistoryService.cs",
+        "chunkId": "backend/FwLite/LcmCrdt/HistoryService.cs::::16fordc",
+        "text": "A second copy of the [JsonConverter] attribute is added on the enum.",
+        "failures": [],
+        "flesch": 46.6
+      },
+      {
+        "kind": "chunkLine",
+        "section": "backend/FwLite/LcmCrdt/HistoryService.cs",
+        "chunkId": "backend/FwLite/LcmCrdt/HistoryService.cs::HistoryService.ProjectActivity::17et1ev",
+        "text": "The diff shows the query setup lines twice; check whether that is a real duplication.",
+        "failures": [],
+        "flesch": 67.5
+      },
+      {
+        "kind": "chunkLine",
+        "section": "backend/FwLite/LcmCrdt/HistoryService.cs",
+        "chunkId": "backend/FwLite/LcmCrdt/HistoryService.cs::HistoryService.ApplyActivityFilters.fragment 1::12z90jb",
+        "text": "An empty AuthorFilterKeys array returns no commits; keys split into ids, names, and unknown.",
+        "failures": [],
+        "flesch": 41.6
+      },
+      {
+        "kind": "chunkLine",
+        "section": "backend/FwLite/LcmCrdt/HistoryService.cs",
+        "chunkId": "backend/FwLite/LcmCrdt/HistoryService.cs::HistoryService.ApplyActivitySort::1j6gflw",
+        "text": "Synced sorts read SyncDate from ExtraMetadata JSON and put nulls last or first.",
+        "failures": [],
+        "flesch": 63.5
+      },
+      {
+        "kind": "intro",
+        "section": "backend/FwLite/FwLiteShared/Services/HistoryServiceJsInvokable.cs",
+        "chunkId": null,
+        "text": "The JS-invokable wrapper for history queries. Look at the new filter/sort parameters on ProjectActivity and the two new list methods.",
+        "failures": [],
+        "flesch": 40.2
+      },
+      {
+        "kind": "chunkLine",
+        "section": "backend/FwLite/FwLiteShared/Services/HistoryServiceJsInvokable.cs",
+        "chunkId": "backend/FwLite/FwLiteShared/Services/HistoryServiceJsInvokable.cs::HistoryServiceJsInvokable.ProjectActivity::qbp0yt",
+        "text": "Adds author, change-type, and sort params; check the leftover second return statement in the diff.",
+        "failures": [],
+        "flesch": 50.6
+      },
+      {
+        "kind": "intro",
+        "section": "backend/FwLite/FwLiteShared/TypeGen/ReinforcedFwLiteTypingConfig.cs",
+        "chunkId": null,
+        "text": "Registers new activity types for TypeScript generation. Look for the added type exports and the new enum export.",
+        "failures": [],
+        "flesch": 42.6
+      },
+      {
+        "kind": "intro",
+        "section": "backend/FwLite/FwLiteWeb/Routes/ActivityRoutes.cs",
+        "chunkId": null,
+        "text": "The activity route now takes filter, sort, and paging query params, and adds endpoints to list authors and change types. Check the new defaults and how they map to ProjectActivity.",
+        "failures": [],
+        "flesch": 59.1
+      },
+      {
+        "kind": "intro",
+        "section": "frontend/viewer/src/lib/activity/utils.ts",
+        "chunkId": null,
+        "text": "New activity utils: filter types, constants, and helpers for authors, sorting, and building server queries. Check the filter-key and multi-select logic.",
+        "failures": [],
+        "flesch": 35
+      },
+      {
+        "kind": "chunkLine",
+        "section": "frontend/viewer/src/lib/activity/utils.ts",
+        "chunkId": "frontend/viewer/src/lib/activity/utils.ts::authorSortRank::u68vum",
+        "text": "Sets author order: unknown first, FieldWorks second, everyone else last.",
+        "failures": [],
+        "flesch": 52.9
+      },
+      {
+        "kind": "chunkLine",
+        "section": "frontend/viewer/src/lib/activity/utils.ts",
+        "chunkId": "frontend/viewer/src/lib/activity/utils.ts::applyMultiSelectValue::1kfsejq",
+        "text": "Handles the 'all' toggle: picking all-key flips between empty and 'all'.",
+        "failures": [],
+        "flesch": 72.6
+      },
+      {
+        "kind": "intro",
+        "section": "frontend/viewer/src/lib/activity/ActivityItemChangePreview.svelte",
+        "chunkId": null,
+        "text": "Reworks the change-preview layout to wrap text and switch from a container grid to flex-wrap. Look at the class changes on the dropdown trigger and the entry rows.",
+        "failures": [],
+        "flesch": 74.8
+      },
+      {
+        "kind": "intro",
+        "section": "frontend/viewer/src/lib/services/history-service.ts",
+        "chunkId": null,
+        "text": "History service drops the fetch fallbacks and calls the JS invokable directly. Look at new activity query params and the ensureLoaded type assert.",
+        "failures": [],
+        "flesch": 44.4
+      },
+      {
+        "kind": "chunkLine",
+        "section": "frontend/viewer/src/lib/services/history-service.ts",
+        "chunkId": "frontend/viewer/src/lib/services/history-service.ts::HistoryService.historyApi::gtquhu",
+        "text": "Removes the dev-only random undefined return that tested the fallback path.",
+        "failures": [],
+        "flesch": 26.5
+      },
+      {
+        "kind": "chunkLine",
+        "section": "frontend/viewer/src/lib/services/history-service.ts",
+        "chunkId": "frontend/viewer/src/lib/services/history-service.ts::HistoryService.listActivityAuthors::1szv5ps",
+        "text": "Old activity method is replaced by listActivityAuthors; the old projectCode arg is gone.",
+        "failures": [],
+        "flesch": 24.4
+      },
+      {
+        "kind": "chunkLine",
+        "section": "frontend/viewer/src/lib/services/history-service.ts",
+        "chunkId": "frontend/viewer/src/lib/services/history-service.ts::HistoryService.activity::zyh03",
+        "text": "New activity passes author, change-type, and sort filters to projectActivity.",
+        "failures": [],
+        "flesch": 2.1
+      },
+      {
+        "kind": "chunkLine",
+        "section": "frontend/viewer/src/lib/services/history-service.ts",
+        "chunkId": "frontend/viewer/src/lib/services/history-service.ts::HistoryService.ensureLoaded::visswd",
+        "text": "ensureLoaded now asserts loaded and a defined historyApi for callers.",
+        "failures": [],
+        "flesch": 10.6
+      },
+      {
+        "kind": "intro",
+        "section": "frontend/viewer/src/lib/activity/ActivityFilter.svelte",
+        "chunkId": null,
+        "text": "New ActivityFilter component: loads authors and change types, then renders two multi-selects and a sort menu bound to a filters object. Check the filter key resolving and select-change handlers.",
+        "failures": [],
+        "flesch": 43.3
+      },
+      {
+        "kind": "chunkLine",
+        "section": "frontend/viewer/src/lib/activity/ActivityFilter.svelte",
+        "chunkId": "frontend/viewer/src/lib/activity/ActivityFilter.svelte::script.fragment 2::1yb5282",
+        "text": "Sets up author/changeType resources and derives the selected keys and sort labels from filters.",
+        "failures": [],
+        "flesch": 35.5
+      },
+      {
+        "kind": "intro",
+        "section": "frontend/viewer/src/lib/activity/ActivityItem.svelte",
+        "chunkId": null,
+        "text": "This file adds an optional per-change History button and sync-status icons to activity items. Look at how openHistoryId drives the embedded HistoryView dialog.",
+        "failures": [],
+        "flesch": 22.3
+      },
+      {
+        "kind": "chunkLine",
+        "section": "frontend/viewer/src/lib/activity/ActivityItem.svelte",
+        "chunkId": "frontend/viewer/src/lib/activity/ActivityItem.svelte::template::bx3zc1",
+        "text": "The History button sets openHistoryId from the change snapshot, which opens the HistoryView dialog.",
+        "failures": [],
+        "flesch": 29.5
+      },
+      {
+        "kind": "intro",
+        "section": "frontend/viewer/src/lib/history/HistoryView.svelte",
+        "chunkId": null,
+        "text": "Rewrites HistoryView to Svelte 5 runes and replaces the local `record` with a bindable `selectedCommitId`. Check how `record` is now derived and that selection stays in sync.",
+        "failures": [],
+        "flesch": 71.8
+      },
+      {
+        "kind": "chunkLine",
+        "section": "frontend/viewer/src/lib/history/HistoryView.svelte",
+        "chunkId": "frontend/viewer/src/lib/history/HistoryView.svelte::script::7jp0tr",
+        "text": "Reactive blocks become `$effect`/`$derived`; `record` is now found from `selectedCommitId`.",
+        "failures": [],
+        "flesch": 114.1
+      },
+      {
+        "kind": "chunkLine",
+        "section": "frontend/viewer/src/lib/history/HistoryView.svelte",
+        "chunkId": "frontend/viewer/src/lib/history/HistoryView.svelte::script.load::74kp4w",
+        "text": "Only defaults `selectedCommitId` to the first commit when none is set.",
+        "failures": [],
+        "flesch": 88
+      },
+      {
+        "kind": "chunkLine",
+        "section": "frontend/viewer/src/lib/history/HistoryView.svelte",
+        "chunkId": "frontend/viewer/src/lib/history/HistoryView.svelte::template::1uidaku",
+        "text": "ActivityItem now also passes `changeTypes: []`.",
+        "failures": [],
+        "flesch": 45.6
+      },
+      {
+        "kind": "intro",
+        "section": "frontend/viewer/src/lib/components/ui/select/select-item.svelte",
+        "chunkId": null,
+        "text": "This select item now takes an optional selectedIndicator snippet. Look at how the snippet overrides the default check icon when a row is selected.",
+        "failures": [],
+        "flesch": 39.6
+      },
+      {
+        "kind": "intro",
+        "section": "frontend/viewer/src/lib/components/ui/select/select-trigger.svelte",
+        "chunkId": null,
+        "text": "Adds ellipsis and margin classes to the select trigger's styling. Check how the new classes interact with the existing button variant styles.",
+        "failures": [],
+        "flesch": 53.4
+      },
+      {
+        "kind": "intro",
+        "section": "frontend/viewer/src/lib/services/service-provider-dotnet.ts",
+        "chunkId": null,
+        "text": "This file wraps dotnet service calls in a proxy. The change adds a try/catch that logs the error before rethrowing.",
+        "failures": [],
+        "flesch": 78.2
+      },
+      {
+        "kind": "intro",
+        "section": "frontend/viewer/src/locales/en.po",
+        "chunkId": null,
+        "text": "New translation strings for the activity filter, sort options, and activity view states. Check the new msgids and their source references.",
+        "failures": [],
+        "flesch": 55.2
+      },
+      {
+        "kind": "chunkLine",
+        "section": "frontend/viewer/src/locales/en.po",
+        "chunkId": "frontend/viewer/src/locales/en.po::fragment 2::j21ep2",
+        "text": "\"No activity matches these filters\" appears twice here, replacing the old \"No activity found\" entry.",
+        "failures": [],
+        "flesch": 39.3
+      }
+    ],
+    "droppedSections": [
+      {
+        "section": "backend/FwLite/LcmCrdt.Tests/HistoryServiceActivityTests.cs",
+        "gateFailures": [
+          "diff omitted: backend/FwLite/LcmCrdt.Tests/HistoryServiceActivityTests.cs::HistoryServiceActivityTests.SetSyncDate::10e4i62",
+          "chunk backend/FwLite/LcmCrdt.Tests/HistoryServiceActivityTests.cs::HistoryServiceActivityTests.ProjectActivity_SortsOldestFirst::xttau2: chunkLine has 2 sentences (max 1)"
+        ]
+      },
+      {
+        "section": "frontend/viewer/src/lib/activity/ActivityView.svelte",
+        "gateFailures": [
+          "chunk frontend/viewer/src/lib/activity/ActivityView.svelte::script.fragment 3::1w0aeqf: chunkLine is 119 chars (max 110)"
+        ]
+      }
+    ]
+  },
+  "opener": {
+    "text": "This change adds an activity feed with author and change-type filters plus sorting. It starts in the backend HistoryService and flows out to the JS wrapper and Svelte views. Follow one filter, like author, from the query to the on-screen list.",
+    "scores": {
+      "orientation": 4,
+      "register": 5,
+      "faithfulness": 4,
+      "faithfulnessQuote": ""
+    },
+    "invalid": false
+  },
+  "sections": [
+    {
+      "section": "backend/FwLite/LcmCrdt/HistoryService.cs",
+      "intro": "Adds author/change-type listing, plus query-based filtering and sorting, to project activity. Look at the SQLite json_extract expressions and the empty-filter cases.",
+      "chunkLineCount": 4,
+      "scores": {
+        "orientation": 4,
+        "register": 5,
+        "faithfulness": 2,
+        "faithfulnessQuote": "A second copy of the [JsonConverter] attribute is added on the enum."
+      },
+      "invalid": false
+    },
+    {
+      "section": "backend/FwLite/LcmCrdt.Tests/HistoryServiceActivityTests.cs",
+      "intro": "",
+      "chunkLineCount": 0,
+      "scores": null,
+      "skipped": "no narration text (dropped or empty)"
+    },
+    {
+      "section": "backend/FwLite/FwLiteShared/Services/HistoryServiceJsInvokable.cs",
+      "intro": "The JS-invokable wrapper for history queries. Look at the new filter/sort parameters on ProjectActivity and the two new list methods.",
+      "chunkLineCount": 1,
+      "scores": {
+        "orientation": 3,
+        "register": 4,
+        "faithfulness": 2,
+        "faithfulnessQuote": "check the leftover second return statement in the diff."
+      },
+      "invalid": false
+    },
+    {
+      "section": "backend/FwLite/FwLiteShared/TypeGen/ReinforcedFwLiteTypingConfig.cs",
+      "intro": "Registers new activity types for TypeScript generation. Look for the added type exports and the new enum export.",
+      "chunkLineCount": 0,
+      "scores": {
+        "orientation": 4,
+        "register": 5,
+        "faithfulness": 5,
+        "faithfulnessQuote": ""
+      },
+      "invalid": false
+    },
+    {
+      "section": "backend/FwLite/FwLiteWeb/Routes/ActivityRoutes.cs",
+      "intro": "The activity route now takes filter, sort, and paging query params, and adds endpoints to list authors and change types. Check the new defaults and how they map to ProjectActivity.",
+      "chunkLineCount": 0,
+      "scores": {
+        "orientation": 4,
+        "register": 5,
+        "faithfulness": 5,
+        "faithfulnessQuote": ""
+      },
+      "invalid": false
+    },
+    {
+      "section": "frontend/viewer/src/lib/activity/utils.ts",
+      "intro": "New activity utils: filter types, constants, and helpers for authors, sorting, and building server queries. Check the filter-key and multi-select logic.",
+      "chunkLineCount": 2,
+      "scores": {
+        "orientation": 4,
+        "register": 5,
+        "faithfulness": 5,
+        "faithfulnessQuote": ""
+      },
+      "invalid": false
+    },
+    {
+      "section": "frontend/viewer/src/lib/activity/ActivityItemChangePreview.svelte",
+      "intro": "Reworks the change-preview layout to wrap text and switch from a container grid to flex-wrap. Look at the class changes on the dropdown trigger and the entry rows.",
+      "chunkLineCount": 0,
+      "scores": {
+        "orientation": 3,
+        "register": 4,
+        "faithfulness": 3,
+        "faithfulnessQuote": "switch from a container grid to flex-wrap"
+      },
+      "invalid": false
+    },
+    {
+      "section": "frontend/viewer/src/lib/services/history-service.ts",
+      "intro": "History service drops the fetch fallbacks and calls the JS invokable directly. Look at new activity query params and the ensureLoaded type assert.",
+      "chunkLineCount": 4,
+      "scores": {
+        "orientation": 5,
+        "register": 5,
+        "faithfulness": 5,
+        "faithfulnessQuote": ""
+      },
+      "invalid": false
+    },
+    {
+      "section": "frontend/viewer/src/lib/activity/ActivityFilter.svelte",
+      "intro": "New ActivityFilter component: loads authors and change types, then renders two multi-selects and a sort menu bound to a filters object. Check the filter key resolving and select-change handlers.",
+      "chunkLineCount": 1,
+      "scores": {
+        "orientation": 4,
+        "register": 5,
+        "faithfulness": 5,
+        "faithfulnessQuote": ""
+      },
+      "invalid": false
+    },
+    {
+      "section": "frontend/viewer/src/lib/activity/ActivityItem.svelte",
+      "intro": "This file adds an optional per-change History button and sync-status icons to activity items. Look at how openHistoryId drives the embedded HistoryView dialog.",
+      "chunkLineCount": 1,
+      "scores": {
+        "orientation": 4,
+        "register": 5,
+        "faithfulness": 5,
+        "faithfulnessQuote": ""
+      },
+      "invalid": false
+    },
+    {
+      "section": "frontend/viewer/src/lib/activity/ActivityView.svelte",
+      "intro": "",
+      "chunkLineCount": 0,
+      "scores": null,
+      "skipped": "no narration text (dropped or empty)"
+    },
+    {
+      "section": "frontend/viewer/src/lib/history/HistoryView.svelte",
+      "intro": "Rewrites HistoryView to Svelte 5 runes and replaces the local `record` with a bindable `selectedCommitId`. Check how `record` is now derived and that selection stays in sync.",
+      "chunkLineCount": 3,
+      "scores": {
+        "orientation": 5,
+        "register": 5,
+        "faithfulness": 5,
+        "faithfulnessQuote": ""
+      },
+      "invalid": false
+    },
+    {
+      "section": "frontend/viewer/src/lib/components/ui/select/select-item.svelte",
+      "intro": "This select item now takes an optional selectedIndicator snippet. Look at how the snippet overrides the default check icon when a row is selected.",
+      "chunkLineCount": 0,
+      "scores": {
+        "orientation": 4,
+        "register": 5,
+        "faithfulness": 4,
+        "faithfulnessQuote": ""
+      },
+      "invalid": false
+    },
+    {
+      "section": "frontend/viewer/src/lib/components/ui/select/select-trigger.svelte",
+      "intro": "Adds ellipsis and margin classes to the select trigger's styling. Check how the new classes interact with the existing button variant styles.",
+      "chunkLineCount": 0,
+      "scores": {
+        "orientation": 3,
+        "register": 5,
+        "faithfulness": 4,
+        "faithfulnessQuote": ""
+      },
+      "invalid": false
+    },
+    {
+      "section": "frontend/viewer/src/lib/services/service-provider-dotnet.ts",
+      "intro": "This file wraps dotnet service calls in a proxy. The change adds a try/catch that logs the error before rethrowing.",
+      "chunkLineCount": 0,
+      "scores": {
+        "orientation": 4,
+        "register": 5,
+        "faithfulness": 5,
+        "faithfulnessQuote": ""
+      },
+      "invalid": false
+    },
+    {
+      "section": "frontend/viewer/src/locales/en.po",
+      "intro": "New translation strings for the activity filter, sort options, and activity view states. Check the new msgids and their source references.",
+      "chunkLineCount": 1,
+      "scores": {
+        "orientation": 3,
+        "register": 5,
+        "faithfulness": 3,
+        "faithfulnessQuote": "\"No activity matches these filters\" appears twice here, replacing the old \"No activity found\" entry."
+      },
+      "invalid": false
+    }
+  ],
+  "invalidTrials": 0,
+  "faithfulnessFloor": [
+    {
+      "section": "backend/FwLite/LcmCrdt/HistoryService.cs",
+      "faithfulness": 2,
+      "quote": "A second copy of the [JsonConverter] attribute is added on the enum."
+    },
+    {
+      "section": "backend/FwLite/FwLiteShared/Services/HistoryServiceJsInvokable.cs",
+      "faithfulness": 2,
+      "quote": "check the leftover second return statement in the diff."
+    },
+    {
+      "section": "frontend/viewer/src/lib/activity/ActivityItemChangePreview.svelte",
+      "faithfulness": 3,
+      "quote": "switch from a container grid to flex-wrap"
+    },
+    {
+      "section": "frontend/viewer/src/locales/en.po",
+      "faithfulness": 3,
+      "quote": "\"No activity matches these filters\" appears twice here, replacing the old \"No activity found\" entry."
+    }
+  ],
+  "gate": {
+    "faithfulnessFloorMet": false,
+    "registerMedian": 5,
+    "orientationMedian": 4,
+    "pass": false,
+    "note": "provisional and directional (one subject): the human read-through is the other gate half and is NOT reflected here — Tim reading narrated-vs-bare is required before default-on"
+  },
+  "metadata": {
+    "note": "single-family judge (Claude): self-preference caveat applies; generator/judge ids must differ where possible"
+  }
+}
