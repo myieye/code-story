@@ -16,12 +16,14 @@ const { extractJsonBlock, invokeClaudeJson } = await import(
   process.exit(1);
 });
 
-const PROMPT_VERSION = 'order-eval-1';
+const PROMPT_VERSION = 'order-eval-2';
 
+// Criterion 1 is deliberately direction-neutral: the configured reading direction (consumer-first
+// vs dependency-first, R-044) is an axiom both books share, not something the judge may score.
 const RUBRIC = `You are a code reviewer deciding which presentation order of the SAME set of changes reads better as a story. Two orderings of the same review book follow, labeled Book A and Book B — identical chunks, different section order.
 
 Judge by these criteria, in priority order:
-1. Definitions and dependencies appear before their uses.
+1. Each chunk is understandable when you reach it: the context it needs has already appeared, or the order makes clear where it is going next.
 2. One concern at a time: related sections sit adjacent; unrelated housekeeping is not interleaved with the main change.
 3. The order builds toward the point of the change rather than burying it.
 
