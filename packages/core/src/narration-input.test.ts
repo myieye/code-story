@@ -1,25 +1,46 @@
 import { describe, expect, it } from 'vitest';
 import { chunkFile } from './chunker.js';
+import { type ContextDefinition, type ContextPayload } from './context.js';
 import { type FileContents } from './export.js';
 import { type FileDiff } from './diff.js';
 import { type ImportGraph } from './import-graph.js';
 import { type Chunk, type Section } from './model.js';
+import { type SymbolSpan } from './symbols.js';
 import {
   buildSectionNarrationInput,
+  NARRATION_DEFINITIONS_TOKEN_CAP,
   NARRATION_INPUT_TOKEN_CAP,
   parseNarrationReply,
   renderSectionNarrationInput,
 } from './narration.js';
+
+function def(symbol: string, file: string, body: string): ContextDefinition {
+  return { symbol, file, changed: false, body, lineStart: 1, sha: 'deadbeefcafe' };
+}
+
+function payload(chunkId: string, definitions: ContextDefinition[]): ContextPayload {
+  return {
+    chunkId,
+    fingerprint: 'fp',
+    generatedAt: '2026-01-01T00:00:00.000Z',
+    facts: { definitions, edges: { imports: [], importedBy: [] } },
+  };
+}
 
 function graph(...edges: [string, string][]): ImportGraph {
   return { edges: edges.map(([from, to]) => ({ from, to })), unresolved: 0 };
 }
 
 /** One chunk per hunk against a file of `lineText`-filled lines, so unifiedChunkLines yields real diff text. */
-function fileChunks(path: string, hunks: FileDiff['hunks'], lineCount = 400): { chunks: Chunk[]; contents: FileContents } {
+function fileChunks(
+  path: string,
+  hunks: FileDiff['hunks'],
+  lineCount = 400,
+  symbols?: SymbolSpan[],
+): { chunks: Chunk[]; contents: FileContents } {
   const lines = Array.from({ length: lineCount }, (_, i) => `${path} line ${i + 1} some content here`);
   const diff: FileDiff = { path, status: 'modified', binary: false, hunks };
-  const chunks = chunkFile({ diff, lines, baseLines: lines });
+  const chunks = chunkFile({ diff, lines, baseLines: lines, symbols });
   return { chunks, contents: { head: lines, base: lines } };
 }
 
@@ -99,6 +120,95 @@ describe('buildSectionNarrationInput', () => {
     const sec = section('a.ts', chunks);
     const input = buildSectionNarrationInput(sec, chunks, graph(['a.ts', 'b.ts']), new Map([['a.ts', contents]]));
     expect(renderSectionNarrationInput(input)).toMatchSnapshot();
+  });
+
+  it('appends no definitions block when no payloads are supplied', () => {
+    const { chunks, contents } = fileChunks('a.ts', [{ baseStart: 3, baseCount: 1, headStart: 3, headCount: 2 }]);
+    const sec = section('a.ts', chunks);
+    const input = buildSectionNarrationInput(sec, chunks, graph(), new Map([['a.ts', contents]]));
+    expect(input.definitions).toBeUndefined();
+    expect(renderSectionNarrationInput(input)).not.toContain('context — not part of the diff');
+  });
+
+  it('appends no block for an empty payload — not a bare header (spec 04)', () => {
+    const { chunks, contents } = fileChunks('a.ts', [{ baseStart: 3, baseCount: 1, headStart: 3, headCount: 2 }]);
+    const sec = section('a.ts', chunks);
+    const payloads = new Map([[chunks[0]!.id, payload(chunks[0]!.id, [])]]);
+    const input = buildSectionNarrationInput(sec, chunks, graph(), new Map([['a.ts', contents]]), payloads);
+    expect(input.definitions).toEqual([]);
+    expect(renderSectionNarrationInput(input)).not.toContain('context — not part of the diff');
+  });
+
+  it('renders a section input snapshot with a definitions block', () => {
+    const { chunks, contents } = fileChunks('a.ts', [{ baseStart: 3, baseCount: 1, headStart: 3, headCount: 2 }]);
+    const sec = section('a.ts', chunks);
+    const payloads = new Map([
+      [chunks[0]!.id, payload(chunks[0]!.id, [def('debouncedFilter', 'util/filter.ts', 'export function debouncedFilter(q: string) {\n  return q.trim();\n}')])],
+    ]);
+    const input = buildSectionNarrationInput(sec, chunks, graph(['a.ts', 'b.ts']), new Map([['a.ts', contents]]), payloads);
+    expect(renderSectionNarrationInput(input)).toMatchSnapshot();
+  });
+
+  it('deduplicates a definition shared across the section chunks', () => {
+    const symbols: SymbolSpan[] = [
+      { name: 'first', kind: 'function', startLine: 1, endLine: 20, children: [] },
+      { name: 'second', kind: 'function', startLine: 280, endLine: 320, children: [] },
+    ];
+    const { chunks, contents } = fileChunks(
+      'a.ts',
+      [
+        { baseStart: 3, baseCount: 2, headStart: 3, headCount: 2 },
+        { baseStart: 300, baseCount: 2, headStart: 300, headCount: 2 },
+      ],
+      400,
+      symbols,
+    );
+    expect(chunks.length).toBe(2);
+    const sec = section('a.ts', chunks);
+    const shared = def('helper', 'util/shared.ts', 'export function helper() {}');
+    const payloads = new Map([
+      [chunks[0]!.id, payload(chunks[0]!.id, [shared])],
+      [chunks[1]!.id, payload(chunks[1]!.id, [shared, def('other', 'util/other.ts', 'export const other = 1;')])],
+    ]);
+    const input = buildSectionNarrationInput(sec, chunks, graph(), new Map([['a.ts', contents]]), payloads);
+    expect(input.definitions?.map((d) => `${d.file}:${d.symbol}`)).toEqual(['util/shared.ts:helper', 'util/other.ts:other']);
+  });
+
+  it('never lets definitions evict or shrink diff text, and caps the block at its own budget', () => {
+    const hunks = Array.from({ length: 80 }, (_, i) => ({
+      baseStart: 5 + i * 15,
+      baseCount: 10,
+      headStart: 5 + i * 15,
+      headCount: 10,
+    }));
+    const { chunks, contents } = fileChunks('big.ts', hunks, 1400);
+    const sec = section('big.ts', chunks);
+    const map = new Map([['big.ts', contents]]);
+
+    const withoutDefs = buildSectionNarrationInput(sec, chunks, graph(), map);
+    expect(withoutDefs.omitted.length).toBeGreaterThan(0);
+
+    // A dozen sizeable definitions — more than the 2k block budget can hold.
+    const defs = Array.from({ length: 12 }, (_, i) =>
+      def(`sym${i}`, `dep${i}.ts`, `export function sym${i}() {\n${'  const line = value;\n'.repeat(50)}}`),
+    );
+    const payloads = new Map([[chunks[0]!.id, payload(chunks[0]!.id, defs)]]);
+    const withDefs = buildSectionNarrationInput(sec, chunks, graph(), map, payloads);
+
+    // Diff selection is byte-for-byte identical: no chunk's diff shrank or dropped for the block.
+    expect(withDefs.chunks).toEqual(withoutDefs.chunks);
+    expect(withDefs.omitted).toEqual(withoutDefs.omitted);
+
+    const renderedWithout = renderSectionNarrationInput(withoutDefs);
+    const renderedWith = renderSectionNarrationInput(withDefs);
+    expect(renderedWith.startsWith(`${renderedWithout}\n\n`)).toBe(true);
+
+    // The block truncated (dropped whole definitions) and fits its own additive budget.
+    expect(withDefs.definitionsOmitted!).toBeGreaterThan(0);
+    const block = renderedWith.slice(renderedWithout.length + 2);
+    expect(block.startsWith('context — not part of the diff')).toBe(true);
+    expect(block).toContain('omitted — over context budget');
+    expect(Math.ceil(block.length / 4)).toBeLessThanOrEqual(NARRATION_DEFINITIONS_TOKEN_CAP);
   });
 });
 

@@ -15,3 +15,26 @@ chunk a.ts::::1s1nski
  a.ts line 6 some content here
  a.ts line 7 some content here"
 `;
+
+exports[`buildSectionNarrationInput > renders a section input snapshot with a definitions block 1`] = `
+"a.ts [impl]
+imports: b.ts
+
+chunk a.ts::::1s1nski
+  lines 3–4 (other, ~2 lines)
+ a.ts line 1 some content here
+ a.ts line 2 some content here
+-a.ts line 3 some content here
++a.ts line 3 some content here
++a.ts line 4 some content here
+ a.ts line 5 some content here
+ a.ts line 6 some content here
+ a.ts line 7 some content here
+
+context — not part of the diff
+
+debouncedFilter — util/filter.ts
+export function debouncedFilter(q: string) {
+  return q.trim();
+}"
+`;
