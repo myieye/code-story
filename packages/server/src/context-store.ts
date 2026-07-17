@@ -1,9 +1,10 @@
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
-import type { ContextStoreFile } from '@code-story/core';
+import type { ContextPayload, ContextStoreFile } from '@code-story/core';
 import type { ResolvedRange } from './git.js';
+import { saveJson } from './json-file.js';
 
-export { saveJson } from './json-file.js';
+export { saveJson };
 
 /**
  * Bulk fill stops persisting once the serialized store would pass this (spec 04 step 5). Facts are
@@ -74,4 +75,22 @@ export async function loadContextStore(file: string): Promise<ContextStoreFile> 
     }
   }
   return { version: 1, payloads: {} };
+}
+
+/**
+ * Adds one payload to `store` and writes the result atomically — unless the serialized store would
+ * pass the cap, in which case it writes nothing and returns `persisted: false` (the fill's stop
+ * signal, never a throw). Callers own their own concurrency: the server serializes on a save chain
+ * and re-loads before each call; the CLI holds one store in memory and mirrors the write on success.
+ */
+export async function persistContextPayload(
+  file: string,
+  store: ContextStoreFile,
+  payload: ContextPayload,
+  capBytes = DEFAULT_CONTEXT_STORE_CAP_BYTES,
+): Promise<{ persisted: boolean }> {
+  const candidate: ContextStoreFile = { ...store, payloads: { ...store.payloads, [payload.chunkId]: payload } };
+  if (Buffer.byteLength(JSON.stringify(candidate)) > capBytes) return { persisted: false };
+  await saveJson(file, candidate);
+  return { persisted: true };
 }

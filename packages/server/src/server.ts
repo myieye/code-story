@@ -15,7 +15,6 @@ import {
   type ContextJobResponse,
   type ContextPayload,
   type ContextResponse,
-  type ContextStoreFile,
   exportBookMarkdown,
   type FileContents,
   type FileDiff,
@@ -41,7 +40,9 @@ import {
   DEFAULT_CONTEXT_STORE_CAP_BYTES,
   loadContextJobRecord,
   loadContextStore,
+  persistContextPayload,
 } from './context-store.js';
+import { JobRuntime } from './job-runtime.js';
 import { diffRange, fileAt, listTree, originUrl, type ResolvedRange, rootCommit } from './git.js';
 import { runNarrationJob } from './narration-job.js';
 import { NARRATION_PROMPT_VERSION } from './narration-prompt.js';
@@ -221,20 +222,16 @@ export function startServer(options: ServerOptions, requestedPort = 0): Promise<
   const autoOrder = options.autoOrder ?? true;
   const orderModel = options.orderModel ?? 'opus';
 
-  // The in-flight ordering job. A persisted `running` record without this handle is an orphan
-  // from a dead daemon and reads as failed. liveRecord mirrors what the running job will
-  // persist, so GET never misreads the window before the record file lands.
-  let liveJob: Promise<void> | undefined;
-  let liveRecord: OrderJobRecord | undefined;
+  const orderRuntime = new JobRuntime<OrderJobRecord>();
   // Fingerprints whose job already failed this daemon lifetime: a broken claude CLI must not
   // retry-storm on every compile. A plain restart clears it and re-tries.
   const failedFingerprints = new Set<string>();
 
   type OrderStore = Awaited<ReturnType<typeof getStore>>;
-  // Starts the ordering job unless one is already in flight. Synchronous up to the liveJob
+  // Starts the ordering job unless one is already in flight. Synchronous up to `run`'s handle
   // assignment (no await between the guard and it) so two concurrent callers can't both spawn.
   function kickOrderJob(store: OrderStore, model: string): { record: OrderJobRecord | undefined; started: boolean } {
-    if (liveJob !== undefined) return { record: liveRecord, started: false };
+    if (orderRuntime.running) return { record: orderRuntime.liveRecord, started: false };
     const record: OrderJobRecord = {
       version: 1,
       status: 'running',
@@ -242,29 +239,21 @@ export function startServer(options: ServerOptions, requestedPort = 0): Promise<
       promptVersion: ORDER_PROMPT_VERSION,
       startedAt: new Date().toISOString(),
     };
-    liveRecord = record;
-    liveJob = (async () => {
-      let fingerprint: string | undefined;
-      try {
-        await saveJson(store.jobFile, record);
+    let fingerprint: string | undefined;
+    orderRuntime.run(
+      record,
+      store.jobFile,
+      async () => {
         const { book, chunks, graph } = await getBook();
         fingerprint = bookFingerprint(book);
         const overlay = await runOrderJob({ book, graph, chunks, model, cwd: store.dataHome, invoke: options.orderInvoke });
         await saveJson(store.orderFile, overlay);
-        await saveJson(store.jobFile, { ...record, status: 'done', finishedAt: new Date().toISOString() });
-      } catch (e) {
+        return {};
+      },
+      () => {
         if (fingerprint !== undefined) failedFingerprints.add(fingerprint);
-        await saveJson(store.jobFile, {
-          ...record,
-          status: 'failed',
-          finishedAt: new Date().toISOString(),
-          error: (e as Error).message,
-        }).catch(() => undefined);
-      } finally {
-        liveJob = undefined;
-        liveRecord = undefined;
-      }
-    })();
+      },
+    );
     return { record, started: true };
   }
 
@@ -272,18 +261,7 @@ export function startServer(options: ServerOptions, requestedPort = 0): Promise<
     const { orderFile, jobFile } = await getStore();
     const [overlay, stored, { book }] = await Promise.all([loadOverlay(orderFile), loadJobRecord(jobFile), getBook()]);
     const fresh = overlay !== null && isOverlayFresh(book, overlay) ? overlay : null;
-    // A stored `running` with no live handle is ambiguous: a fast job may have finished during the
-    // read above. The terminal write always lands before the handle clears, so one re-read decides —
-    // still `running` with no handle means a genuine orphan. Same pattern at the narration and
-    // context-job GETs.
-    let record = liveRecord ?? stored;
-    if (record?.status === 'running' && liveJob === undefined) {
-      record = liveRecord ?? (await loadJobRecord(jobFile));
-    }
-    const job =
-      record?.status === 'running' && liveJob === undefined
-        ? { ...record, status: 'failed' as const, error: 'job orphaned by a daemon restart — re-run it' }
-        : record;
+    const job = await orderRuntime.resolve(stored, () => loadJobRecord(jobFile));
     const response: OrderResponse = { overlay: fresh, job: job && jobSummary(job) };
     return c.json(response);
   });
@@ -307,7 +285,7 @@ export function startServer(options: ServerOptions, requestedPort = 0): Promise<
       const decision = {
         enabled: autoOrder,
         hasFreshOverlay: overlay !== null && isOverlayFresh(book, overlay),
-        jobInFlight: liveJob !== undefined,
+        jobInFlight: orderRuntime.running,
         fingerprint: bookFingerprint(book),
         failedFingerprints,
       };
@@ -339,10 +317,9 @@ export function startServer(options: ServerOptions, requestedPort = 0): Promise<
     return found ? c.json({ ok: true }) : c.json({ error: 'no order overlay' }, 404);
   });
 
-  // Mirrors the order job's live/orphan handling. Narration is order-independent (keyed by
-  // section fingerprint), so it survives the order overlay being applied or dismissed.
-  let liveNarrationJob: Promise<void> | undefined;
-  let liveNarrationRecord: NarrationJobRecord | undefined;
+  // Narration is order-independent (keyed by section fingerprint), so it survives the order overlay
+  // being applied or dismissed.
+  const narrationRuntime = new JobRuntime<NarrationJobRecord>();
 
   app.get('/api/narration', async (c) => {
     const { narrationFile, narrationJobFile } = await getStore();
@@ -352,14 +329,7 @@ export function startServer(options: ServerOptions, requestedPort = 0): Promise<
       getBook(),
     ]);
     const filtered = overlay !== null ? filterFreshNarration(book, options.range.head, overlay) : null;
-    let record = liveNarrationRecord ?? stored;
-    if (record?.status === 'running' && liveNarrationJob === undefined) {
-      record = liveNarrationRecord ?? (await loadNarrationJobRecord(narrationJobFile));
-    }
-    const job =
-      record?.status === 'running' && liveNarrationJob === undefined
-        ? { ...record, status: 'failed' as const, error: 'job orphaned by a daemon restart — re-run it' }
-        : record;
+    const job = await narrationRuntime.resolve(stored, () => loadNarrationJobRecord(narrationJobFile));
     const response: NarrationResponse = { overlay: filtered, job: job && narrationJobSummary(job) };
     return c.json(response);
   });
@@ -368,9 +338,9 @@ export function startServer(options: ServerOptions, requestedPort = 0): Promise<
     const body = (await c.req.json().catch(() => ({}))) as { model?: string };
     const { dataHome, narrationFile, narrationJobFile } = await getStore();
     const built = await getBook();
-    // No awaits between this guard and the liveNarrationJob assignment — a second concurrent POST
-    // must see the first one's handle, or two paid model runs race on the same overlay file.
-    if (liveNarrationJob !== undefined) {
+    // No awaits between this guard and `run`'s handle assignment — a second concurrent POST must see
+    // the first one's handle, or two paid model runs race on the same overlay file.
+    if (narrationRuntime.running) {
       return c.json({ error: 'a narration job is already running for this range' }, 409);
     }
     const record: NarrationJobRecord = {
@@ -382,44 +352,24 @@ export function startServer(options: ServerOptions, requestedPort = 0): Promise<
       sectionsTotal: 0,
       sectionsDone: 0,
     };
-    liveNarrationRecord = record;
-    liveNarrationJob = (async () => {
-      try {
-        await saveJson(narrationJobFile, record);
-        const result = await runNarrationJob({
-          book: built.book,
-          graph: built.graph,
-          chunks: built.chunks,
-          contents: built.contents,
-          headSha: options.range.head,
-          model: record.model,
-          cwd: dataHome,
-          overlayFile: narrationFile,
-          onProgress: (done, total) => {
-            record.sectionsDone = done;
-            record.sectionsTotal = total;
-          },
-          invoke: options.narrationInvoke,
-        });
-        await saveJson(narrationJobFile, {
-          ...record,
-          status: 'done',
-          finishedAt: new Date().toISOString(),
-          sectionsTotal: result.sectionsTotal,
-          sectionsDone: result.sectionsDone,
-        });
-      } catch (e) {
-        await saveJson(narrationJobFile, {
-          ...record,
-          status: 'failed',
-          finishedAt: new Date().toISOString(),
-          error: (e as Error).message,
-        });
-      } finally {
-        liveNarrationJob = undefined;
-        liveNarrationRecord = undefined;
-      }
-    })();
+    narrationRuntime.run(record, narrationJobFile, async () => {
+      const result = await runNarrationJob({
+        book: built.book,
+        graph: built.graph,
+        chunks: built.chunks,
+        contents: built.contents,
+        headSha: options.range.head,
+        model: record.model,
+        cwd: dataHome,
+        overlayFile: narrationFile,
+        onProgress: (done, total) => {
+          record.sectionsDone = done;
+          record.sectionsTotal = total;
+        },
+        invoke: options.narrationInvoke,
+      });
+      return { sectionsTotal: result.sectionsTotal, sectionsDone: result.sectionsDone };
+    });
     return c.json({ job: narrationJobSummary(record) }, 202);
   });
 
@@ -446,16 +396,9 @@ export function startServer(options: ServerOptions, requestedPort = 0): Promise<
   // computed payload is still served (GET) but not written (spec 04 step 5) — never throws.
   let contextSaveChain = Promise.resolve();
   const persistPayload = (file: string, payload: ContextPayload): Promise<{ persisted: boolean }> => {
-    const op = contextSaveChain.then(async () => {
-      const current = await loadContextStore(file);
-      const candidate: ContextStoreFile = {
-        ...current,
-        payloads: { ...current.payloads, [payload.chunkId]: payload },
-      };
-      if (Buffer.byteLength(JSON.stringify(candidate)) > contextStoreCapBytes) return { persisted: false };
-      await saveJson(file, candidate);
-      return { persisted: true };
-    });
+    const op = contextSaveChain.then(async () =>
+      persistContextPayload(file, await loadContextStore(file), payload, contextStoreCapBytes),
+    );
     contextSaveChain = op.then(
       () => undefined,
       () => undefined,
@@ -501,32 +444,26 @@ export function startServer(options: ServerOptions, requestedPort = 0): Promise<
   });
 
   // The bulk context fill, modeled on the order/narration jobs minus the model calls. One in flight
-  // per range; a persisted `running` record without this handle is an orphan from a dead daemon.
-  let liveContextJob: Promise<void> | undefined;
-  let liveContextRecord: ContextJobRecord | undefined;
+  // per range.
+  const contextRuntime = new JobRuntime<ContextJobRecord>();
 
   app.get('/api/context-job', async (c) => {
     const { contextJobFile } = await getStore();
     const stored = await loadContextJobRecord(contextJobFile);
-    let record = liveContextRecord ?? stored;
-    if (record?.status === 'running' && liveContextJob === undefined) {
-      record = liveContextRecord ?? (await loadContextJobRecord(contextJobFile));
-    }
-    const job =
-      record?.status === 'running' && liveContextJob === undefined
-        ? { ...record, status: 'failed' as const, error: 'job orphaned by a daemon restart — re-run it' }
-        : record;
+    const job = await contextRuntime.resolve(stored, () => loadContextJobRecord(contextJobFile));
     return c.json({ job: job && contextJobSummary(job) } satisfies ContextJobResponse);
   });
 
   app.post('/api/context-job', async (c) => {
     const { contextFile, contextJobFile } = await getStore();
     const { chunks, graph, book } = await getBook();
-    // No awaits between this guard and the liveContextJob assignment — a second concurrent POST must
-    // see the first one's handle.
-    if (liveContextJob !== undefined) {
+    // No awaits between this guard and `run`'s handle assignment — a second concurrent POST must see
+    // the first one's handle.
+    if (contextRuntime.running) {
       return c.json(
-        { job: liveContextRecord ? contextJobSummary(liveContextRecord) : null } satisfies ContextJobResponse,
+        {
+          job: contextRuntime.liveRecord ? contextJobSummary(contextRuntime.liveRecord) : null,
+        } satisfies ContextJobResponse,
         200,
       );
     }
@@ -541,41 +478,23 @@ export function startServer(options: ServerOptions, requestedPort = 0): Promise<
       capped: false,
       cappedCount: 0,
     };
-    liveContextRecord = record;
-    liveContextJob = (async () => {
-      try {
-        await saveJson(contextJobFile, record);
-        const eligible = eligibleContextChunks(book, chunks);
-        const freshIds = new Set(Object.keys(filterFreshContext(options.range.head, book, await loadContextStore(contextFile))));
-        const { resolver, changedFiles } = await contextResolveInputs();
-        const result = await runContextJob({
-          eligibleChunks: eligible,
-          freshIds,
-          resolve: (chunk) => resolver.resolve(chunk, changedFiles, graph),
-          persist: (payload) => persistPayload(contextFile, payload),
-          onProgress: (done, total) => {
-            record.chunksDone = done;
-            record.chunksTotal = total;
-          },
-        });
-        await saveJson(contextJobFile, {
-          ...record,
-          status: 'done',
-          finishedAt: new Date().toISOString(),
-          ...result,
-        });
-      } catch (e) {
-        await saveJson(contextJobFile, {
-          ...record,
-          status: 'failed',
-          finishedAt: new Date().toISOString(),
-          error: (e as Error).message,
-        }).catch(() => undefined);
-      } finally {
-        liveContextJob = undefined;
-        liveContextRecord = undefined;
-      }
-    })();
+    contextRuntime.run(record, contextJobFile, async () => {
+      const eligible = eligibleContextChunks(book, chunks);
+      const freshIds = new Set(
+        Object.keys(filterFreshContext(options.range.head, book, await loadContextStore(contextFile))),
+      );
+      const { resolver, changedFiles } = await contextResolveInputs();
+      return runContextJob({
+        eligibleChunks: eligible,
+        freshIds,
+        resolve: (chunk) => resolver.resolve(chunk, changedFiles, graph),
+        persist: (payload) => persistPayload(contextFile, payload),
+        onProgress: (done, total) => {
+          record.chunksDone = done;
+          record.chunksTotal = total;
+        },
+      });
+    });
     return c.json({ job: contextJobSummary(record) } satisfies ContextJobResponse, 202);
   });
 
