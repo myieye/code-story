@@ -14,7 +14,7 @@ import {
   type SymbolSpan,
 } from '@code-story/core';
 import { extractImports } from './imports.js';
-import { extractReferences } from './references.js';
+import { extractReferences, justifiedUniqueFile } from './references.js';
 import { extractSymbols } from './treesitter.js';
 
 /** A changed file and its diff status — the resolver reads deleted files at base, everything else at head. */
@@ -104,10 +104,9 @@ export function createContextResolver(deps: ContextResolveDeps) {
 
   /**
    * Changed-file lookup (all languages): the symbol tables `computeChunks` builds, rebuilt here from
-   * the same content (memoized). A cross-file match must be justified by an import edge from the
-   * chunk's file to the defining file (#91: a lone in-diff match for a repo-wide name — 8
-   * `CreateEntry` definitions, one in the diff — confidently resolved to the wrong class); after
-   * that filter, unique wins, else it stays ambiguous (no definition).
+   * the same content (memoized). The defining file must pass `justifiedUniqueFile` (#91: a lone
+   * in-diff match for a repo-wide name — 8 `CreateEntry` definitions, one in the diff — confidently
+   * resolved to the wrong class).
    */
   async function resolveChanged(
     name: string,
@@ -119,7 +118,6 @@ export function createContextResolver(deps: ContextResolveDeps) {
   ): Promise<ContextDefinition | undefined> {
     const matches: { file: string; span: SymbolSpan; sha: string }[] = [];
     for (const cf of changedFiles) {
-      if (cf.path !== chunk.file && !imported.has(cf.path)) continue;
       const sha = cf.status === 'deleted' ? deps.baseSha : deps.headSha;
       const span = findSymbol(await symbolsAt(sha, cf.path), name);
       if (!span) continue;
@@ -127,7 +125,8 @@ export function createContextResolver(deps: ContextResolveDeps) {
       if (cf.path === chunk.file && overlaps(span, ranges)) continue;
       matches.push({ file: cf.path, span, sha });
     }
-    const chosen = matches.length === 1 ? matches[0] : undefined;
+    const chosenFile = justifiedUniqueFile(chunk.file, imported, matches.map((m) => m.file));
+    const chosen = matches.find((m) => m.file === chosenFile);
     if (!chosen) return undefined;
     // A changed match at the chunk's own sha keeps that sha; other changed files read at head.
     return buildDefinition(name, chosen.file, chosen.span, chosen.file === chunk.file ? chunkSha : chosen.sha, true);

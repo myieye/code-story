@@ -51,6 +51,19 @@ describe('runContextJob (pure)', () => {
     expect(result).toMatchObject({ chunksTotal: 3, chunksDone: 3, computed: 1, skipped: 2, capped: false, cappedCount: 0 });
   });
 
+  test('one chunk\'s resolver throw skips that chunk, never the whole fill', async () => {
+    const result = await runContextJob({
+      eligibleChunks: [chunk('a'), chunk('boom'), chunk('c')],
+      freshIds: new Set(),
+      resolve: async (c) => {
+        if (c.id === 'boom') throw new Error('parse exploded');
+        return payloadOf(c.id);
+      },
+      persist: async () => ({ persisted: true }),
+    });
+    expect(result).toMatchObject({ chunksTotal: 3, chunksDone: 2, computed: 2, skipped: 0, capped: false });
+  });
+
   test('a persist that reports the cap stops the fill and counts the remainder', async () => {
     let persisted = 0;
     const result = await runContextJob({
