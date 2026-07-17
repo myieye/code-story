@@ -117,7 +117,8 @@ body {
   cursor: pointer;
 }
 
-.ai-order-indicator {
+.ai-order-indicator,
+.ai-narration-indicator {
   font-size: 11px;
   font-weight: 600;
   color: #1c3a6e;
@@ -330,11 +331,39 @@ body {
   color: #6b675f;
 }
 
-.section-rationale .ai-badge {
+/* AI-written text (opener, section line, chunk line) reads quieter than code and never blue. */
+.ai-badge {
   font-style: normal;
   font-weight: 700;
   background: #eceff7;
   color: #1c3a6e;
+}
+
+.chunk-ai-line {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  padding: 2px 0 8px;
+  font-size: 12px;
+  font-style: italic;
+  color: #6b675f;
+}
+
+.book-opener {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  max-width: 1120px;
+  margin: 10px auto 0;
+  padding: 0 24px;
+  font-size: 13px;
+  font-style: italic;
+  color: #5c584f;
+  flex: none;
+}
+
+.book-opener-text {
+  line-height: 1.45;
 }
 
 .chunk {

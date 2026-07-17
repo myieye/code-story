@@ -1,19 +1,19 @@
 import type { ReviewFile } from '@code-story/core';
 import { useEffect, useState } from 'react';
-import { type BookResponse, type OrderResponse, fetchBook, fetchOrder, fetchReview } from './api.js';
+import { type BookResponse, type NarrationResponse, type OrderResponse, fetchBook, fetchNarration, fetchOrder, fetchReview } from './api.js';
 import { BookPage } from './BookPage.js';
 
 type State =
   | { phase: 'loading' }
   | { phase: 'error'; message: string }
-  | { phase: 'ready'; data: BookResponse; review: ReviewFile; order: OrderResponse };
+  | { phase: 'ready'; data: BookResponse; review: ReviewFile; order: OrderResponse; narration: NarrationResponse };
 
 export function App() {
   const [state, setState] = useState<State>({ phase: 'loading' });
 
   useEffect(() => {
-    Promise.all([fetchBook(), fetchReview(), fetchOrder()])
-      .then(([data, review, order]) => setState({ phase: 'ready', data, review, order }))
+    Promise.all([fetchBook(), fetchReview(), fetchOrder(), fetchNarration()])
+      .then(([data, review, order, narration]) => setState({ phase: 'ready', data, review, order, narration }))
       .catch((e: unknown) => setState({ phase: 'error', message: e instanceof Error ? e.message : String(e) }));
   }, []);
 
@@ -40,5 +40,12 @@ export function App() {
       </main>
     );
   }
-  return <BookPage data={state.data} initialReview={state.review} initialOrder={state.order} />;
+  return (
+    <BookPage
+      data={state.data}
+      initialReview={state.review}
+      initialOrder={state.order}
+      initialNarration={state.narration}
+    />
+  );
 }

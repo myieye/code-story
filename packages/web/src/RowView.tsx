@@ -14,7 +14,8 @@ export function RowView({
   reviewedCount,
   sectionStats,
   sectionAck,
-  sectionRationale,
+  sectionAiLine,
+  chunkAiLine,
   onMarkSection,
   onUndoBatch,
   state,
@@ -34,8 +35,10 @@ export function RowView({
   reviewedCount: number;
   sectionStats: Map<string, { done: number; total: number }>;
   sectionAck: SectionAck | undefined;
-  /** AI order overlay's one-line rationale for this section, when applied (spec 02). */
-  sectionRationale: string | undefined;
+  /** The section header's single AI line: narration intro, else the applied order rationale (spec 03). */
+  sectionAiLine: string | undefined;
+  /** This chunk's one-line AI orientation, rendered above the diff (spec 03). */
+  chunkAiLine: string | undefined;
   onMarkSection: (sectionId: string) => void;
   onUndoBatch: () => void;
   state: ChunkReviewState;
@@ -65,9 +68,9 @@ export function RowView({
             </button>
           )}
         </div>
-        {sectionRationale && (
+        {sectionAiLine && (
           <div className="section-rationale">
-            <span className="badge ai-badge">AI</span> {sectionRationale}
+            <span className="badge ai-badge">AI</span> {sectionAiLine}
           </div>
         )}
       </div>
@@ -135,6 +138,11 @@ export function RowView({
               <span className="added">+{size.added}</span> <span className="removed">−{size.removed}</span>
             </span>
           </div>
+          {chunkAiLine && (
+            <div className="chunk-ai-line">
+              <span className="badge ai-badge">AI</span> {chunkAiLine}
+            </div>
+          )}
           {collapsed ? (
             <div className="chunk-collapsed-note">
               {lowSignal ? (
@@ -158,15 +166,24 @@ export function RowView({
   );
 }
 
+export interface AiLinePredicates {
+  hasSectionLine: (sectionId: string) => boolean;
+  hasChunkLine: (sectionId: string, chunkId: string) => boolean;
+}
+
+/** An AI line (section header or chunk) adds roughly one text row; measureElement then self-corrects. */
+const AI_LINE_HEIGHT = 22;
+
 export function estimateRowHeight(
   row: Row,
   data: BookResponse,
   isCollapsed: (chunk: Chunk) => boolean,
-  hasRationale?: (sectionId: string) => boolean,
+  aiLines?: AiLinePredicates,
 ): number {
-  if (row.kind === 'section') return hasRationale?.(row.id) ? 68 : 46;
+  if (row.kind === 'section') return 46 + (aiLines?.hasSectionLine(row.id) ? AI_LINE_HEIGHT : 0);
   if (row.kind === 'end') return 160;
-  if (isCollapsed(row.chunk)) return 76;
+  const chunkLine = aiLines?.hasChunkLine(row.sectionId, row.chunk.id) ? AI_LINE_HEIGHT : 0;
+  if (isCollapsed(row.chunk)) return 76 + chunkLine;
   const lines = data.diffs[row.chunk.id]?.length ?? 1;
-  return 58 + Math.max(lines, 1) * 19;
+  return 58 + Math.max(lines, 1) * 19 + chunkLine;
 }
