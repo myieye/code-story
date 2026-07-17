@@ -23,6 +23,24 @@ describe('buildImportGraph — TS/Svelte', () => {
     expect(edges(files)).toEqual(['ui/View.svelte -> ui/Item.svelte']);
   });
 
+  it('resolves a .svelte-suffixed alias to a .svelte.ts runes module (PR 2309)', () => {
+    const files: FileImports[] = [
+      { path: 'frontend/src/lib/filters/FilterBar.svelte', specifiers: ['$lib/util/debouncedFilter.svelte'] },
+      { path: 'frontend/src/lib/util/debouncedFilter.svelte.ts', specifiers: [] },
+    ];
+    expect(edges(files)).toEqual([
+      'frontend/src/lib/filters/FilterBar.svelte -> frontend/src/lib/util/debouncedFilter.svelte.ts',
+    ]);
+  });
+
+  it('resolves a relative .svelte specifier to a .svelte.ts runes module', () => {
+    const files: FileImports[] = [
+      { path: 'ui/FilterBar.svelte', specifiers: ['./debouncedFilter.svelte'] },
+      { path: 'ui/debouncedFilter.svelte.ts', specifiers: [] },
+    ];
+    expect(edges(files)).toEqual(['ui/FilterBar.svelte -> ui/debouncedFilter.svelte.ts']);
+  });
+
   it('resolves $lib aliases by unique ≥2-segment path suffix', () => {
     const files: FileImports[] = [
       { path: 'frontend/src/lib/activity/Item.svelte', specifiers: ['$lib/services/history-service'] },
