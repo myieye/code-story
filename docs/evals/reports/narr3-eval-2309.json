@@ -1,0 +1,375 @@
+{
+  "promptVersion": "narration-eval-1",
+  "judgeModel": "sonnet",
+  "inputs": {
+    "overlay": "/root/.code-story/languageforge-lexbox-32093c12aded/reviews/2b6936a97f77..39a14e93b438.narration.json",
+    "bookExport": "/tmp/claude-0/-home-user-code-story/0e4fa192-08e1-59ac-a59c-4837f8fdf3fd/scratchpad/pr2309-tier0.md"
+  },
+  "generatorModel": "opus",
+  "generatorPromptVersion": "narration-3",
+  "timestamp": "2026-07-17T04:22:30.952Z",
+  "scriptGate": {
+    "hardFailuresPresent": false,
+    "texts": [
+      {
+        "kind": "intro",
+        "section": "frontend/src/lib/util/debouncedFilter.svelte.ts",
+        "chunkId": null,
+        "text": "New helper that two-way binds a text input to a URL-backed filter store with debounced writes. Check the echo-suppression logic that keeps store writes from clobbering newer typing.",
+        "failures": [],
+        "flesch": 50.6
+      },
+      {
+        "kind": "chunkLine",
+        "section": "frontend/src/lib/util/debouncedFilter.svelte.ts",
+        "chunkId": "frontend/src/lib/util/debouncedFilter.svelte.ts::debouncedFilter::1lylj32",
+        "text": "Two effects: one debounces typing to the store, the other syncs store changes back unless it's our own echo.",
+        "failures": [],
+        "flesch": 67.3
+      },
+      {
+        "kind": "intro",
+        "section": "frontend/src/lib/components/FilterBar/FilterBar.svelte",
+        "chunkId": null,
+        "text": "FilterBar switches from a Writable store prop to a plain filters object and routes search through the debouncedFilter helper. Check the reset and active-filter logic.",
+        "failures": [],
+        "flesch": 48.6
+      },
+      {
+        "kind": "chunkLine",
+        "section": "frontend/src/lib/components/FilterBar/FilterBar.svelte",
+        "chunkId": "frontend/src/lib/components/FilterBar/FilterBar.svelte::script::mqxhkf",
+        "text": "Search setup drops the manual Debounced/watch code in favor of a debouncedFilter call.",
+        "failures": [],
+        "flesch": 44
+      },
+      {
+        "kind": "chunkLine",
+        "section": "frontend/src/lib/components/FilterBar/FilterBar.svelte",
+        "chunkId": "frontend/src/lib/components/FilterBar/FilterBar.svelte::script.pickActiveFilters::1j88t77",
+        "text": "Now iterates over default keys instead of value keys, and stops freezing the result.",
+        "failures": [],
+        "flesch": 59.7
+      },
+      {
+        "kind": "intro",
+        "section": "frontend/src/lib/components/Users/UserFilter.svelte",
+        "chunkId": null,
+        "text": "Switches the `filters` prop from a Svelte store to a plain bindable object. Check that all store reads (`$filters`) are updated to plain access.",
+        "failures": [],
+        "flesch": 96
+      },
+      {
+        "kind": "intro",
+        "section": "frontend/src/lib/util/query-params.ts",
+        "chunkId": null,
+        "text": "This file swaps the query-params helper from sveltekit-search-params to runed's useSearchParams. Check the new ParamSpec types, queryParam builders, and the null/undefined handling.",
+        "failures": [],
+        "flesch": 11.1
+      },
+      {
+        "kind": "chunkLine",
+        "section": "frontend/src/lib/util/query-params.ts",
+        "chunkId": "frontend/src/lib/util/query-params.ts::getSearchParams::15ng0f3",
+        "text": "getSearchParams now defines getters/setters per key that map runed's null to undefined both ways.",
+        "failures": [],
+        "flesch": 35.5
+      },
+      {
+        "kind": "intro",
+        "section": "frontend/src/routes/(authenticated)/+page.svelte",
+        "chunkId": null,
+        "text": "Adds a `confidential` filter to the projects page: new query param and type, wired into the filter set. Watch the `filterProjects` argument change.",
+        "failures": [],
+        "flesch": 77.5
+      },
+      {
+        "kind": "chunkLine",
+        "section": "frontend/src/routes/(authenticated)/+page.svelte",
+        "chunkId": "frontend/src/routes/(authenticated)/+page.svelte::script::1roopc",
+        "text": "The `filterProjects` call switches from `$filters` to `filters`.",
+        "failures": [],
+        "flesch": 113.1
+      },
+      {
+        "kind": "intro",
+        "section": "frontend/src/routes/(authenticated)/org/[org_id]/+page.svelte",
+        "chunkId": null,
+        "text": "This file switches queryParamValues from a store to a plain object, dropping the $ prefix at each read and the bind. Check that queryParamValues is no longer a store.",
+        "failures": [],
+        "flesch": 66.7
+      },
+      {
+        "kind": "intro",
+        "section": "frontend/src/routes/(authenticated)/org/list/+page.svelte",
+        "chunkId": null,
+        "text": "This file switches the org list filter to read search from queryParamValues without the store subscription prefix. Check the reactivity still updates.",
+        "failures": [],
+        "flesch": 49.5
+      },
+      {
+        "kind": "intro",
+        "section": "frontend/src/lib/components/Projects/ProjectFilter.svelte",
+        "chunkId": null,
+        "text": "Switches the `filters` prop from a Svelte store to a plain bindable object. Check the store-to-plain access changes across the template.",
+        "failures": [],
+        "flesch": 71.3
+      },
+      {
+        "kind": "chunkLine",
+        "section": "frontend/src/lib/components/Projects/ProjectFilter.svelte",
+        "chunkId": "frontend/src/lib/components/Projects/ProjectFilter.svelte::script::867qfz",
+        "text": "`filters` now uses `$bindable()` and the `Writable` import is dropped.",
+        "failures": [],
+        "flesch": 86.7
+      },
+      {
+        "kind": "intro",
+        "section": "frontend/tests/envVars.ts",
+        "chunkId": null,
+        "text": "Test env config adds a way to force https on localhost. Check the new TEST_HTTPS override in the httpScheme logic.",
+        "failures": [],
+        "flesch": 86.7
+      },
+      {
+        "kind": "intro",
+        "section": "frontend/tests/pages/adminDashboardPage.ts",
+        "chunkId": null,
+        "text": "Page object for the admin dashboard test. Adds a locator for the user filter bar input.",
+        "failures": [],
+        "flesch": 71.8
+      },
+      {
+        "kind": "intro",
+        "section": "frontend/tests/pages/loginPage.ts",
+        "chunkId": null,
+        "text": "Adds a static loginAsAdmin helper to LoginPage. Check that it fills the admin form and waits for the URL to leave /login.",
+        "failures": [],
+        "flesch": 72.6
+      },
+      {
+        "kind": "intro",
+        "section": "frontend/tests/adminPage.test.ts",
+        "chunkId": null,
+        "text": "New Playwright tests for the #2224 filter fix: rapid typing, mid-typing clear, and external URL sync into the filter inputs.",
+        "failures": [],
+        "flesch": 59.6
+      },
+      {
+        "kind": "chunkLine",
+        "section": "frontend/tests/adminPage.test.ts",
+        "chunkId": "frontend/tests/adminPage.test.ts::fragment 2::1pss9vg",
+        "text": "Note the pushState+popstate trick used to fake an external URL change and the echo-settling wait before it.",
+        "failures": [],
+        "flesch": 50.2
+      },
+      {
+        "kind": "intro",
+        "section": "frontend/package.json",
+        "chunkId": null,
+        "text": "This file drops the sveltekit-search-params dependency; check that nothing still relies on it.",
+        "failures": [],
+        "flesch": 44
+      }
+    ],
+    "droppedSections": [
+      {
+        "section": "frontend/src/routes/(authenticated)/admin/+page.svelte",
+        "gateFailures": [
+          "chunk frontend/src/routes/(authenticated)/admin/+page.svelte::script::16c5vjz: chunkLine has 2 sentences (max 1)"
+        ]
+      },
+      {
+        "section": "frontend/src/routes/(authenticated)/admin/AdminProjects.svelte",
+        "gateFailures": [
+          "chunk frontend/src/routes/(authenticated)/admin/AdminProjects.svelte::template::53ltuf: chunkLine has 2 sentences (max 1)"
+        ]
+      }
+    ]
+  },
+  "opener": null,
+  "sections": [
+    {
+      "section": "frontend/src/lib/util/debouncedFilter.svelte.ts",
+      "intro": "New helper that two-way binds a text input to a URL-backed filter store with debounced writes. Check the echo-suppression logic that keeps store writes from clobbering newer typing.",
+      "chunkLineCount": 1,
+      "scores": {
+        "orientation": 4,
+        "register": 5,
+        "faithfulness": 5,
+        "faithfulnessQuote": ""
+      },
+      "invalid": false
+    },
+    {
+      "section": "frontend/src/lib/components/FilterBar/FilterBar.svelte",
+      "intro": "FilterBar switches from a Writable store prop to a plain filters object and routes search through the debouncedFilter helper. Check the reset and active-filter logic.",
+      "chunkLineCount": 2,
+      "scores": {
+        "orientation": 4,
+        "register": 5,
+        "faithfulness": 5,
+        "faithfulnessQuote": ""
+      },
+      "invalid": false
+    },
+    {
+      "section": "frontend/src/lib/components/Users/UserFilter.svelte",
+      "intro": "Switches the `filters` prop from a Svelte store to a plain bindable object. Check that all store reads (`$filters`) are updated to plain access.",
+      "chunkLineCount": 0,
+      "scores": {
+        "orientation": 5,
+        "register": 5,
+        "faithfulness": 5,
+        "faithfulnessQuote": ""
+      },
+      "invalid": false
+    },
+    {
+      "section": "frontend/src/lib/util/query-params.ts",
+      "intro": "This file swaps the query-params helper from sveltekit-search-params to runed's useSearchParams. Check the new ParamSpec types, queryParam builders, and the null/undefined handling.",
+      "chunkLineCount": 1,
+      "scores": {
+        "orientation": 4,
+        "register": 5,
+        "faithfulness": 5,
+        "faithfulnessQuote": ""
+      },
+      "invalid": false
+    },
+    {
+      "section": "frontend/src/routes/(authenticated)/+page.svelte",
+      "intro": "Adds a `confidential` filter to the projects page: new query param and type, wired into the filter set. Watch the `filterProjects` argument change.",
+      "chunkLineCount": 1,
+      "scores": {
+        "orientation": 4,
+        "register": 5,
+        "faithfulness": 4,
+        "faithfulnessQuote": ""
+      },
+      "invalid": false
+    },
+    {
+      "section": "frontend/src/routes/(authenticated)/org/[org_id]/+page.svelte",
+      "intro": "This file switches queryParamValues from a store to a plain object, dropping the $ prefix at each read and the bind. Check that queryParamValues is no longer a store.",
+      "chunkLineCount": 0,
+      "scores": {
+        "orientation": 4,
+        "register": 5,
+        "faithfulness": 4,
+        "faithfulnessQuote": ""
+      },
+      "invalid": false
+    },
+    {
+      "section": "frontend/src/routes/(authenticated)/org/list/+page.svelte",
+      "intro": "This file switches the org list filter to read search from queryParamValues without the store subscription prefix. Check the reactivity still updates.",
+      "chunkLineCount": 0,
+      "scores": {
+        "orientation": 4,
+        "register": 5,
+        "faithfulness": 4,
+        "faithfulnessQuote": ""
+      },
+      "invalid": false
+    },
+    {
+      "section": "frontend/src/routes/(authenticated)/admin/+page.svelte",
+      "intro": "",
+      "chunkLineCount": 0,
+      "scores": null,
+      "skipped": "no narration text (dropped or empty)"
+    },
+    {
+      "section": "frontend/src/lib/components/Projects/ProjectFilter.svelte",
+      "intro": "Switches the `filters` prop from a Svelte store to a plain bindable object. Check the store-to-plain access changes across the template.",
+      "chunkLineCount": 1,
+      "scores": {
+        "orientation": 4,
+        "register": 5,
+        "faithfulness": 5,
+        "faithfulnessQuote": ""
+      },
+      "invalid": false
+    },
+    {
+      "section": "frontend/src/routes/(authenticated)/admin/AdminProjects.svelte",
+      "intro": "",
+      "chunkLineCount": 0,
+      "scores": null,
+      "skipped": "no narration text (dropped or empty)"
+    },
+    {
+      "section": "frontend/tests/envVars.ts",
+      "intro": "Test env config adds a way to force https on localhost. Check the new TEST_HTTPS override in the httpScheme logic.",
+      "chunkLineCount": 0,
+      "scores": {
+        "orientation": 4,
+        "register": 5,
+        "faithfulness": 5,
+        "faithfulnessQuote": ""
+      },
+      "invalid": false
+    },
+    {
+      "section": "frontend/tests/pages/adminDashboardPage.ts",
+      "intro": "Page object for the admin dashboard test. Adds a locator for the user filter bar input.",
+      "chunkLineCount": 0,
+      "scores": {
+        "orientation": 3,
+        "register": 5,
+        "faithfulness": 5,
+        "faithfulnessQuote": ""
+      },
+      "invalid": false
+    },
+    {
+      "section": "frontend/tests/pages/loginPage.ts",
+      "intro": "Adds a static loginAsAdmin helper to LoginPage. Check that it fills the admin form and waits for the URL to leave /login.",
+      "chunkLineCount": 0,
+      "scores": {
+        "orientation": 4,
+        "register": 5,
+        "faithfulness": 5,
+        "faithfulnessQuote": ""
+      },
+      "invalid": false
+    },
+    {
+      "section": "frontend/tests/adminPage.test.ts",
+      "intro": "New Playwright tests for the #2224 filter fix: rapid typing, mid-typing clear, and external URL sync into the filter inputs.",
+      "chunkLineCount": 1,
+      "scores": {
+        "orientation": 4,
+        "register": 5,
+        "faithfulness": 5,
+        "faithfulnessQuote": ""
+      },
+      "invalid": false
+    },
+    {
+      "section": "frontend/package.json",
+      "intro": "This file drops the sveltekit-search-params dependency; check that nothing still relies on it.",
+      "chunkLineCount": 0,
+      "scores": {
+        "orientation": 4,
+        "register": 5,
+        "faithfulness": 5,
+        "faithfulnessQuote": ""
+      },
+      "invalid": false
+    }
+  ],
+  "invalidTrials": 0,
+  "faithfulnessFloor": [],
+  "gate": {
+    "faithfulnessFloorMet": true,
+    "registerMedian": 5,
+    "orientationMedian": 4,
+    "pass": true,
+    "note": "provisional and directional (one subject): the human read-through is the other gate half and is NOT reflected here — Tim reading narrated-vs-bare is required before default-on"
+  },
+  "metadata": {
+    "note": "single-family judge (Claude): self-preference caveat applies; generator/judge ids must differ where possible"
+  }
+}

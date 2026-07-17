@@ -1,4 +1,4 @@
-export const NARRATION_PROMPT_VERSION = 'narration-2';
+export const NARRATION_PROMPT_VERSION = 'narration-3';
 
 /**
  * The per-section narration prompt (spec 03). Asks for a short section intro and sparse per-chunk
@@ -29,6 +29,11 @@ Rules for every line you write:
 - Never imply the change is complete or that anything is not worth looking at.
 - Register: short sentences, everyday words, high-school English, written for a tired reviewer.
   Dense prose is a defect even when it is accurate.
+- Read the diff as fragments. The chunks are disjoint pieces of one file with unshown code between
+  them; a "…" marks a gap inside a chunk. A line starting with "-" was removed and one starting
+  with "+" was added — a "-"/"+" pair is an edit of one line, not two copies. Similar lines in
+  different chunks or across a gap are NOT duplicates. Never claim something is duplicated, added
+  twice, or left over unless both instances are visible together inside one gap-free stretch.
 
 Reply with STRICT JSON only, no other text:
 {"intro": "<the section intro>", "chunks": {"<chunk id>": "<line>"}}

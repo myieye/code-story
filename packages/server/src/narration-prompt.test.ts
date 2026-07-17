@@ -3,7 +3,7 @@ import { NARRATION_PROMPT_VERSION, openerNarrationPrompt, sectionNarrationPrompt
 
 describe('narration prompts', () => {
   it('carries a version constant', () => {
-    expect(NARRATION_PROMPT_VERSION).toBe('narration-2');
+    expect(NARRATION_PROMPT_VERSION).toBe('narration-3');
   });
 
   it('renders the section prompt with the rendered input and strict-JSON contract', () => {
