@@ -16,6 +16,7 @@ import {
   DEFAULT_STORY_CONFIG,
   type FileContents,
   type FileDiff,
+  type ImportGraph,
   type LineRange,
   exportBookMarkdown,
   filterFreshContext,
@@ -40,8 +41,9 @@ import {
   contextJobFilePath,
   DEFAULT_CONTEXT_STORE_CAP_BYTES,
   loadContextStore,
+  persistContextPayload,
 } from './context-store.js';
-import { diffRange, fileAt, listTree, originUrl, resolveRange, rootCommit } from './git.js';
+import { diffRange, fileAt, listTree, originUrl, resolveRange, type ResolvedRange, rootCommit } from './git.js';
 import { runNarrationJob } from './narration-job.js';
 import { NARRATION_PROMPT_VERSION } from './narration-prompt.js';
 import {
@@ -167,6 +169,25 @@ async function effectiveStoryConfig(): Promise<StoryConfig> {
   return resolveStoryConfig(fromFile, { direction: directionArg, testPlacement: testPlacementArg });
 }
 
+/**
+ * One diff + chunk + compile pass, shared by every flag branch that needs the compiled book — a
+ * second tree-sitter pass costs ~30s on very large ranges. `book`/`compiled` are the file-mode
+ * compile; `chunks` are the raw (pre-compile) chunks.
+ */
+async function withCompiled(range: ResolvedRange): Promise<{
+  files: FileDiff[];
+  chunks: Chunk[];
+  contents: Map<string, FileContents>;
+  graph: ImportGraph;
+  book: Book;
+  compiled: Chunk[];
+}> {
+  const files = await diffRange(repo, range);
+  const { chunks, contents, graph } = await computeChunks(repo, range, files);
+  const { book, chunks: compiled } = compileBook({ files, chunks, graph, headSha: range.head });
+  return { files, chunks, contents, graph, book, compiled };
+}
+
 if (
   !range ||
   (exportIndex >= 0 && !exportPath) ||
@@ -201,8 +222,7 @@ if (dumpDiff) {
 }
 
 if (dumpChunks) {
-  const files = await diffRange(repo, resolved);
-  const { chunks } = await computeChunks(repo, resolved, files);
+  const { files, chunks } = await withCompiled(resolved);
 
   for (const c of chunks) {
     const lines = chunkLineCount(c);
@@ -222,17 +242,14 @@ if (dumpChunks) {
 }
 
 if (dumpGraph) {
-  const files = await diffRange(repo, resolved);
-  const { graph } = await computeChunks(repo, resolved, files);
+  const { graph } = await withCompiled(resolved);
   for (const edge of graph.edges) console.log(`${edge.from} -> ${edge.to}`);
   console.log(`\n${graph.edges.length} edges, ${graph.unresolved} unresolved specifiers`);
   process.exit(0);
 }
 
 if (dumpChunkGraph) {
-  const files = await diffRange(repo, resolved);
-  const { chunks, contents, graph } = await computeChunks(repo, resolved, files);
-  const { book, chunks: compiled } = compileBook({ files, chunks, graph, headSha: resolved.head });
+  const { files, contents, graph, book, compiled } = await withCompiled(resolved);
   const cg = await buildChunkGraph({ chunks: compiled, contents, graph, book, files, headSha: resolved.head });
 
   const label = (id: string) => {
@@ -253,22 +270,20 @@ if (dumpChunkGraph) {
 }
 
 if (checkOrderFlag) {
-  const files = await diffRange(repo, resolved);
-  const { chunks, contents, graph } = await computeChunks(repo, resolved, files);
+  const { files, chunks, contents, graph, book: fileBook, compiled: fileChunks } = await withCompiled(resolved);
   const config = await effectiveStoryConfig();
 
   let book;
   let report;
   if (isDefaultStoryConfig(config)) {
-    book = compileBook({ files, chunks, graph, headSha: resolved.head }).book;
+    book = fileBook;
     report = checkOrder(book, graph, chunks);
   } else {
-    const fileBook = compileBook({ files, chunks, graph, headSha: resolved.head });
     const cg = await buildChunkGraph({
-      chunks: fileBook.chunks,
+      chunks: fileChunks,
       contents,
       graph,
-      book: fileBook.book,
+      book: fileBook,
       files,
       headSha: resolved.head,
     });
@@ -288,9 +303,7 @@ if (checkOrderFlag) {
 }
 
 if (dumpManifest) {
-  const files = await diffRange(repo, resolved);
-  const { chunks, graph } = await computeChunks(repo, resolved, files);
-  const { book } = compileBook({ files, chunks, graph, headSha: resolved.head });
+  const { chunks, graph, book } = await withCompiled(resolved);
   const manifest = buildOrderManifest(book, graph, chunks);
 
   console.log(renderOrderManifest(manifest));
@@ -301,9 +314,7 @@ if (dumpManifest) {
 }
 
 if (contextFlag) {
-  const files = await diffRange(repo, resolved);
-  const { chunks, contents, graph } = await computeChunks(repo, resolved, files);
-  const { book, chunks: compiled } = compileBook({ files, chunks, graph, headSha: resolved.head });
+  const { files, contents, graph, book, compiled } = await withCompiled(resolved);
   const dataHome = defaultDataHome();
   const repoId = repoIdFrom(repo, await rootCommit(repo), await originUrl(repo));
   const contextFile = contextFilePath(dataHome, repoId, resolved);
@@ -341,14 +352,9 @@ if (contextFlag) {
       freshIds,
       resolve: (chunk) => resolver.resolve(chunk, changedFiles, graph),
       persist: async (payload) => {
-        const candidate: ContextStoreFile = {
-          ...store,
-          payloads: { ...store.payloads, [payload.chunkId]: payload },
-        };
-        if (Buffer.byteLength(JSON.stringify(candidate)) > DEFAULT_CONTEXT_STORE_CAP_BYTES) return { persisted: false };
-        store.payloads[payload.chunkId] = payload;
-        await saveJson(contextFile, store);
-        return { persisted: true };
+        const result = await persistContextPayload(contextFile, store, payload, DEFAULT_CONTEXT_STORE_CAP_BYTES);
+        if (result.persisted) store.payloads[payload.chunkId] = payload;
+        return result;
       },
     });
     await saveJson(jobFile, { ...record, status: 'done', finishedAt: new Date().toISOString(), ...result });
@@ -382,9 +388,7 @@ if (contextFlag) {
 }
 
 if (dumpContext) {
-  const files = await diffRange(repo, resolved);
-  const { chunks, contents, graph } = await computeChunks(repo, resolved, files);
-  const { book, chunks: compiled } = compileBook({ files, chunks, graph, headSha: resolved.head });
+  const { files, contents, book, compiled } = await withCompiled(resolved);
   const dataHome = defaultDataHome();
   const repoId = repoIdFrom(repo, await rootCommit(repo), await originUrl(repo));
   const store = await loadContextStore(contextFilePath(dataHome, repoId, resolved));
@@ -392,12 +396,10 @@ if (dumpContext) {
   process.exit(0);
 }
 
-// One compile pass serves both --ai-order and --export (the natural one-shot invocation
-// combines them; a second tree-sitter pass costs ~30s on very large ranges).
+// --ai-order, --narrate and --export share one invocation (and one compile pass) so a combined
+// one-shot run doesn't parse twice.
 if (aiOrder || narrate || exportPath) {
-  const files = await diffRange(repo, resolved);
-  const { chunks, contents, graph } = await computeChunks(repo, resolved, files);
-  const compiled = compileBook({ files, chunks, graph, headSha: resolved.head });
+  const { files, chunks, contents, graph, book: compiledBook, compiled: compiledChunks } = await withCompiled(resolved);
   const dataHome = defaultDataHome();
   const repoId = repoIdFrom(repo, await rootCommit(repo), await originUrl(repo));
   const orderFile = orderFilePath(dataHome, repoId, resolved);
@@ -415,7 +417,7 @@ if (aiOrder || narrate || exportPath) {
     await saveJson(jobFile, record);
     console.log(`code-story: running the AI ordering job (${model})…`);
     try {
-      const overlay = await runOrderJob({ book: compiled.book, graph, chunks: compiled.chunks, model, cwd: dataHome });
+      const overlay = await runOrderJob({ book: compiledBook, graph, chunks: compiledChunks, model, cwd: dataHome });
       await saveJson(orderFile, overlay);
       await saveJson(jobFile, { ...record, status: 'done', finishedAt: new Date().toISOString() });
       console.log(`code-story: AI order saved (${overlay.permutation.length} story sections)`);
@@ -445,9 +447,9 @@ if (aiOrder || narrate || exportPath) {
     console.log(`code-story: running the narration job (${model})…`);
     try {
       const result = await runNarrationJob({
-        book: compiled.book,
+        book: compiledBook,
         graph,
-        chunks: compiled.chunks,
+        chunks: compiledChunks,
         contents,
         headSha: resolved.head,
         model,
@@ -479,18 +481,18 @@ if (aiOrder || narrate || exportPath) {
 
   if (exportPath) {
     const config = await effectiveStoryConfig();
-    let book = compiled.book;
-    let exportChunks = compiled.chunks;
+    let book = compiledBook;
+    let exportChunks = compiledChunks;
     let narrationOverlay: NarrationOverlay | undefined;
 
     if (!isDefaultStoryConfig(config)) {
       // Chapter mode: AI order / narration overlays are keyed to the file-mode book, so they can't
       // apply here — this export is the deterministic chapter linearization.
       const cg = await buildChunkGraph({
-        chunks: compiled.chunks,
+        chunks: compiledChunks,
         contents,
         graph,
-        book: compiled.book,
+        book: compiledBook,
         files,
         headSha: resolved.head,
       });
@@ -506,7 +508,7 @@ if (aiOrder || narrate || exportPath) {
     } else {
       if (orderChoice === 'ai') {
         const overlay = await loadOverlay(orderFile);
-        const applied = overlay === null ? book : applyOrderOverlay(book, graph, compiled.chunks, overlay);
+        const applied = overlay === null ? book : applyOrderOverlay(book, graph, compiledChunks, overlay);
         if (applied === book) {
           console.error('code-story: no fresh AI order overlay for this range (run --ai-order first)');
           process.exit(1);
