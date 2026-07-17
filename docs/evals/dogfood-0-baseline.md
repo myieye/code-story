@@ -262,3 +262,22 @@ Caveats: same as Dogfood 2/3 — K=1 grading pass per section, single-family jud
 human half (the narrated-vs-bare read) is open: does this actually reduce the wall-of-diffs
 burden (spec 03 names "pleasant but not load-bearing" an acceptable null result that pivots
 M4 to code-context payloads).
+
+### Dogfood 4 addendum — narration-3 (issue #48)
+
+Both subjects regenerated (opus, `narration-3`: read-the-diff-as-fragments rule) and re-graded
+(judge sonnet, `reports/narr3-eval-{2309,2357}.json`):
+
+| Subject | Register | Orientation | Faithfulness floor |
+| --- | --- | --- | --- |
+| PR 2309 | median 5 | median 4 | **PASSED** (was failed) |
+| PR 2357 | median 5 | median 4 | failed — 2 sections at 3 (was 4 sections, worst 2) |
+
+**Duplication claims: eliminated.** Zero across both subjects (was 5 of 6 below-floor flags).
+The remaining 2357 failures are a distinct, milder mode — confident semantic assertions that
+don't fully hold ("nulls pushed last" is true for `SyncedOldestFirst` but false for
+`SyncedNewestFirst`, verified against the sort SQL). The judge keeps earning its floor.
+
+Verdict: `narration-3` kept (better on every axis, no register regression); spec-03 ship gate
+**stays HOLD** on the assert-vs-point mode (filed as the narration-4 candidate). Register-cap
+harvest also filed: #56 (per-text fail-open) and #57 (opener cap headroom, 3-of-4 failure rate).
