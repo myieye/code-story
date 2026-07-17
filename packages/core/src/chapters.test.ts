@@ -1,7 +1,7 @@
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 import { compileBook } from './book.js';
-import { compileChapterBook } from './chapters.js';
+import { compileChapterBook, validateChapterComposition } from './chapters.js';
 import { checkOrder } from './check-order.js';
 import { type ChunkEdge, type ChunkEdgeKind, type ChunkGraph } from './chunk-graph.js';
 import { checkCoverage } from './coverage.js';
@@ -225,5 +225,68 @@ describe('compileChapterBook', () => {
       }),
       { numRuns: 80 },
     );
+  });
+});
+
+describe('chapter composition', () => {
+  // Cross-file calls (c1→c2, c1→c3), a woven test (t exercises c2), a low-signal file, and a leftover.
+  const files = [
+    fileDiff('consumer.ts', 1, 2),
+    fileDiff('dep.ts', 1, 2),
+    fileDiff('helper.ts', 1, 2),
+    fileDiff('dep.test.ts', 1, 2),
+    fileDiff('gen.lock', 1, 2),
+    fileDiff('gap.ts', 10, 4),
+  ];
+  const chunks: Chunk[] = [
+    chunk('consumer.ts', 'c1', ['use'], 1, 2),
+    chunk('dep.ts', 'c2', ['dep'], 1, 2),
+    chunk('helper.ts', 'c3', ['help'], 1, 2),
+    chunk('dep.test.ts', 't', ['depTest'], 1, 2),
+    { ...chunk('gen.lock', 'g', [], 1, 2), changeTypes: ['generated' as const] },
+    chunk('gap.ts', 'partial', ['p'], 10, 2), // owns 10-11, leaves 12-13 as a leftover
+  ];
+  const graph = importGraph(['consumer.ts', 'dep.ts'], ['dep.test.ts', 'dep.ts']);
+  const cg = chunkGraph(cedge('c1', 'c2'), cedge('c1', 'c3'), cedge('t', 'c2', 'exercises'));
+  const input = { files, chunks, graph, chunkGraph: cg, headSha: 'h' };
+
+  it('round-trips: feeding storyComposition back yields a byte-identical book', () => {
+    const tier0 = compileChapterBook(input, DEFAULT_STORY_CONFIG);
+    const echoed = compileChapterBook(input, DEFAULT_STORY_CONFIG, { chapters: tier0.storyComposition });
+    expect(JSON.stringify(echoed.book)).toBe(JSON.stringify(tier0.book));
+    expect(echoed.storyComposition).toEqual(tier0.storyComposition);
+  });
+
+  it('storyComposition lists only story chunks (tests, low-signal, leftovers excluded)', () => {
+    const tier0 = compileChapterBook(input, DEFAULT_STORY_CONFIG);
+    expect(new Set(tier0.storyComposition.flat())).toEqual(new Set(['c1', 'c2', 'c3', 'partial']));
+  });
+
+  it('an explicit composition drives chapter grouping and re-weaves tests/tail deterministically', () => {
+    const composition = { chapters: [['c1', 'c2', 'c3'], ['partial']] };
+    const { book } = compileChapterBook(input, DEFAULT_STORY_CONFIG, composition);
+    const storySections = book.sections.filter((s) => s.id.startsWith('chapter:'));
+    expect(storySections.map((s) => s.id)).toEqual(['chapter:c1', 'chapter:partial']);
+    expect(book.sections.map((s) => s.id).at(-1)).toBe('(leftovers)');
+  });
+
+  it('throws on an invalid composition (missing / foreign / duplicated / empty)', () => {
+    expect(() => compileChapterBook(input, DEFAULT_STORY_CONFIG, { chapters: [['c1', 'c2']] })).toThrow(/missing/);
+    expect(() => compileChapterBook(input, DEFAULT_STORY_CONFIG, { chapters: [['c1', 'c2', 'c3', 'partial', 'ghost']] })).toThrow(/not a story chunk/);
+  });
+});
+
+describe('validateChapterComposition', () => {
+  const story = ['a', 'b', 'c'];
+
+  it('accepts an exact partition', () => {
+    expect(validateChapterComposition(story, [['a', 'b'], ['c']]).ok).toBe(true);
+  });
+
+  it('rejects missing, foreign, duplicated, and empty chapters, naming offenders', () => {
+    expect(validateChapterComposition(story, [['a', 'b']])).toMatchObject({ ok: false, errors: [expect.stringContaining('missing')] });
+    expect(validateChapterComposition(story, [['a', 'b', 'c', 'z']])).toMatchObject({ ok: false });
+    expect(validateChapterComposition(story, [['a', 'a', 'b', 'c']])).toMatchObject({ ok: false });
+    expect(validateChapterComposition(story, [['a', 'b', 'c'], []])).toMatchObject({ ok: false, errors: [expect.stringContaining('empty')] });
   });
 });
