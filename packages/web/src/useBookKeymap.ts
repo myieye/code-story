@@ -13,6 +13,7 @@ export interface BookKeymapOptions {
   markCurrent: () => void;
   unmarkCurrent: () => void;
   toggleCollapseCurrent: () => void;
+  toggleDefinitionsCurrent: () => void;
 }
 
 export function useBookKeymap({
@@ -27,6 +28,7 @@ export function useBookKeymap({
   markCurrent,
   unmarkCurrent,
   toggleCollapseCurrent,
+  toggleDefinitionsCurrent,
 }: BookKeymapOptions): void {
   // No dep array: re-registers every render so the handler closes over fresh state (intentional).
   useEffect(() => {
@@ -39,16 +41,26 @@ export function useBookKeymap({
         return;
       }
       const target = e.target as HTMLElement | null;
+      const plain = !e.ctrlKey && !e.metaKey && !e.altKey;
       if (e.key === 'Escape') {
-        if (target?.closest('.cm-editor')) {
+        // Both the code editor and an expanded definition panel hand focus back to the chunk.
+        if (target?.closest('.cm-editor, .definition-panel')) {
           const rowIndex = flat.chunkRowIndexes[cursor];
           if (rowIndex !== undefined) rowEls.current.get(rowIndex)?.focus({ preventScroll: true });
           e.preventDefault();
         }
         return;
       }
-      if (target?.closest('.cm-editor, input, textarea, select, button')) return;
-      const plain = !e.ctrlKey && !e.metaKey && !e.altKey;
+      // `d` toggles definitions from the chunk or from inside its focused panel — but not while
+      // typing in the editor/an input. Handled before the scroll-region guard so it works in-panel.
+      if (plain && e.key === 'd' && !e.repeat && !target?.closest('.cm-editor, input, textarea, select')) {
+        toggleDefinitionsCurrent();
+        e.preventDefault();
+        return;
+      }
+      // The panel is a focusable scroll region: arrows/space/PageDown scroll it natively, and j/k
+      // must not hijack that — so it joins the editor/inputs in the navigation guard.
+      if (target?.closest('.cm-editor, .definition-panel, input, textarea, select, button')) return;
       if (plain && (e.key === 'j' || e.key === 'PageDown')) moveCursor(cursor + 1);
       else if (plain && (e.key === 'k' || e.key === 'PageUp')) moveCursor(cursor - 1);
       else if (plain && e.key === 'n') jumpUnreviewed(1);

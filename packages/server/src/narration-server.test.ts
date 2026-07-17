@@ -54,7 +54,7 @@ describe('narration server', () => {
     };
     await saveJson(narrationJobFilePath(dataHome, repoId, range), orphan);
 
-    const server = await startServer({ repo, range, dataHome }, 0);
+    const server = await startServer({ repo, range, dataHome, autoOrder: false }, 0);
     try {
       const body = await getNarration(server.url);
       expect(body.job?.status).toBe('failed');
@@ -68,7 +68,7 @@ describe('narration server', () => {
     let release!: () => void;
     const gate = new Promise<void>((r) => (release = r));
     const server = await startServer(
-      { repo, range, dataHome, narrationInvoke: async (p) => (await gate, stubInvoke(p)) },
+      { repo, range, dataHome, autoOrder: false, narrationInvoke: async (p) => (await gate, stubInvoke(p)) },
       0,
     );
     try {
@@ -83,7 +83,7 @@ describe('narration server', () => {
   });
 
   test('GET returns the fresh overlay once the job completes', async () => {
-    const server = await startServer({ repo, range, dataHome, narrationInvoke: stubInvoke }, 0);
+    const server = await startServer({ repo, range, dataHome, autoOrder: false, narrationInvoke: stubInvoke }, 0);
     try {
       await post(server.url);
       const body = await waitForDone(server.url);

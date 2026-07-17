@@ -5,8 +5,9 @@ export function ShortcutOverlay({ onClose }: { onClose: () => void }) {
     ['Enter', 'mark reviewed, go to next unreviewed'],
     ['u', 'unmark'],
     ['x', 'collapse / expand chunk'],
+    ['d', 'show / hide definitions for the chunk'],
     ['Ctrl+Home / Ctrl+End', 'top / end of book'],
-    ['Esc', 'leave the code editor, back to the chunk'],
+    ['Esc', 'leave the editor or definitions, back to the chunk'],
     ['?', 'this overlay'],
   ];
   return (
