@@ -269,11 +269,16 @@ semantics, stoplist floor, no scope analysis; treesitter.ts exports `wasmForExte
 `svelteScriptBlocks` for routing reuse; server 47). Suite core 171 / server 47 / web 33 = 251.
 **Session stopped here on Tim's instruction (2026-07-17 ~05:05Z, quota discipline); repo is
 clean: no open PRs, all remote claude/* branches merged, working tree clean.**
-Next: **#64** (definition resolution + head path index + store + API — the M4 heart; spec 04
-"Resolution pipeline" step 2 is the contract, #62's model + #63's extraction are its inputs),
-then #65 (bulk job + CLI) → #66 (web panel) → #67 (narration-input definitions block) → #68
-(dogfood 5) per blocking edges. #21/#27/#58 evidence-gated watches. Ship decisions wait on
-Tim's reads: **#28** (blind order A/B, 3 pairs) and **#54** (narrated-vs-bare, narration-4
-copies). No continuation trigger is armed — Tim cleared all triggers at session end
-(2026-07-17 ~05:10Z); the next session starts on his say-so, from this pointer.
+**Tim's decisions (2026-07-17 ~06:20Z, via chat)**: (1) **AI ordering: SHIP** — blind read
+waived, judge evidence accepted; #28 closed, spec 02 status flipped, default-on implementation
+filed as **#71**. (2) #54 (narrated-vs-bare read) timing: Tim asked for more context before
+deciding — treat #54 as open, decision pending. (3) **Nightly recurring trigger armed**
+(22:00 UTC ≈ midnight CEST, trig_019Riu3NUsaPMLgtQmofJvWy): its message deliberately assumes
+NOTHING about the next task — every night, re-read this block + open issues fresh and
+reconcile with actual repo state before working (the repo may progress between sessions).
+Next (as of this writing — verify freshness on wake): **#64** (definition resolution + head
+path index + store + API — the M4 heart; spec 04 "Resolution pipeline" step 2 is the
+contract, #62's model + #63's extraction are its inputs), then #65 → #66 → #67 → #68 per
+blocking edges; **#71** (AI order default-on) is newly filed and slots naturally after or
+alongside #64. #21/#27/#58 evidence-gated watches.
 Dogfood target: languageforge/lexbox (C# + Svelte/TS); repo-agnostic (R-025).

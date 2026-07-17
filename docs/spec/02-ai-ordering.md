@@ -5,12 +5,13 @@ implementation (13 findings folded in: bookFingerprint defined, marks-started se
 overlay persistence named, judge-bias + blind-read-through + provisional-gate caveats, tool-less
 sandboxed subprocess, orphan-job semantics, concurrency rule, token-based size guard). Scoped by
 the standing gradual-auto-pick rule; Tim can veto any pick.
-**Dogfood-2 verdict (#26): HOLD at opt-in, evidence points to ship.** The blind model judge
-prefers the AI order on both subjects (2/3 mixed-stack, 3/3 C#-only — where it fixed the
-2-cycle git-order fallback `--check-order` can't see; `docs/evals/dogfood-0-baseline.md`
-Dogfood 2). The gate's other half — a *blind* human A/B read-through — can't be satisfied by
-the session that generated the orders; it stays open for Tim. Until then `--ai-order` stays
-explicit opt-in, exactly as scoped.
+**Verdict: SHIP — ratified by Tim 2026-07-17 (#28), blind read waived.** The blind model judge
+prefers the AI order 8 trials to 1 across three subjects and language mixes (2/3 mixed-stack,
+3/3 C#-only — where it fixed the 2-cycle git-order fallback `--check-order` can't see — and
+3/3 Svelte/TS; `docs/evals/dogfood-0-baseline.md` Dogfood 2+3). Tim accepted the judge
+evidence in place of the blind human read (the sealed pairs remain in
+`docs/evals/blind-read-2026-07-16/` if ever wanted). Default-on implementation is issue #71;
+until it lands, `--ai-order` remains the invocation.
 Date: 2026-07-16
 Satisfies: R-042 (the AI half of the ladder — this is the milestone where AI must *earn* its
 tokens), R-005 (narrative ordering + "an AI can score the readability of the generated book"),
