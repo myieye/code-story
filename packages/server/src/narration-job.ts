@@ -5,6 +5,7 @@ import {
   buildSectionNarrationInput,
   type Chunk,
   checkNarrationText,
+  type ContextPayload,
   type FileContents,
   filterFreshNarration,
   type ImportGraph,
@@ -31,6 +32,12 @@ export interface NarrationJobInput {
   graph: ImportGraph;
   chunks: Chunk[];
   contents: Map<string, FileContents>;
+  /**
+   * Optional context payloads (chunk id → payload) for the additive definitions block. Purely
+   * additive; unset today — the caller (server route / CLI) loads the context store and populates
+   * this in a later change, without altering this job's contract.
+   */
+  payloads?: Map<string, ContextPayload>;
   headSha: string;
   model: string;
   /** Where the subprocess runs: the data home. Never the reviewed repo (see order-job). */
@@ -121,7 +128,7 @@ async function narrateSection(
   input: NarrationJobInput,
   invoke: NonNullable<NarrationJobInput['invoke']>,
 ): Promise<NarrationSectionEntry> {
-  const sectionInput = buildSectionNarrationInput(section, input.chunks, input.graph, input.contents);
+  const sectionInput = buildSectionNarrationInput(section, input.chunks, input.graph, input.contents, input.payloads);
   // Chunks the model never saw must not be narrated blind; their ids are recorded, not guessed.
   const omitted = sectionInput.omitted.map((id) => `diff omitted: ${id}`);
   const prompt = sectionNarrationPrompt(renderSectionNarrationInput(sectionInput));

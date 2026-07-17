@@ -1,4 +1,5 @@
 import { fnv1a } from './chunker.js';
+import { type ContextDefinition, type ContextPayload } from './context.js';
 import { type FileContents } from './export.js';
 import { type ImportGraph } from './import-graph.js';
 import {
@@ -167,6 +168,14 @@ export function fleschScore(text: string): number {
 /** Per-call diff budget (spec 03 runtime shape); reuses the order manifest's ~4-chars-per-token heuristic. */
 export const NARRATION_INPUT_TOKEN_CAP = 6000;
 
+/**
+ * Separate, additive budget for the context-definitions block (spec 04 narration bridge). It sits
+ * on top of the 6k diff cap — diff text keeps absolute priority, a definition never evicts or
+ * shrinks a chunk's own diff — so the whole input can reach ~8k. Definitions past this cap are
+ * dropped whole, with an in-block omission marker.
+ */
+export const NARRATION_DEFINITIONS_TOKEN_CAP = 2000;
+
 export interface NarrationChunkInput {
   id: string;
   title: string;
@@ -187,6 +196,10 @@ export interface SectionNarrationInput {
   chunks: NarrationChunkInput[];
   /** Chunk ids whose diff didn't fit the budget — the job records these as gateFailures (never narrate code the model didn't see). */
   omitted: string[];
+  /** Deduped callee definitions the section references, capped at their own additive budget; absent when no payloads were supplied. */
+  definitions?: ContextDefinition[];
+  /** How many further definitions were dropped for the definitions budget (rendered as an in-block marker). */
+  definitionsOmitted?: number;
   estimatedTokens: number;
 }
 
@@ -203,12 +216,18 @@ function chunkDiffText(chunk: Chunk, contents: FileContents | undefined): string
  * non-low-signal chunk's id, metadata, and diff — capped at ~6k tokens. Chunks past the cap keep
  * their id and metadata but lose their diff and land in `omitted`, so the job can record them as
  * gateFailures rather than narrate code the model never saw. Low-signal stubs are excluded here.
+ *
+ * `payloads` (chunk id → context payload, spec 04) is optional and purely additive: when supplied,
+ * the section's referenced callee definitions are deduped and appended as a marked context block
+ * under their own budget. The diff-budget loop runs first and never sees them, so definitions can
+ * never evict a chunk's diff.
  */
 export function buildSectionNarrationInput(
   section: Section,
   chunks: Chunk[],
   graph: ImportGraph,
   contents: Map<string, FileContents>,
+  payloads?: Map<string, ContextPayload>,
 ): SectionNarrationInput {
   const chunksById = new Map(chunks.map((c) => [c.id, c]));
   const role = fileRoles([section.id], chunks, graph).get(section.id) ?? 'impl';
@@ -260,8 +279,44 @@ export function buildSectionNarrationInput(
     }
   }
 
-  const draft = { ...base, chunks: entries, omitted };
+  // Definitions are collected and budgeted only after the diff loop settles, so they sit on top of
+  // the 6k diff cap rather than competing with it. No payloads => the fields stay absent entirely.
+  const defs = payloads ? capDefinitions(collectDefinitions(narratable, payloads)) : undefined;
+
+  const draft = {
+    ...base,
+    chunks: entries,
+    omitted,
+    ...(defs ? { definitions: defs.definitions, definitionsOmitted: defs.definitionsOmitted } : {}),
+  };
   return { ...draft, estimatedTokens: Math.ceil(renderSectionNarrationInput(draft).length / 4) };
+}
+
+/** Callee definitions for the section's narratable chunks, deduped by (file, symbol), first occurrence kept. */
+function collectDefinitions(narratable: Chunk[], payloads: Map<string, ContextPayload>): ContextDefinition[] {
+  const seen = new Set<string>();
+  const definitions: ContextDefinition[] = [];
+  for (const chunk of narratable) {
+    for (const def of payloads.get(chunk.id)?.facts.definitions ?? []) {
+      const key = `${def.file}\0${def.symbol}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      definitions.push(def);
+    }
+  }
+  return definitions;
+}
+
+/** Keeps whole definitions in order while the rendered block stays under its own ~2k budget; the rest are dropped. */
+function capDefinitions(all: ContextDefinition[]): { definitions: ContextDefinition[]; definitionsOmitted: number } {
+  const kept: ContextDefinition[] = [];
+  for (const def of all) {
+    const trial = [...kept, def];
+    const rendered = renderDefinitionsBlock(trial, all.length - trial.length);
+    if (Math.ceil(rendered.length / 4) > NARRATION_DEFINITIONS_TOKEN_CAP) break;
+    kept.push(def);
+  }
+  return { definitions: kept, definitionsOmitted: all.length - kept.length };
 }
 
 /**
@@ -281,7 +336,25 @@ export function renderSectionNarrationInput(input: Omit<SectionNarrationInput, '
     return `${meta}\n${chunk.diff}`;
   });
 
-  return [header.join('\n'), ...blocks].join('\n\n');
+  const parts = [header.join('\n'), ...blocks];
+  const definitions = renderDefinitionsBlock(input.definitions ?? [], input.definitionsOmitted ?? 0);
+  if (definitions !== '') parts.push(definitions);
+  return parts.join('\n\n');
+}
+
+/**
+ * The additive context block, marked plainly as not-diff. One entry per deduped definition
+ * (`symbol — file` caption, then its head body), with a trailing marker when the budget dropped
+ * some. Empty when there are no definitions and none were dropped — no bare header (spec 04).
+ * Kept inert for current prompts: a renderer that doesn't know the block just includes it verbatim.
+ */
+function renderDefinitionsBlock(definitions: ContextDefinition[], omitted: number): string {
+  if (definitions.length === 0 && omitted === 0) return '';
+  const entries = definitions.map((def) => `${def.symbol} — ${def.file}\n${def.body}`);
+  if (omitted > 0) {
+    entries.push(`… (${omitted} more definition${omitted === 1 ? '' : 's'} omitted — over context budget)`);
+  }
+  return ['context — not part of the diff', ...entries].join('\n\n');
 }
 
 export interface ParsedNarrationReply {
