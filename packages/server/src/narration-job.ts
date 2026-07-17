@@ -147,7 +147,15 @@ async function narrateSection(
       ...(omitted.length > 0 ? { gateFailures: omitted } : {}),
     };
   }
-  return { fingerprint, intro: '', chunks: {}, generatedAt, gateFailures: [...omitted, ...result.failures] };
+  // The gate fails per text, not per section (#56): keep the intro and every chunk line that
+  // passed; only the offending texts are dropped and recorded.
+  const salvage = result.last;
+  const intro = salvage && checkNarrationText('intro', salvage.intro).length === 0 ? salvage.intro : '';
+  const chunks: Record<string, string> = {};
+  for (const [id, line] of Object.entries(salvage?.chunks ?? {})) {
+    if (checkNarrationText('chunkLine', line).length === 0) chunks[id] = line;
+  }
+  return { fingerprint, intro, chunks, generatedAt, gateFailures: [...omitted, ...result.failures] };
 }
 
 type Parsed<T> = { ok: true; value: T } | { ok: false; error: string };
@@ -168,7 +176,7 @@ async function generate<T>(
   parse: (json: unknown) => Parsed<T>,
   gate: (value: T) => string[],
   ctx: GenCtx,
-): Promise<{ value: T } | { failures: string[] }> {
+): Promise<{ value: T } | { failures: string[]; last?: T }> {
   let transientLeft = TRANSIENT_BACKOFF_MS.length;
   let invalidLeft = 1;
   let gateLeft = 1;
@@ -196,7 +204,7 @@ async function generate<T>(
 
     const failures = gate(value);
     if (failures.length === 0) return { value };
-    if (gateLeft === 0) return { failures };
+    if (gateLeft === 0) return { failures, last: value };
     gateLeft--;
     prompt = `${basePrompt}\n\nYour previous reply was rejected by the register check for these reasons; fix every one and reply again:\n${failures.map((f) => `- ${f}`).join('\n')}`;
   }

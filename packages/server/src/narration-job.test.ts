@@ -213,3 +213,28 @@ describe('runNarrationJob', () => {
     expect(result.overlay.sections['a.ts']!.intro).toBe('Intro.');
   });
 });
+
+describe('per-text gate salvage (#56)', () => {
+  test('keeps the passing intro and chunk line when a sibling line fails both asks', async () => {
+    const file = freshOverlayFile();
+    const good = 'a.ts::x::4';
+    await runNarrationJob({
+      ...base(file),
+      invoke: async (p) => {
+        if (isOpener(p)) return envOpener('An overview thread.');
+        const ownId = /^chunk (\S+::\S+)/m.exec(p)![1]!;
+        return envSection('Intro.', {
+          [ownId]: ownId === good ? 'Watch the guard.' : 'One sentence. And a second sentence that breaks the cap.',
+        });
+      },
+    });
+    const overlay = await readOverlay(file);
+    const aEntry = overlay.sections['a.ts']!;
+    expect(aEntry.intro).toBe('Intro.');
+    expect(aEntry.chunks[good]).toBe('Watch the guard.');
+    const bEntry = overlay.sections['b.ts']!;
+    expect(bEntry.intro).toBe('Intro.');
+    expect(bEntry.chunks).toEqual({});
+    expect(bEntry.gateFailures?.join(' ')).toContain('2 sentences');
+  });
+});
