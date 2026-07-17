@@ -5,6 +5,7 @@ import {
   definitionSymbols,
   hasDefinitions,
   type PayloadState,
+  shouldExpandOnArrival,
   toggleInSet,
 } from './context-panel-logic.js';
 
@@ -60,6 +61,21 @@ describe('affordanceLabel', () => {
     expect(affordanceLabel(payload([def('a'), def('b'), def('c'), def('d'), def('e'), def('f')]), 4)).toBe(
       'definitions: a, b, c, d +2 more',
     );
+  });
+});
+
+describe('shouldExpandOnArrival', () => {
+  it('signals expand only when the intent stands and there are definitions', () => {
+    expect(shouldExpandOnArrival(true, payload([def('foo')]))).toBe(true);
+  });
+
+  it('stays silent when the user did not want it', () => {
+    expect(shouldExpandOnArrival(false, payload([def('foo')]))).toBe(false);
+  });
+
+  it('stays silent when the arriving payload has nothing to show', () => {
+    expect(shouldExpandOnArrival(true, payload([]))).toBe(false);
+    expect(shouldExpandOnArrival(true, null)).toBe(false);
   });
 });
 

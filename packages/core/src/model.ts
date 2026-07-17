@@ -73,6 +73,21 @@ export function chunkId(file: string, symbolPath: string[], fingerprint: string)
 /** Id of the synthesized section holding changed lines no chunk claimed (the R-001 backstop). */
 export const LEFTOVERS_SECTION_ID = '(leftovers)';
 
+/** Prefix on chapter-mode section ids (spec 05); file-mode section ids are file paths. */
+export const CHAPTER_SECTION_PREFIX = 'chapter:';
+
+/**
+ * True for a file-mode book (`compileBook`), whose every section id is a file path (or the leftovers
+ * backstop). False for a chapter-mode book (`compileChapterBook`), whose spine/test sections carry
+ * `CHAPTER_SECTION_PREFIX`. The graph/anchor helpers (`sectionAnchors`, `fileImportEdges`, and
+ * `testImplAnchors`'s `files`) treat `section.id` as a file path, so they only produce meaningful
+ * maps for a file-mode book — a chapter book silently yields empty anchor maps. Callers gate on this
+ * so the mismatch is a loud throw, not silent emptiness.
+ */
+export function isFileModeBook(book: Book): boolean {
+  return !book.sections.some((s) => s.id.startsWith(CHAPTER_SECTION_PREFIX));
+}
+
 /** Low-signal chunks render as collapsed stubs and are batch-acknowledgeable (R-002). */
 export function isLowSignal(chunk: Chunk): boolean {
   return chunk.changeTypes.length > 0;

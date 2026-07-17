@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState } from 'react';
 import { fetchContext } from './api.js';
-import { hasDefinitions, type PayloadState, type ToggleOutcome, toggleInSet } from './context-panel-logic.js';
+import { hasDefinitions, type PayloadState, shouldExpandOnArrival, type ToggleOutcome, toggleInSet } from './context-panel-logic.js';
 
 export interface ContextPanelsState {
   /** `undefined` until fetched, `null` when fetched-but-empty, else the payload (spec 04). */
@@ -16,8 +16,11 @@ export interface ContextPanelsState {
  * On-demand definition payloads for the book, keyed by chunk id (never fetched in bulk on load —
  * R-009 reviewer-controlled depth). One in-flight request per chunk; results cached across the
  * chunk's occurrences. Mirrors useOrderOverlay/useSeenTracking: local state, fire-and-forget IO.
+ *
+ * `onDeferredExpand` fires when a `toggle` made before the fetch landed later auto-expands the panel,
+ * so the page can focus + announce on arrival exactly as it does for a synchronous expand.
  */
-export function useContextPanels(): ContextPanelsState {
+export function useContextPanels(onDeferredExpand?: (chunkId: string, payload: PayloadState) => void): ContextPanelsState {
   const [cache, setCache] = useState<ReadonlyMap<string, PayloadState>>(new Map());
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
   const inFlight = useRef(new Set<string>());
@@ -26,6 +29,8 @@ export function useContextPanels(): ContextPanelsState {
 
   const cacheRef = useRef(cache);
   cacheRef.current = cache;
+  const deferredRef = useRef(onDeferredExpand);
+  deferredRef.current = onDeferredExpand;
 
   const ensureFetched = useCallback((chunkId: string) => {
     if (cacheRef.current.has(chunkId) || inFlight.current.has(chunkId)) return;
@@ -33,8 +38,9 @@ export function useContextPanels(): ContextPanelsState {
     void fetchContext(chunkId)
       .then((res) => {
         setCache((prev) => new Map(prev).set(chunkId, res.payload));
-        if (wantExpand.current.delete(chunkId) && hasDefinitions(res.payload)) {
+        if (shouldExpandOnArrival(wantExpand.current.delete(chunkId), res.payload)) {
           setExpanded((prev) => new Set(prev).add(chunkId));
+          deferredRef.current?.(chunkId, res.payload);
         }
       })
       .catch(() => {

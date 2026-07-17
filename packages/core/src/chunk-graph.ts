@@ -1,6 +1,6 @@
 import { fnv1a } from './chunker.js';
 import { type ImportGraph } from './import-graph.js';
-import { type Book, type LineRange, CORE_VERSION, LEFTOVERS_SECTION_ID } from './model.js';
+import { type Book, type LineRange, CORE_VERSION, isFileModeBook, LEFTOVERS_SECTION_ID } from './model.js';
 
 /**
  * The relatedness graph over chunks (spec 05 / R-050). Layered and plural: the graph is a flat set
@@ -88,6 +88,7 @@ export function edgesOfKinds(edges: readonly ChunkEdge[], kinds: ReadonlySet<Chu
  * (the file path).
  */
 export function sectionAnchors(book: Book): Map<string, string> {
+  if (!isFileModeBook(book)) throw new Error('sectionAnchors requires a file-mode book (see isFileModeBook)');
   const anchors = new Map<string, string>();
   for (const section of book.sections) {
     if (section.id === LEFTOVERS_SECTION_ID) continue;

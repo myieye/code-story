@@ -16,5 +16,6 @@ export * from './order.js';
 export * from './render.js';
 export * from './review.js';
 export * from './roles.js';
+export * from './scc.js';
 export * from './story-config.js';
 export * from './symbols.js';

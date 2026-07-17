@@ -2,8 +2,9 @@ import { type CompiledBook, leftoverChunks, primary, testImplAnchors } from './b
 import { CALLS_DFS_KINDS, type ChunkGraph, edgesOfKinds } from './chunk-graph.js';
 import { type FileDiff } from './diff.js';
 import { type ImportGraph } from './import-graph.js';
-import { type Chunk, LEFTOVERS_SECTION_ID, type Occurrence, type Section } from './model.js';
+import { CHAPTER_SECTION_PREFIX, type Chunk, LEFTOVERS_SECTION_ID, type Occurrence, type Section } from './model.js';
 import { type FileRole, fileRoles, isE2ePath, isRouteFile } from './roles.js';
+import { sourceSccToBreak } from './scc.js';
 import { type StoryConfig } from './story-config.js';
 
 export interface CompileChapterBookInput {
@@ -167,66 +168,22 @@ function buildSpine(
 
   const chapters: Chapter[] = [];
   for (const { id, startsChapter } of order) {
-    if (startsChapter) chapters.push({ id: `chapter:${id}`, anchorFile: chunkById.get(id)!.file, chunkIds: [] });
+    if (startsChapter) chapters.push({ id: `${CHAPTER_SECTION_PREFIX}${id}`, anchorFile: chunkById.get(id)!.file, chunkIds: [] });
     chapters.at(-1)!.chunkIds.push(id);
   }
   return chapters;
 }
 
 /**
- * Picks the chunk to force-emit when the topo sort stalls on a call cycle: the git-earliest member
- * of a source SCC (one with no precedence-predecessor outside itself), so breaking it forces no
- * avoidable inversion — only the unavoidable same-cycle one. `fwd` is the precedence-successor map.
+ * Picks the chunk to force-emit when the call-path topo sort stalls on a cycle. `fwd` is already the
+ * emission-forward precedence-successor map `sourceSccToBreak` expects (caller before callee).
  */
 function cycleBreakSeed(remaining: string[], fwd: Map<string, { id: string; line: number }[]>, gitRank: Map<string, number>): string {
-  const set = new Set(remaining);
-  const index = new Map<string, number>();
-  const low = new Map<string, number>();
-  const onStack = new Set<string>();
-  const stack: string[] = [];
-  const sccOf = new Map<string, number>();
-  const sccs: string[][] = [];
-  let counter = 0;
-  const connect = (v: string) => {
-    index.set(v, counter);
-    low.set(v, counter);
-    counter++;
-    stack.push(v);
-    onStack.add(v);
-    for (const { id: w } of fwd.get(v) ?? []) {
-      if (!set.has(w)) continue;
-      if (!index.has(w)) {
-        connect(w);
-        low.set(v, Math.min(low.get(v)!, low.get(w)!));
-      } else if (onStack.has(w)) {
-        low.set(v, Math.min(low.get(v)!, index.get(w)!));
-      }
-    }
-    if (low.get(v) === index.get(v)) {
-      const scc: string[] = [];
-      let w: string;
-      do {
-        w = stack.pop()!;
-        onStack.delete(w);
-        sccOf.set(w, sccs.length);
-        scc.push(w);
-      } while (w !== v);
-      sccs.push(scc);
-    }
-  };
-  for (const v of remaining) if (!index.has(v)) connect(v);
-
-  let best: string | undefined;
-  for (let i = 0; i < sccs.length; i++) {
-    const members = new Set(sccs[i]!);
-    const hasExternalPred = sccs[i]!.some((v) =>
-      remaining.some((u) => !members.has(u) && (fwd.get(u) ?? []).some((e) => e.id === v)),
-    );
-    if (hasExternalPred) continue;
-    const earliest = sccs[i]!.reduce((a, b) => (gitRank.get(a)! <= gitRank.get(b)! ? a : b));
-    if (best === undefined || gitRank.get(earliest)! < gitRank.get(best)!) best = earliest;
-  }
-  return best ?? remaining.reduce((a, b) => (gitRank.get(a)! <= gitRank.get(b)! ? a : b));
+  return sourceSccToBreak(
+    remaining,
+    (v) => (fwd.get(v) ?? []).map((e) => e.id),
+    (v) => gitRank.get(v)!,
+  );
 }
 
 interface Slot {
@@ -285,7 +242,7 @@ function weaveTests(
 
   const trailing = gitOrder.filter((c) => testIds.has(c.id) && !placed.has(c.id));
   for (const file of orderTrailingTestFiles([...new Set(trailing.map((c) => c.file))], input.graph, gitRank, gitOrder)) {
-    const id = `chapter:test:${file}`;
+    const id = `${CHAPTER_SECTION_PREFIX}test:${file}`;
     for (const c of trailing.filter((t) => t.file === file)) {
       flat.push({ chunkId: c.id, chapterId: id, anchorFile: file, crossFile: false });
     }

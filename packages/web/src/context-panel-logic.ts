@@ -32,6 +32,15 @@ export function affordanceLabel(payload: PayloadState, max = 4): string {
 /** Toggle result drives focus + announcement in the page (see toggleDefinitions in the hook). */
 export type ToggleOutcome = 'expanded' | 'collapsed' | 'none';
 
+/**
+ * On a deferred fetch arrival (the payload wasn't cached when `d` was pressed), whether to expand +
+ * focus/announce the panel: only if the user's intent still stands and the payload has definitions.
+ * The page mirrors its synchronous focus/announce off this so keyboard/SR users get the same signal.
+ */
+export function shouldExpandOnArrival(wanted: boolean, payload: PayloadState): boolean {
+  return wanted && hasDefinitions(payload);
+}
+
 /** Pure set toggle — mirrors how the review overrides map is copied on write. */
 export function toggleInSet(set: ReadonlySet<string>, id: string): Set<string> {
   const next = new Set(set);
