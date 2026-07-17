@@ -8,8 +8,7 @@ import {
   type FileContents,
   filterFreshNarration,
   type ImportGraph,
-  isLowSignal,
-  LEFTOVERS_SECTION_ID,
+  isNarratableSection,
   type NarrationKind,
   type NarrationOverlay,
   type NarrationSectionEntry,
@@ -63,7 +62,7 @@ export async function runNarrationJob(input: NarrationJobInput): Promise<Narrati
   await mkdir(input.cwd, { recursive: true });
 
   const chunksById = new Map(input.chunks.map((c) => [c.id, c]));
-  const narratable = input.book.sections.filter((s) => isNarratable(s, chunksById));
+  const narratable = input.book.sections.filter((s) => isNarratableSection(s, chunksById));
 
   const existing = await loadNarrationOverlay(input.overlayFile);
   // A stored overlay whose voice differs (model/prompt) can't be mixed with fresh sections — start
@@ -74,12 +73,14 @@ export async function runNarrationJob(input: NarrationJobInput): Promise<Narrati
       : null;
 
   const openerKey = narrationOpenerKey(input.book, input.headSha);
+  // Seed with the surviving prior entries so the first persist never drops finished work — a death
+  // right after the opener would otherwise wipe them from the file and force paid regeneration.
   const overlay: NarrationOverlay = {
     version: 1,
     model: input.model,
     promptVersion: NARRATION_PROMPT_VERSION,
     opener: { text: '', key: openerKey },
-    sections: {},
+    sections: { ...resumable?.sections },
   };
   const persist = () => saveJson(input.overlayFile, overlay);
 
@@ -110,13 +111,6 @@ export async function runNarrationJob(input: NarrationJobInput): Promise<Narrati
   }
 
   return { overlay, sectionsTotal: narratable.length, sectionsDone: done };
-}
-
-/** Leftovers and all-low-signal sections get no narration by construction (spec 03 non-goals). */
-function isNarratable(section: Section, chunksById: Map<string, Chunk>): boolean {
-  if (section.id === LEFTOVERS_SECTION_ID) return false;
-  const chunks = section.occurrences.map((o) => chunksById.get(o.chunkId)).filter((c): c is Chunk => c !== undefined);
-  return chunks.length > 0 && !chunks.every((c) => isLowSignal(c));
 }
 
 async function narrateSection(

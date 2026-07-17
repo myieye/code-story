@@ -1,4 +1,4 @@
-import { type Book, type Chunk, chunkTitle, isLowSignal, LEFTOVERS_SECTION_ID, lowSignalReason } from './model.js';
+import { type Book, type Chunk, chunkTitle, isLowSignal, isNarratableSection, lowSignalReason } from './model.js';
 import type { NarrationOverlay } from './narration.js';
 
 export interface FileContents {
@@ -65,15 +65,8 @@ export function exportBookMarkdown(input: ExportBookInput): string {
   return out.join('\n');
 }
 
-/** Sections that can carry narration: not the leftovers section, and not all-low-signal (spec 03). */
 function narratableSectionIds(book: Book, byId: Map<string, Chunk>): string[] {
-  const ids: string[] = [];
-  for (const section of book.sections) {
-    if (section.id === LEFTOVERS_SECTION_ID) continue;
-    const chunks = section.occurrences.map((o) => byId.get(o.chunkId)).filter((c): c is Chunk => c !== undefined);
-    if (chunks.length > 0 && !chunks.every((c) => isLowSignal(c))) ids.push(section.id);
-  }
-  return ids;
+  return book.sections.filter((s) => isNarratableSection(s, byId)).map((s) => s.id);
 }
 
 function sizeLabel(chunk: Chunk): string {
