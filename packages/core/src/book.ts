@@ -57,21 +57,80 @@ function orderFiles(gitOrder: string[], roles: Map<string, FileRole>, graph: Imp
   const byRole = (role: FileRole) => gitOrder.filter((f) => roles.get(f) === role);
   const impl = topoSort(byRole('impl'), graph);
   const implOrder = new Map(impl.map((f, i) => [f, i]));
+  const gitPos = new Map(gitOrder.map((f, i) => [f, i]));
 
-  const testsByAnchor = new Map<string, string[]>();
-  const unanchored: string[] = [];
-  for (const test of byRole('test')) {
-    const anchor = anchorImpl(test, impl, implOrder, graph);
-    if (anchor === undefined) unanchored.push(test);
-    else testsByAnchor.set(anchor, [...(testsByAnchor.get(anchor) ?? []), test]);
-  }
+  const { byAnchor, unanchored } = orderTestBlock(byRole('test'), impl, implOrder, graph, gitPos);
 
   return [
-    ...impl.flatMap((f) => [f, ...(testsByAnchor.get(f) ?? [])]),
+    ...impl.flatMap((f) => [f, ...(byAnchor.get(f) ?? [])]),
     ...unanchored,
     ...byRole('periphery'),
     ...byRole('low-signal'),
   ];
+}
+
+/**
+ * Place test-role files (#52): each anchored after the last impl it imports (else its stem match),
+ * but a test-role helper (page object, fixture) imported by another test-role file must read before
+ * its importer. Two rules cooperate: (1) a helper inherits its earliest importer's anchor when that
+ * anchor is earlier than its own, so grouping can't strand it in a later section or the unanchored
+ * tail; (2) within the resulting order, files are emitted helper-before-importer (greedy Kahn over
+ * the test↔test subgraph, ties by inherited-anchor position then git order). Correctness wins over
+ * locality: a helper with an earlier own anchor stays there rather than following its importer.
+ */
+function orderTestBlock(
+  tests: string[],
+  impl: string[],
+  implOrder: Map<string, number>,
+  graph: ImportGraph,
+  gitPos: Map<string, number>,
+): { byAnchor: Map<string, string[]>; unanchored: string[] } {
+  const testSet = new Set(tests);
+  const helpers = new Map<string, string[]>(tests.map((t) => [t, []]));
+  const importers = new Map<string, string[]>(tests.map((t) => [t, []]));
+  for (const edge of graph.edges) {
+    if (!testSet.has(edge.from) || !testSet.has(edge.to) || edge.from === edge.to) continue;
+    helpers.get(edge.from)!.push(edge.to);
+    importers.get(edge.to)!.push(edge.from);
+  }
+
+  const ownPos = (t: string) => {
+    const a = anchorImpl(t, impl, implOrder, graph);
+    return a === undefined ? Number.POSITIVE_INFINITY : implOrder.get(a)!;
+  };
+  const effMemo = new Map<string, number>();
+  const active = new Set<string>();
+  const effPos = (t: string): number => {
+    const cached = effMemo.get(t);
+    if (cached !== undefined) return cached;
+    if (active.has(t)) return ownPos(t); // import cycle among tests: fall back to own anchor
+    active.add(t);
+    let pos = ownPos(t);
+    for (const imp of importers.get(t)!) pos = Math.min(pos, effPos(imp));
+    active.delete(t);
+    effMemo.set(t, pos);
+    return pos;
+  };
+
+  const emitted = new Set<string>();
+  const order: string[] = [];
+  while (order.length < tests.length) {
+    const pending = tests.filter((t) => !emitted.has(t));
+    const ready = pending.filter((t) => helpers.get(t)!.every((h) => emitted.has(h)));
+    const pool = ready.length > 0 ? ready : pending; // stall = test↔test cycle; break by tie-break key
+    pool.sort((a, b) => effPos(a) - effPos(b) || gitPos.get(a)! - gitPos.get(b)!);
+    emitted.add(pool[0]!);
+    order.push(pool[0]!);
+  }
+
+  const byAnchor = new Map<string, string[]>();
+  const unanchored: string[] = [];
+  for (const t of order) {
+    const pos = effPos(t);
+    if (!Number.isFinite(pos)) unanchored.push(t);
+    else byAnchor.set(impl[pos]!, [...(byAnchor.get(impl[pos]!) ?? []), t]);
+  }
+  return { byAnchor, unanchored };
 }
 
 /**
