@@ -8,13 +8,23 @@ import {
   chunkLineCount,
   compileBook,
   exportBookMarkdown,
+  filterFreshNarration,
   isLowSignal,
+  type NarrationOverlay,
   lowSignalReason,
   renderOrderManifest,
 } from '@code-story/core';
 import open from 'open';
 import { computeChunks } from './chunks.js';
 import { diffRange, originUrl, resolveRange, rootCommit } from './git.js';
+import { runNarrationJob } from './narration-job.js';
+import { NARRATION_PROMPT_VERSION } from './narration-prompt.js';
+import {
+  loadNarrationOverlay,
+  type NarrationJobRecord,
+  narrationFilePath,
+  narrationJobFilePath,
+} from './narration-store.js';
 import { runOrderJob } from './order-job.js';
 import { ORDER_PROMPT_VERSION } from './order-prompt.js';
 import { loadOverlay, orderFilePath, orderJobFilePath, type OrderJobRecord, saveJson } from './order-store.js';
@@ -29,6 +39,8 @@ const dumpGraph = args.includes('--dump-graph');
 const checkOrderFlag = args.includes('--check-order');
 const dumpManifest = args.includes('--dump-manifest');
 const aiOrder = args.includes('--ai-order');
+const narrate = args.includes('--narrate');
+const narration = args.includes('--narration');
 const exportIndex = args.indexOf('--export');
 const exportPath = exportIndex >= 0 ? args[exportIndex + 1] : undefined;
 const portIndex = args.indexOf('--port');
@@ -49,7 +61,7 @@ if (
   (orderChoice !== 'tier0' && orderChoice !== 'ai')
 ) {
   console.error(
-    'Usage: code-story <base>..<head> [--export book.md] [--order tier0|ai] [--ai-order] [--model <id>] [--port <n>] [--dump-diff] [--dump-chunks] [--dump-graph] [--check-order] [--dump-manifest] [--no-open]',
+    'Usage: code-story <base>..<head> [--export book.md] [--narration] [--order tier0|ai] [--ai-order] [--narrate] [--model <id>] [--port <n>] [--dump-diff] [--dump-chunks] [--dump-graph] [--check-order] [--dump-manifest] [--no-open]',
   );
   process.exit(1);
 }
@@ -120,13 +132,14 @@ if (dumpManifest) {
 
 // One compile pass serves both --ai-order and --export (the natural one-shot invocation
 // combines them; a second tree-sitter pass costs ~30s on very large ranges).
-if (aiOrder || exportPath) {
+if (aiOrder || narrate || exportPath) {
   const files = await diffRange(repo, resolved);
   const { chunks, contents, graph } = await computeChunks(repo, resolved, files);
   const compiled = compileBook({ files, chunks, graph, headSha: resolved.head });
   const dataHome = defaultDataHome();
   const repoId = repoIdFrom(repo, await rootCommit(repo), await originUrl(repo));
   const orderFile = orderFilePath(dataHome, repoId, resolved);
+  const narrationFile = narrationFilePath(dataHome, repoId, resolved);
 
   if (aiOrder) {
     const jobFile = orderJobFilePath(dataHome, repoId, resolved);
@@ -155,6 +168,53 @@ if (aiOrder || exportPath) {
     }
   }
 
+  if (narrate) {
+    const jobFile = narrationJobFilePath(dataHome, repoId, resolved);
+    const record: NarrationJobRecord = {
+      version: 1,
+      status: 'running',
+      model,
+      promptVersion: NARRATION_PROMPT_VERSION,
+      startedAt: new Date().toISOString(),
+      sectionsTotal: 0,
+      sectionsDone: 0,
+    };
+    await saveJson(jobFile, record);
+    console.log(`code-story: running the narration job (${model})…`);
+    try {
+      const result = await runNarrationJob({
+        book: compiled.book,
+        graph,
+        chunks: compiled.chunks,
+        contents,
+        headSha: resolved.head,
+        model,
+        cwd: dataHome,
+        overlayFile: narrationFile,
+        onProgress: (done, total) => {
+          record.sectionsDone = done;
+          record.sectionsTotal = total;
+        },
+      });
+      await saveJson(jobFile, {
+        ...record,
+        status: 'done',
+        finishedAt: new Date().toISOString(),
+        sectionsTotal: result.sectionsTotal,
+        sectionsDone: result.sectionsDone,
+      });
+      console.log(`code-story: narration saved (${result.sectionsDone}/${result.sectionsTotal} sections)`);
+    } catch (e) {
+      await saveJson(jobFile, {
+        ...record,
+        status: 'failed',
+        finishedAt: new Date().toISOString(),
+        error: (e as Error).message,
+      });
+      throw e;
+    }
+  }
+
   if (exportPath) {
     let book = compiled.book;
     if (orderChoice === 'ai') {
@@ -166,7 +226,19 @@ if (aiOrder || exportPath) {
       }
       book = applied;
     }
-    await writeFile(exportPath, exportBookMarkdown({ book, chunks: compiled.chunks, contents, title: range }));
+    let narrationOverlay: NarrationOverlay | undefined;
+    if (narration) {
+      const raw = await loadNarrationOverlay(narrationFile);
+      if (raw === null) {
+        console.error('code-story: no narration overlay for this range (run --narrate first)');
+        process.exit(1);
+      }
+      narrationOverlay = filterFreshNarration(book, resolved.head, raw);
+    }
+    await writeFile(
+      exportPath,
+      exportBookMarkdown({ book, chunks: compiled.chunks, contents, title: range, narration: narrationOverlay }),
+    );
 
     const leftovers = compiled.chunks.length - chunks.length;
     console.log(

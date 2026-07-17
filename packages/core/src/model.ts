@@ -72,6 +72,13 @@ export function isLowSignal(chunk: Chunk): boolean {
   return chunk.changeTypes.length > 0;
 }
 
+/** Sections that can carry narration: not leftovers, not all-low-signal (spec 03 non-goals). */
+export function isNarratableSection(section: Section, chunksById: Map<string, Chunk>): boolean {
+  if (section.id === LEFTOVERS_SECTION_ID) return false;
+  const chunks = section.occurrences.map((o) => chunksById.get(o.chunkId)).filter((c): c is Chunk => c !== undefined);
+  return chunks.length > 0 && !chunks.every((c) => isLowSignal(c));
+}
+
 /** Changed-line count a chunk owns — the "~N lines" shown in dumps and manifests. */
 export function chunkLineCount(chunk: Chunk): number {
   return chunk.hunks.reduce((n, h) => n + Math.max(h.headCount, h.baseCount), 0);

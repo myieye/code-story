@@ -15,7 +15,9 @@ import {
   type FileContents,
   type FileDiff,
   type ImportGraph,
+  filterFreshNarration,
   isOverlayFresh,
+  type NarrationResponse,
   type OrderPatch,
   type OrderResponse,
   type ReviewFile,
@@ -25,6 +27,15 @@ import {
 import { Hono } from 'hono';
 import { computeChunks } from './chunks.js';
 import { diffRange, originUrl, type ResolvedRange, rootCommit } from './git.js';
+import { runNarrationJob } from './narration-job.js';
+import { NARRATION_PROMPT_VERSION } from './narration-prompt.js';
+import {
+  loadNarrationJobRecord,
+  loadNarrationOverlay,
+  type NarrationJobRecord,
+  narrationFilePath,
+  narrationJobFilePath,
+} from './narration-store.js';
 import { runOrderJob } from './order-job.js';
 import { ORDER_PROMPT_VERSION } from './order-prompt.js';
 import { loadJobRecord, loadOverlay, orderFilePath, orderJobFilePath, type OrderJobRecord, saveJson } from './order-store.js';
@@ -44,11 +55,27 @@ function jobSummary(record: OrderJobRecord): NonNullable<OrderResponse['job']> {
   };
 }
 
+function narrationJobSummary(record: NarrationJobRecord): NonNullable<NarrationResponse['job']> {
+  const { status, model, promptVersion, startedAt, finishedAt, error, sectionsTotal, sectionsDone } = record;
+  return {
+    status,
+    model,
+    promptVersion,
+    startedAt,
+    sectionsTotal,
+    sectionsDone,
+    ...(finishedAt ? { finishedAt } : {}),
+    ...(error ? { error } : {}),
+  };
+}
+
 export interface ServerOptions {
   repo: string;
   range: ResolvedRange;
   /** Override of `~/.code-story` for tests. */
   dataHome?: string;
+  /** Test seam: replaces the claude subprocess the narration job spawns. */
+  narrationInvoke?: (prompt: string, model: string, cwd: string) => Promise<string>;
 }
 
 export interface RunningServer {
@@ -84,7 +111,16 @@ export function startServer(options: ServerOptions, requestedPort = 0): Promise<
       () => (bookCache = undefined),
     ));
 
-  let storeCache: Promise<{ dataHome: string; reviewFile: string; orderFile: string; jobFile: string }> | undefined;
+  let storeCache:
+    | Promise<{
+        dataHome: string;
+        reviewFile: string;
+        orderFile: string;
+        jobFile: string;
+        narrationFile: string;
+        narrationJobFile: string;
+      }>
+    | undefined;
   const getStore = () =>
     (storeCache ??= uncacheOnError(
       (async () => {
@@ -95,6 +131,8 @@ export function startServer(options: ServerOptions, requestedPort = 0): Promise<
           reviewFile: reviewFilePath(dataHome, repoId, options.range),
           orderFile: orderFilePath(dataHome, repoId, options.range),
           jobFile: orderJobFilePath(dataHome, repoId, options.range),
+          narrationFile: narrationFilePath(dataHome, repoId, options.range),
+          narrationJobFile: narrationJobFilePath(dataHome, repoId, options.range),
         };
       })(),
       () => (storeCache = undefined),
@@ -204,6 +242,87 @@ export function startServer(options: ServerOptions, requestedPort = 0): Promise<
     );
     const found = await op;
     return found ? c.json({ ok: true }) : c.json({ error: 'no order overlay' }, 404);
+  });
+
+  // Mirrors the order job's live/orphan handling. Narration is order-independent (keyed by
+  // section fingerprint), so it survives the order overlay being applied or dismissed.
+  let liveNarrationJob: Promise<void> | undefined;
+  let liveNarrationRecord: NarrationJobRecord | undefined;
+
+  app.get('/api/narration', async (c) => {
+    const { narrationFile, narrationJobFile } = await getStore();
+    const [overlay, stored, { book }] = await Promise.all([
+      loadNarrationOverlay(narrationFile),
+      loadNarrationJobRecord(narrationJobFile),
+      getBook(),
+    ]);
+    const filtered = overlay !== null ? filterFreshNarration(book, options.range.head, overlay) : null;
+    const record = liveNarrationRecord ?? stored;
+    const job =
+      record?.status === 'running' && liveNarrationJob === undefined
+        ? { ...record, status: 'failed' as const, error: 'job orphaned by a daemon restart — re-run it' }
+        : record;
+    const response: NarrationResponse = { overlay: filtered, job: job && narrationJobSummary(job) };
+    return c.json(response);
+  });
+
+  app.post('/api/narration-job', async (c) => {
+    const body = (await c.req.json().catch(() => ({}))) as { model?: string };
+    const { dataHome, narrationFile, narrationJobFile } = await getStore();
+    const built = await getBook();
+    // No awaits between this guard and the liveNarrationJob assignment — a second concurrent POST
+    // must see the first one's handle, or two paid model runs race on the same overlay file.
+    if (liveNarrationJob !== undefined) {
+      return c.json({ error: 'a narration job is already running for this range' }, 409);
+    }
+    const record: NarrationJobRecord = {
+      version: 1,
+      status: 'running',
+      model: body.model ?? 'opus',
+      promptVersion: NARRATION_PROMPT_VERSION,
+      startedAt: new Date().toISOString(),
+      sectionsTotal: 0,
+      sectionsDone: 0,
+    };
+    liveNarrationRecord = record;
+    liveNarrationJob = (async () => {
+      try {
+        await saveJson(narrationJobFile, record);
+        const result = await runNarrationJob({
+          book: built.book,
+          graph: built.graph,
+          chunks: built.chunks,
+          contents: built.contents,
+          headSha: options.range.head,
+          model: record.model,
+          cwd: dataHome,
+          overlayFile: narrationFile,
+          onProgress: (done, total) => {
+            record.sectionsDone = done;
+            record.sectionsTotal = total;
+          },
+          invoke: options.narrationInvoke,
+        });
+        await saveJson(narrationJobFile, {
+          ...record,
+          status: 'done',
+          finishedAt: new Date().toISOString(),
+          sectionsTotal: result.sectionsTotal,
+          sectionsDone: result.sectionsDone,
+        });
+      } catch (e) {
+        await saveJson(narrationJobFile, {
+          ...record,
+          status: 'failed',
+          finishedAt: new Date().toISOString(),
+          error: (e as Error).message,
+        });
+      } finally {
+        liveNarrationJob = undefined;
+        liveNarrationRecord = undefined;
+      }
+    })();
+    return c.json({ job: narrationJobSummary(record) }, 202);
   });
 
   app.get('/api/review', async (c) => {

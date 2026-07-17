@@ -1,5 +1,6 @@
 import type { ImportGraph } from './import-graph.js';
 import type { Book, Chunk } from './model.js';
+import type { NarrationOverlay } from './narration.js';
 import type { OrderOverlay } from './order.js';
 import type { UnifiedLine } from './render.js';
 
@@ -35,4 +36,23 @@ export interface OrderResponse {
 export interface OrderPatch {
   applied?: boolean;
   dismissed?: boolean;
+}
+
+/**
+ * `GET /api/narration`: the narration overlay filtered to sections fresh for this book (never null
+ * once a job has run), plus job state. `sectionsTotal`/`sectionsDone` drive the partial-state
+ * indicator (spec 03) — a partial book must read as *not narrated*, never *nothing to see*.
+ */
+export interface NarrationResponse {
+  overlay: NarrationOverlay | null;
+  job: {
+    status: 'running' | 'done' | 'failed';
+    model: string;
+    promptVersion: string;
+    startedAt: string;
+    finishedAt?: string;
+    error?: string;
+    sectionsTotal: number;
+    sectionsDone: number;
+  } | null;
 }
