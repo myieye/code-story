@@ -53,7 +53,7 @@ async function consumerCallChunkId(url: string): Promise<string> {
 
 describe('context server', () => {
   test('GET /api/context resolves an unchanged-file util and persists the payload', async () => {
-    const server = await startServer({ repo, range, dataHome }, 0);
+    const server = await startServer({ repo, range, dataHome, autoOrder: false }, 0);
     try {
       const chunkId = await consumerCallChunkId(server.url);
       const body = await getContext(server.url, chunkId);
@@ -72,7 +72,7 @@ describe('context server', () => {
   });
 
   test('a warm cache serves the persisted payload on the next GET', async () => {
-    const server = await startServer({ repo, range, dataHome }, 0);
+    const server = await startServer({ repo, range, dataHome, autoOrder: false }, 0);
     try {
       const chunkId = await consumerCallChunkId(server.url);
       const first = await getContext(server.url, chunkId);
@@ -84,7 +84,7 @@ describe('context server', () => {
   });
 
   test('an unknown chunk id yields a null payload, never an error', async () => {
-    const server = await startServer({ repo, range, dataHome }, 0);
+    const server = await startServer({ repo, range, dataHome, autoOrder: false }, 0);
     try {
       const body = await getContext(server.url, 'nope::x::1');
       expect(body.payload).toBeNull();
@@ -94,7 +94,7 @@ describe('context server', () => {
   });
 
   test('a missing chunk query parameter is a 400', async () => {
-    const server = await startServer({ repo, range, dataHome }, 0);
+    const server = await startServer({ repo, range, dataHome, autoOrder: false }, 0);
     try {
       const res = await fetch(`${server.url}/api/context`);
       expect(res.status).toBe(400);
