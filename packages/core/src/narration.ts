@@ -30,7 +30,8 @@ export interface NarrationOverlay {
   version: 1;
   model: string;
   promptVersion: string;
-  opener: { text: string; key: string };
+  /** Empty text = no opener; `failures` says why generation fell open (#44 — never fail silently). */
+  opener: { text: string; key: string; failures?: string[] };
   /** Keyed by Book section id (the changed-file path). */
   sections: Record<string, NarrationSectionEntry>;
 }
@@ -303,15 +304,27 @@ export function parseNarrationReply(
   const obj = json as { intro?: unknown; chunks?: unknown };
   if (typeof obj.intro !== 'string') return { ok: false, error: 'reply has no "intro" string' };
 
-  const validIds = new Set(section.occurrences.map((o) => o.chunkId));
+  const validIds = [...new Set(section.occurrences.map((o) => o.chunkId))];
   const chunks: Record<string, string> = {};
   if (obj.chunks !== undefined) {
     if (typeof obj.chunks !== 'object' || obj.chunks === null) return { ok: false, error: '"chunks" is not an object' };
     for (const [id, line] of Object.entries(obj.chunks as Record<string, unknown>)) {
-      if (!validIds.has(id)) return { ok: false, error: `unknown chunk id in reply: ${id}` };
+      const resolved = resolveChunkId(id, validIds);
+      if (resolved === undefined) return { ok: false, error: `unknown chunk id in reply: ${id}` };
       if (typeof line !== 'string') return { ok: false, error: `chunk line for ${id} is not a string` };
-      chunks[id] = line;
+      chunks[resolved] = line;
     }
   }
   return { ok: true, reply: { intro: obj.intro, chunks } };
+}
+
+/**
+ * Models echo chunk ids (`file::symbolPath::fingerprint`) as suffix fragments — dogfood 4 lost
+ * 13/31 sections to `mqxhkf`-style keys (#44). A key that matches exactly one id fully or on a
+ * `::` boundary is accepted; anything ambiguous or unmatched still rejects the reply.
+ */
+function resolveChunkId(key: string, validIds: string[]): string | undefined {
+  if (validIds.includes(key)) return key;
+  const matches = validIds.filter((id) => id.endsWith(`::${key}`));
+  return matches.length === 1 ? matches[0] : undefined;
 }
