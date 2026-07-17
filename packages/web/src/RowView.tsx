@@ -1,5 +1,7 @@
 import { type Chunk, type ChunkReviewState, isLowSignal, lowSignalReason } from '@code-story/core';
 import type { BookResponse } from './api.js';
+import { affordanceLabel, hasDefinitions, type PayloadState } from './context-panel-logic.js';
+import { DefinitionPanel } from './DefinitionPanel.js';
 import { DiffView } from './DiffView.js';
 import { chunkSize, chunkTitle, type Row } from './rows.js';
 
@@ -25,6 +27,10 @@ export function RowView({
   onSelect,
   onJumpNext,
   onExpand,
+  contextPayload,
+  panelExpanded,
+  onToggleDefinitions,
+  registerPanelEl,
 }: {
   row: Row;
   data: BookResponse;
@@ -48,6 +54,11 @@ export function RowView({
   onSelect: () => void;
   onJumpNext: () => void;
   onExpand: (chunk: Chunk) => void;
+  /** This chunk's context payload: `undefined` unfetched, `null` empty, else the facts (spec 04). */
+  contextPayload: PayloadState;
+  panelExpanded: boolean;
+  onToggleDefinitions: (chunk: Chunk) => void;
+  registerPanelEl: (chunkId: string, el: HTMLElement | null) => void;
 }) {
   if (row.kind === 'section') {
     const stats = sectionStats.get(row.id);
@@ -159,6 +170,23 @@ export function RowView({
             </div>
           ) : (
             <DiffView file={chunk.file} lines={data.diffs[chunk.id] ?? []} />
+          )}
+          {hasDefinitions(contextPayload) && (
+            <div className="definitions-affordance">
+              <button
+                className="link-button"
+                aria-expanded={panelExpanded}
+                onClick={() => onToggleDefinitions(chunk)}
+              >
+                {affordanceLabel(contextPayload)}
+              </button>
+            </div>
+          )}
+          {panelExpanded && hasDefinitions(contextPayload) && (
+            <DefinitionPanel
+              payload={contextPayload}
+              registerEl={(el) => registerPanelEl(chunk.id, el)}
+            />
           )}
         </div>
       </div>

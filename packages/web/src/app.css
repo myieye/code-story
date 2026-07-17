@@ -456,6 +456,78 @@ body {
   white-space: nowrap;
 }
 
+/* Quiet toggle under the diff; the panel below it is deliberately un-diff-like (R-006). */
+.definitions-affordance {
+  padding: 5px 12px 0;
+  font-size: 12px;
+}
+
+.definition-panel {
+  margin-top: 6px;
+  padding: 8px 12px 10px;
+  background: #f6f4ef;
+  border: 1px solid #ded9cf;
+  border-left: 3px solid #b9a888;
+  border-radius: 6px;
+  max-height: 420px;
+  overflow: auto;
+  outline: none;
+}
+
+.definition-panel:focus-visible {
+  border-left-color: #7d9bd1;
+  box-shadow: inset 0 0 0 1px #7d9bd1;
+}
+
+.definition-panel-note {
+  margin: 0 0 8px;
+  font-size: 11.5px;
+  font-style: italic;
+  color: #8a7f68;
+}
+
+.definition + .definition {
+  margin-top: 10px;
+}
+
+.definition-caption {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding-bottom: 3px;
+  font-size: 11.5px;
+  color: #6b675f;
+}
+
+.definition-symbol {
+  font-family: Consolas, monospace;
+  font-weight: 600;
+  color: #4a4438;
+}
+
+.definition-source {
+  font-family: Consolas, monospace;
+  color: #948c7b;
+}
+
+.badge.definition-changed {
+  background: #e7eef9;
+  color: #1c3a6e;
+}
+
+.definition-body {
+  margin: 0;
+  padding: 8px 10px;
+  background: #fffdf8;
+  border: 1px solid #e6e0d3;
+  border-radius: 4px;
+  overflow-x: auto;
+  font-family: 'Cascadia Code', Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre;
+}
+
 .badge {
   font-size: 10.5px;
   padding: 1px 7px;
