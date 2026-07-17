@@ -62,3 +62,7 @@ comment earns its place, it doesn't.)
 >
 > if you're also confident that this is worth doing, then go ahead and incorporate it into
 > the spec
+
+## Same conversation (~12:40Z): plural graphs, plural paths
+
+> yeah, we should have a model that supports various graphs and paths.

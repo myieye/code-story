@@ -404,3 +404,11 @@ chunk twice.
 
 Research mandate (same message): compare to existing tools "while definitely not letting
 existing tools tell us it's bad just because no one has done it."
+
+### R-050 — The model supports various graphs and paths
+Plurality is a model property, not a feature: multiple relatedness graphs (edge kinds/layers
+can grow — calls, imports, exercises today; data-flow, co-change, semantic later) and multiple
+paths (a path/story is a first-class value derived from graph + policy — consumer-first,
+dependency-first, test-first, AI-refined — switchable, not a single hardcoded order).
+Generalizes R-044/R-045/R-048; spec 05's ChunkEdge.kind and config axes are the seed.
+> "yeah, we should have a model that supports various graphs and paths."
