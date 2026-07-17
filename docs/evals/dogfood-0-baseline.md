@@ -334,3 +334,110 @@ Median chunk is 3-7 changed lines and 61-82% are <=10 lines, so R-049's small-ch
 ### Verdict (half-open)
 
 Claude-side precision clears 0.90 on all three subjects (0.976 overall), the free-glance floor is modest-but-real, and small-chunk grain mostly holds. **The gate stays half-open until Tim commits his blind RELEVANT/IRRELEVANT labels** in `tim-audit-*.md`; then unseal Claude's labels and compare. Note for the read: the calls layer is thin on 2309/2379, so the precision signal leans on 2357 — if Tim wants a stronger sample, a fourth calls-heavy subject would help.
+
+## Dogfood 5 (2026-07-17, issue #68) — do context payloads reduce jump-outs?
+
+The M4 question: when a chunk calls code you can't see in it, does one keystroke (`d`) put that
+definition in front of you instead of sending you to the editor? Two language mixes, both
+subjects from earlier dogfoods, token-free (`CODE_STORY_NO_AI_ORDER=1`, no model calls anywhere
+in M4). Data collected with `--context` / `--dump-context` and a browser walk
+(`tools/dogfood-context-walk.mjs`: focus each chunk, read the affordance, press `d`, capture the
+rendered panel). Subjects: (a) **PR 2309** Svelte/TS (`c0448522..pr-2309`) — the unchanged-file
+resolver should shine here; (b) **PR 2379** C# (`8dd70ba~1..8dd70ba`) — in-diff reach only, so
+misses on unchanged callees are the *designed* limit, not a bug.
+
+### Hit-rate
+
+| subject | eligible chunks | chunks with >=1 def | distinct refs extracted | defs resolved | resolve rate | changed / unchanged-file defs |
+| --- | --- | --- | --- | --- | --- | --- |
+| PR 2309 (Svelte/TS) | 35 | 7 (20%) | 79 | 12 | 15.2% | 10 / **2** |
+| PR 2379 (C#) | 33 | 11 (33%) | 30 | 30 | 32.3% | 30 / **0** |
+
+Read the resolve rate the right way: the denominator is *every* identifier the reference pass
+pulled from changed lines — `$props`, `Object.keys`, `.Should()`, `MorphTypeKind`, local vars,
+framework calls. The resolver is precision-over-recall by design (spec 04): it only claims a
+definition it can point at in a changed file, or (TS/JS/Svelte-script) in an unchanged imported
+file. So a low rate is expected and correct — the question is whether the *resolved* ones are the
+ones a reviewer wanted, which the walk answers below. The browser walk reproduced both hit-rates
+exactly (7 and 11 affordances), so the store, the on-focus fetch, the affordance, `d`, and the
+panel render all work end-to-end on real books.
+
+The **2 unchanged-file resolutions on 2309** are the payoff the spec promised for path-specifier
+languages: `pick` from `util/object.ts` and `goto` from `tests/pages/basePage.ts` — neither file
+is in the diff, so the panel is the *only* place a reviewer sees those bodies without leaving the
+book. **2379 resolved 0 unchanged-file defs**, exactly as spec 04 scoping call 3 says: a C#
+`using` names a namespace, not a file, so unchanged callees wait on the SCIP index (ADR 0001).
+All 30 C# resolutions are cross-section (changed-file) hits.
+
+### Latency
+
+Cold bulk fill (whole book, one pass): **2309 ~0.97s**, **2379 ~1.28s** — trivial, it's git +
+tree-sitter, no models. On-demand `GET /api/context` against a running daemon:
+
+| | cold (compute-on-miss) | warm (cached) |
+| --- | --- | --- |
+| 2309 FilterBar chunk (2 defs, incl. unchanged-file `git ls-tree` + parse) | 258ms | ~2-3ms |
+| 2309 no-def chunk | 141ms | ~2ms |
+| 2379 test chunk (3 defs, larger C# files) | 738ms | ~2ms |
+
+Warm is effectively instant. Cold is one `git show` + parse per unresolved file; the C# 738ms is
+the worst case (big files, multi-file changed-symbol scan). Because bulk fill is cheap and free,
+bulk-by-default means the reviewer basically never hits a cold `d`.
+
+### The felt read — per-instance jump-out table
+
+Walked both books keyboard-only, stopping on every chunk whose diff calls out to something not
+visible in it. "Saved?" = would `d` have spared a trip to the editor or a hunt for another
+section.
+
+| # | chunk | the call you can't see | panel had it? | sufficed? | saved a jump-out? |
+| --- | --- | --- | --- | --- | --- |
+| 2309-6 | `FilterBar.svelte::script` | `debouncedFilter(...)` (new util), `pick(...)` | yes — both | yes | **yes, strongly** — `pick` is in an *unchanged* file; the panel is the only in-book way to see it |
+| 2309-20 | `+page.svelte::script` | `filterProjects(...)` | yes (changed, `ProjectFilter.svelte`) | yes | partial — def is elsewhere in the book; panel saves the scroll-hunt |
+| 2309-24 | `org/list/+page.svelte::script` | `filterOrgs(...)` | yes (changed, same file) | yes | weak — defined a few lines away in the same file |
+| 2309-35 | `AdminProjects.svelte::script` | `filterProjects(...)` | yes (changed) | yes | partial — same as 2309-20 |
+| 2309-43 | `loginPage.ts::loginAsAdmin` | `goto(...)`, `fillForm`, `submit` | yes — `goto` from **unchanged** `basePage.ts` + 2 changed | yes | **yes** — `goto` (Playwright page base) is unseeable otherwise |
+| 2309-46/47 | `adminPage.test.ts` fragments | `loginAsAdmin`, `AdminDashboardPage` | yes (both changed) | yes | partial — the test's own page-objects, elsewhere in book |
+| 2379-4/8/37/38 | `EntrySyncTests` / `ComplexForm...` / `QueryEntry...` tests | `Api.CreateEntry`, `GetEntry`, `UpdateEntry`, `CreateComplexFormComponent` | **wrong body** — see below | **no** | **miss (mis-resolve)** |
+| 2379-20..25 | `EntryQueryHelpers.cs` methods | sibling helpers `QueryMorphType`, `NullIf`, `ConcatWs`, `HeadwordWithTokens`, `DefaultWritingSystem` | yes (changed, same file) | yes | partial — same-file helpers, but many and interleaved, so real |
+| 2379-36 | `QueryEntryTestsBase` | `QueryHeadwordWithTokens`, `DefaultWritingSystem` | yes (changed helpers) | yes | **yes** — the helper bodies are the point of this PR |
+| 2379-* many | every test chunk | `MiniLcmApiFixture`, `SingleAsyncLinqToDB`, `Should()`, `MorphTypeKind`, `WritingSystemType` | no (unchanged infra) | n/a | miss (designed C# limit) |
+
+### The 2379 `CreateEntry` mis-resolution (the harvest)
+
+Six test chunks call `Api.CreateEntry(...)`, where `Api` is `_fixture.Api`. In `LcmCrdt.Tests`
+that fixture returns `CrdtMiniLcmApi` (`MiniLcmApiFixture.Api` is typed `CrdtMiniLcmApi`, an
+*unchanged* file). The repo has **eight** `CreateEntry` definitions; only one — `FwDataMiniLcmApi`
+— is in the diff. So the resolver, matching by name across changed files with no receiver-type
+analysis, confidently shows `FwDataMiniLcmApi.CreateEntry` and badges it "in this diff." That is
+the **wrong class's method**. Same shape for `GetEntry`, `UpdateEntry`, `CreateComplexFormComponent`.
+Per the "a wrong fact is worse than none" doctrine this is the most important finding of the
+dogfood: an empty panel sends you to the editor (mild); a wrong-but-confident panel can plant a
+false mental model (worse). It's not the unchanged-callee gap — the true callee is unchanged and
+correctly unreachable — it's that name-only changed-file matching *fills the gap with a lookalike*.
+
+### Verdict
+
+For the reviewer, `d` earns its keystroke — but unevenly, and the shape of the win is worth
+naming. The clean wins are the **unchanged-file resolutions** (`pick`, `goto` on 2309): code that
+lives nowhere in the book, now one key away, correct and sufficient. That is exactly the moment
+the spec was built for, and it lands. The **changed-file resolutions** are a softer win: the
+definition is already somewhere in the book, so `d` saves a scroll-and-hunt rather than an
+editor trip — genuinely useful when the def is far away or (C# `EntryQueryHelpers`) there are many
+interleaved siblings, marginal when it's five lines up in the same file.
+
+Where it falls short splits cleanly into two buckets. The **C# unchanged-callee blindness**
+(fixtures, LinqToDB helpers, enums) is **resolver-reach, spec-known** — the SCIP door, not a
+defect; on a C# test-heavy PR it means most of what a reviewer would actually jump out for
+(`MiniLcmApiFixture`, `SingleAsyncLinqToDB`) is still absent, so M4 helps C# reviewers noticeably
+less than TS reviewers today. The **`CreateEntry` mis-resolution** is the one real defect: not a
+reach limit but a *precision* leak in changed-file name matching, and it's the kind of miss the
+whole "facts, never fabricate" posture is supposed to prevent. Fixing it (receiver-type awareness,
+or at least suppressing a changed-file match when the same name has multiple repo definitions and
+no import edge justifies the pick) matters more than widening reach. Net: ship the panel, it's a
+real reducer of jump-outs on TS; treat the C# story as honestly half-built (reach) with one
+precision bug to close first.
+
+Repro: `code-story <range> --context --dump-context` for hit-rate; daemon + `curl /api/context?chunk=<id>`
+for latency; `tools/dogfood-context-walk.mjs <port>` against a daemon with a fresh review cursor
+for the walk (a resumed cursor parks at the last chunk and the walk can't advance).
