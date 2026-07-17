@@ -80,11 +80,33 @@ export function route(name: string) {
       { path: 'a/page.ts', status: 'modified' },
       { path: 'a/helper.ts', status: 'modified' },
     ];
-    const payload = await resolver.resolve(chunk('c1', 'a/page.ts', 3, 3), changed, noGraph);
+    const graph: ImportGraph = { edges: [{ from: 'a/page.ts', to: 'a/helper.ts' }], unresolved: 0 };
+    const payload = await resolver.resolve(chunk('c1', 'a/page.ts', 3, 3), changed, graph);
     const def = payload.facts.definitions.find((d) => d.symbol === 'slugify');
     expect(def).toBeDefined();
     expect(def!.file).toBe('a/helper.ts');
     expect(def!.changed).toBe(true);
+  });
+
+  it('drops a lone cross-file match with no import edge to justify it (#91)', async () => {
+    const helper = `export function slugify(s: string): string {
+  return s.toLowerCase();
+}
+`;
+    const page = `export function route(name: string) {
+  return slugify(name);
+}
+`;
+    const resolver = resolverOver({
+      'a/page.ts': { head: page, base: 'export function route() {}\n' },
+      'a/helper.ts': { head: helper, base: 'export function slugify() {}\n' },
+    });
+    const changed: ChangedFile[] = [
+      { path: 'a/page.ts', status: 'modified' },
+      { path: 'a/helper.ts', status: 'modified' },
+    ];
+    const payload = await resolver.resolve(chunk('c1', 'a/page.ts', 1, 3), changed, noGraph);
+    expect(payload.facts.definitions.find((d) => d.symbol === 'slugify')).toBeUndefined();
   });
 
   it('disambiguates a name defined in two changed files by the import edge', async () => {

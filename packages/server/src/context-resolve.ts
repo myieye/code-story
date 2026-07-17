@@ -104,8 +104,10 @@ export function createContextResolver(deps: ContextResolveDeps) {
 
   /**
    * Changed-file lookup (all languages): the symbol tables `computeChunks` builds, rebuilt here from
-   * the same content (memoized). One defining file wins outright; several are disambiguated to the
-   * single one the chunk's file imports, else it stays ambiguous (no definition).
+   * the same content (memoized). A cross-file match must be justified by an import edge from the
+   * chunk's file to the defining file (#91: a lone in-diff match for a repo-wide name — 8
+   * `CreateEntry` definitions, one in the diff — confidently resolved to the wrong class); after
+   * that filter, unique wins, else it stays ambiguous (no definition).
    */
   async function resolveChanged(
     name: string,
@@ -117,6 +119,7 @@ export function createContextResolver(deps: ContextResolveDeps) {
   ): Promise<ContextDefinition | undefined> {
     const matches: { file: string; span: SymbolSpan; sha: string }[] = [];
     for (const cf of changedFiles) {
+      if (cf.path !== chunk.file && !imported.has(cf.path)) continue;
       const sha = cf.status === 'deleted' ? deps.baseSha : deps.headSha;
       const span = findSymbol(await symbolsAt(sha, cf.path), name);
       if (!span) continue;
@@ -124,7 +127,7 @@ export function createContextResolver(deps: ContextResolveDeps) {
       if (cf.path === chunk.file && overlaps(span, ranges)) continue;
       matches.push({ file: cf.path, span, sha });
     }
-    const chosen = matches.length === 1 ? matches[0] : disambiguate(matches, imported);
+    const chosen = matches.length === 1 ? matches[0] : undefined;
     if (!chosen) return undefined;
     // A changed match at the chunk's own sha keeps that sha; other changed files read at head.
     return buildDefinition(name, chosen.file, chosen.span, chosen.file === chunk.file ? chunkSha : chosen.sha, true);
@@ -184,11 +187,6 @@ function unchangedImportTargets(
   return [...targets];
 }
 
-/** Of several changed files defining a name, the one the chunk's file imports — unique or nothing. */
-function disambiguate<T extends { file: string }>(matches: T[], imported: Set<string>): T | undefined {
-  const preferred = matches.filter((m) => imported.has(m.file));
-  return preferred.length === 1 ? preferred[0] : undefined;
-}
 
 /** First span (pre-order, source order) whose name matches, searching nested declarations. */
 function findSymbol(symbols: SymbolSpan[] | undefined, name: string): SymbolSpan | undefined {
