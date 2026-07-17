@@ -1,4 +1,5 @@
-import { type Book, type Chunk, chunkTitle, isLowSignal, lowSignalReason } from './model.js';
+import { type Book, type Chunk, chunkTitle, isLowSignal, LEFTOVERS_SECTION_ID, lowSignalReason } from './model.js';
+import type { NarrationOverlay } from './narration.js';
 
 export interface FileContents {
   /** Head-side lines (1-based indexing via line - 1); absent for deleted files. */
@@ -17,12 +18,20 @@ export interface ExportBookInput {
   contents: Map<string, FileContents>;
   /** Shown in the top heading, e.g. `origin/develop..HEAD`. */
   title: string;
+  /**
+   * AI narration to embed as `> AI:` blockquotes (spec 03): opener under the title, section intro
+   * under its heading, chunk lines above their fences. Pass the overlay already filtered fresh for
+   * this book. A partial overlay adds an "AI narration: N of M sections" header so bare sections
+   * read as not-yet-narrated, never as nothing-to-see.
+   */
+  narration?: NarrationOverlay;
 }
 
 /** Renders the book as markdown — R-005's machine-assessable artifact and the R-034 eval input. */
 export function exportBookMarkdown(input: ExportBookInput): string {
   const byId = new Map(input.chunks.map((c) => [c.id, c]));
   const chunkCount = input.book.sections.reduce((n, s) => n + s.occurrences.length, 0);
+  const narration = input.narration;
 
   const out: string[] = [
     `# Code story — ${input.title}`,
@@ -31,18 +40,40 @@ export function exportBookMarkdown(input: ExportBookInput): string {
     '',
   ];
 
+  if (narration) {
+    const narratable = narratableSectionIds(input.book, byId);
+    const narrated = narratable.filter((id) => narration.sections[id]).length;
+    if (narrated < narratable.length) out.push(`> AI narration: ${narrated} of ${narratable.length} sections`, '');
+    if (narration.opener.text) out.push(`> AI: ${narration.opener.text}`, '');
+  }
+
   for (const section of input.book.sections) {
     out.push(`## ${section.title}`, '');
+    const entry = narration?.sections[section.id];
+    if (entry?.intro) out.push(`> AI: ${entry.intro}`, '');
     for (const occurrence of section.occurrences) {
       const chunk = byId.get(occurrence.chunkId);
       if (!chunk) continue;
       const lowSignal = isLowSignal(chunk) ? ` · low-signal (${lowSignalReason(chunk)})` : '';
       out.push(`### ${chunkTitle(chunk)}`, '', `${chunk.kind} · ${sizeLabel(chunk)}${lowSignal}`, '');
+      const line = entry?.chunks[chunk.id];
+      if (line) out.push(`> AI: ${line}`, '');
       out.push(...diffBlock(chunk, input.contents.get(chunk.file)), '');
     }
   }
 
   return out.join('\n');
+}
+
+/** Sections that can carry narration: not the leftovers section, and not all-low-signal (spec 03). */
+function narratableSectionIds(book: Book, byId: Map<string, Chunk>): string[] {
+  const ids: string[] = [];
+  for (const section of book.sections) {
+    if (section.id === LEFTOVERS_SECTION_ID) continue;
+    const chunks = section.occurrences.map((o) => byId.get(o.chunkId)).filter((c): c is Chunk => c !== undefined);
+    if (chunks.length > 0 && !chunks.every((c) => isLowSignal(c))) ids.push(section.id);
+  }
+  return ids;
 }
 
 function sizeLabel(chunk: Chunk): string {
