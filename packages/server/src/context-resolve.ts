@@ -14,7 +14,7 @@ import {
   type SymbolSpan,
 } from '@code-story/core';
 import { extractImports } from './imports.js';
-import { extractReferences, justifiedUniqueFile } from './references.js';
+import { extractReferences, resolveDefiningSpan } from './references.js';
 import { extractSymbols } from './treesitter.js';
 
 /** A changed file and its diff status — the resolver reads deleted files at base, everything else at head. */
@@ -43,6 +43,8 @@ const PATH_SPECIFIER_EXTS = new Set(['ts', 'tsx', 'js', 'jsx', 'mjs', 'cjs', 'mt
 export function createContextResolver(deps: ContextResolveDeps) {
   const contentCache = new Map<string, Promise<string | undefined>>();
   const symbolCache = new Map<string, Promise<SymbolSpan[] | undefined>>();
+
+  const shaOf = (status: FileStatus): string => (status === 'deleted' ? deps.baseSha : deps.headSha);
 
   const readContent = (sha: string, filePath: string): Promise<string | undefined> => {
     const key = `${sha}\0${filePath}`;
@@ -91,56 +93,48 @@ export function createContextResolver(deps: ContextResolveDeps) {
       ? unchangedImportTargets(chunk.file, content, deps.headPaths, statusOf)
       : [];
 
+    const shaByFile = new Map(changedFiles.map((cf) => [cf.path, shaOf(cf.status)]));
+    const changedSymbols: [string, SymbolSpan[] | undefined][] = [];
+    for (const cf of changedFiles) changedSymbols.push([cf.path, await symbolsAt(shaOf(cf.status), cf.path)]);
+
     const byKey = new Map<string, ContextDefinition>();
     for (const ref of refs) {
       const def =
-        (await resolveChanged(ref.name, chunk, ranges, changedFiles, imported, chunkSha)) ??
-        (await resolveUnchanged(ref.name, specifierTargets));
+        (await resolveChanged(ref.name, chunk, ranges, changedSymbols, shaByFile, imported)) ??
+        (await resolveUnchanged(ref.name, chunk.file, specifierTargets));
       if (def) byKey.set(`${def.file}\0${def.symbol}`, def);
     }
     payload.facts.definitions = [...byKey.values()];
     return payload;
   }
 
-  /**
-   * Changed-file lookup (all languages): the symbol tables `computeChunks` builds, rebuilt here from
-   * the same content (memoized). The defining file must pass `justifiedUniqueFile` (#91: a lone
-   * in-diff match for a repo-wide name — 8 `CreateEntry` definitions, one in the diff — confidently
-   * resolved to the wrong class).
-   */
+  /** Changed-file lookup (all languages): the referenced name's unique justified defining span, if any. */
   async function resolveChanged(
     name: string,
     chunk: Chunk,
     ranges: LineRange[],
-    changedFiles: ChangedFile[],
+    changedSymbols: readonly (readonly [string, SymbolSpan[] | undefined])[],
+    shaByFile: Map<string, string>,
     imported: Set<string>,
-    chunkSha: string,
   ): Promise<ContextDefinition | undefined> {
-    const matches: { file: string; span: SymbolSpan; sha: string }[] = [];
-    for (const cf of changedFiles) {
-      const sha = cf.status === 'deleted' ? deps.baseSha : deps.headSha;
-      const span = findSymbol(await symbolsAt(sha, cf.path), name);
-      if (!span) continue;
-      // A symbol the chunk itself declares is not "called code the reviewer can't see" — skip it.
-      if (cf.path === chunk.file && overlaps(span, ranges)) continue;
-      matches.push({ file: cf.path, span, sha });
-    }
-    const chosenFile = justifiedUniqueFile(chunk.file, imported, matches.map((m) => m.file));
-    const chosen = matches.find((m) => m.file === chosenFile);
+    // A symbol the chunk itself declares is not "called code the reviewer can't see" — skip it.
+    const skip = (file: string, span: SymbolSpan) => file === chunk.file && overlaps(span, ranges);
+    const chosen = resolveDefiningSpan(name, chunk.file, imported, changedSymbols, skip);
     if (!chosen) return undefined;
-    // A changed match at the chunk's own sha keeps that sha; other changed files read at head.
-    return buildDefinition(name, chosen.file, chosen.span, chosen.file === chunk.file ? chunkSha : chosen.sha, true);
+    return buildDefinition(name, chosen.file, chosen.span, shaByFile.get(chosen.file)!, true);
   }
 
-  /** Unchanged-file lookup (path-specifier languages): exactly one imported unchanged file must define it. */
-  async function resolveUnchanged(name: string, targets: string[]): Promise<ContextDefinition | undefined> {
-    const matches: { file: string; span: SymbolSpan }[] = [];
-    for (const file of targets) {
-      const span = findSymbol(await symbolsAt(deps.headSha, file), name);
-      if (span) matches.push({ file, span });
-    }
-    if (matches.length !== 1) return undefined;
-    return buildDefinition(name, matches[0]!.file, matches[0]!.span, deps.headSha, false);
+  /** Unchanged-file lookup (path-specifier languages): the name's unique defining span among imported unchanged files. */
+  async function resolveUnchanged(
+    name: string,
+    consumerFile: string,
+    targets: string[],
+  ): Promise<ContextDefinition | undefined> {
+    const symbolsByFile: [string, SymbolSpan[] | undefined][] = [];
+    for (const file of targets) symbolsByFile.push([file, await symbolsAt(deps.headSha, file)]);
+    const chosen = resolveDefiningSpan(name, consumerFile, new Set(targets), symbolsByFile);
+    if (!chosen) return undefined;
+    return buildDefinition(name, chosen.file, chosen.span, deps.headSha, false);
   }
 
   async function buildDefinition(
@@ -186,16 +180,6 @@ function unchangedImportTargets(
   return [...targets];
 }
 
-
-/** First span (pre-order, source order) whose name matches, searching nested declarations. */
-function findSymbol(symbols: SymbolSpan[] | undefined, name: string): SymbolSpan | undefined {
-  for (const s of symbols ?? []) {
-    if (s.name === name) return s;
-    const nested = findSymbol(s.children, name);
-    if (nested) return nested;
-  }
-  return undefined;
-}
 
 function overlaps(span: SymbolSpan, ranges: LineRange[]): boolean {
   return ranges.some((r) => span.startLine <= r.end && span.endLine >= r.start);

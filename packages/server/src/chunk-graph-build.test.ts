@@ -101,6 +101,23 @@ describe('buildChunkGraph', () => {
     expect(cg.edges.filter((e) => e.kind === 'calls')).toHaveLength(0);
   });
 
+  it('emits no edge when the defining file holds two same-name spans (#86 overloads)', async () => {
+    const consumer = 'import { build } from \'./helper\';\nexport function run() {\n  return build();\n}\n';
+    const helper = 'export function build(a) { return a; }\nexport function build(a, b) { return a + b; }\n';
+    const consumerChunk = chunk('consumer', 'consumer.ts', 2, 4, ['run']);
+    const helperChunk = chunk('helper', 'helper.ts', 1, 2, ['build']);
+    const cg = await build({
+      files: [fileDiff('consumer.ts', [consumerChunk]), fileDiff('helper.ts', [helperChunk])],
+      chunks: [consumerChunk, helperChunk],
+      contents: new Map([
+        ['consumer.ts', { head: consumer.split('\n') }],
+        ['helper.ts', { head: helper.split('\n') }],
+      ]),
+      graph: { edges: [{ from: 'consumer.ts', to: 'helper.ts' }], unresolved: 0 },
+    });
+    expect(cg.edges.filter((e) => e.kind === 'calls')).toHaveLength(0);
+  });
+
   it('classifies a test file\'s call into its impl as exercises (never calls)', async () => {
     const spec = 'import { doWork } from \'./svc\';\ndoWork();\n';
     const svc = 'export function doWork() {\n  return 1;\n}\n';
