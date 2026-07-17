@@ -8,6 +8,7 @@ import {
   applyReviewPatch,
   type Book,
   type BookResponse,
+  bookFingerprint,
   type Chunk,
   CORE_VERSION,
   compileBook,
@@ -41,7 +42,7 @@ import {
   narrationFilePath,
   narrationJobFilePath,
 } from './narration-store.js';
-import { runOrderJob } from './order-job.js';
+import { runOrderJob, shouldAutoKickOrder } from './order-job.js';
 import { ORDER_PROMPT_VERSION } from './order-prompt.js';
 import { loadJobRecord, loadOverlay, orderFilePath, orderJobFilePath, type OrderJobRecord, saveJson } from './order-store.js';
 import { defaultDataHome, loadReview, repoIdFrom, reviewFilePath, saveReview } from './review-store.js';
@@ -79,6 +80,12 @@ export interface ServerOptions {
   range: ResolvedRange;
   /** Override of `~/.code-story` for tests. */
   dataHome?: string;
+  /** Auto-run the ordering job on compile when no fresh overlay exists (default true; #71). */
+  autoOrder?: boolean;
+  /** Model for the auto-kicked ordering job and the default for POST /api/order-job. */
+  orderModel?: string;
+  /** Test seam: replaces the claude subprocess the order job spawns. */
+  orderInvoke?: (prompt: string, model: string, cwd: string) => Promise<string>;
   /** Test seam: replaces the claude subprocess the narration job spawns. */
   narrationInvoke?: (prompt: string, model: string, cwd: string) => Promise<string>;
 }
@@ -180,11 +187,55 @@ export function startServer(options: ServerOptions, requestedPort = 0): Promise<
     return c.json(response);
   });
 
+  const autoOrder = options.autoOrder ?? true;
+  const orderModel = options.orderModel ?? 'opus';
+
   // The in-flight ordering job. A persisted `running` record without this handle is an orphan
   // from a dead daemon and reads as failed. liveRecord mirrors what the running job will
   // persist, so GET never misreads the window before the record file lands.
   let liveJob: Promise<void> | undefined;
   let liveRecord: OrderJobRecord | undefined;
+  // Fingerprints whose job already failed this daemon lifetime: a broken claude CLI must not
+  // retry-storm on every compile. A plain restart clears it and re-tries.
+  const failedFingerprints = new Set<string>();
+
+  type OrderStore = Awaited<ReturnType<typeof getStore>>;
+  // Starts the ordering job unless one is already in flight. Synchronous up to the liveJob
+  // assignment (no await between the guard and it) so two concurrent callers can't both spawn.
+  function kickOrderJob(store: OrderStore, model: string): { record: OrderJobRecord | undefined; started: boolean } {
+    if (liveJob !== undefined) return { record: liveRecord, started: false };
+    const record: OrderJobRecord = {
+      version: 1,
+      status: 'running',
+      model,
+      promptVersion: ORDER_PROMPT_VERSION,
+      startedAt: new Date().toISOString(),
+    };
+    liveRecord = record;
+    liveJob = (async () => {
+      let fingerprint: string | undefined;
+      try {
+        await saveJson(store.jobFile, record);
+        const { book, chunks, graph } = await getBook();
+        fingerprint = bookFingerprint(book);
+        const overlay = await runOrderJob({ book, graph, chunks, model, cwd: store.dataHome, invoke: options.orderInvoke });
+        await saveJson(store.orderFile, overlay);
+        await saveJson(store.jobFile, { ...record, status: 'done', finishedAt: new Date().toISOString() });
+      } catch (e) {
+        if (fingerprint !== undefined) failedFingerprints.add(fingerprint);
+        await saveJson(store.jobFile, {
+          ...record,
+          status: 'failed',
+          finishedAt: new Date().toISOString(),
+          error: (e as Error).message,
+        }).catch(() => undefined);
+      } finally {
+        liveJob = undefined;
+        liveRecord = undefined;
+      }
+    })();
+    return { record, started: true };
+  }
 
   app.get('/api/order', async (c) => {
     const { orderFile, jobFile } = await getStore();
@@ -201,41 +252,32 @@ export function startServer(options: ServerOptions, requestedPort = 0): Promise<
 
   app.post('/api/order-job', async (c) => {
     const body = (await c.req.json().catch(() => ({}))) as { model?: string };
-    const { dataHome, orderFile, jobFile } = await getStore();
-    // No awaits between this guard and the liveJob assignment — a second concurrent POST must
-    // see the first one's handle, or two paid model calls race on the same overlay file.
-    if (liveJob !== undefined) {
-      return c.json({ job: liveRecord && jobSummary(liveRecord) }, 200);
-    }
-    const record: OrderJobRecord = {
-      version: 1,
-      status: 'running',
-      model: body.model ?? 'opus',
-      promptVersion: ORDER_PROMPT_VERSION,
-      startedAt: new Date().toISOString(),
-    };
-    liveRecord = record;
-    liveJob = (async () => {
-      try {
-        await saveJson(jobFile, record);
-        const { book, chunks, graph } = await getBook();
-        const overlay = await runOrderJob({ book, graph, chunks, model: record.model, cwd: dataHome });
-        await saveJson(orderFile, overlay);
-        await saveJson(jobFile, { ...record, status: 'done', finishedAt: new Date().toISOString() });
-      } catch (e) {
-        await saveJson(jobFile, {
-          ...record,
-          status: 'failed',
-          finishedAt: new Date().toISOString(),
-          error: (e as Error).message,
-        });
-      } finally {
-        liveJob = undefined;
-        liveRecord = undefined;
-      }
-    })();
-    return c.json({ job: jobSummary(record) }, 202);
+    const store = await getStore();
+    const { record, started } = kickOrderJob(store, body.model ?? orderModel);
+    return c.json({ job: record && jobSummary(record) }, started ? 202 : 200);
   });
+
+  // Default-on (#71): on compile, run the ordering job in the background when no fresh overlay
+  // exists. Never blocks the book — the daemon serves tier 0 immediately, the overlay applies on
+  // the next book load per order-logic's rules. Fail-open: a broken store/compile just means no
+  // auto order, never a startup failure.
+  async function maybeAutoKickOrder(): Promise<void> {
+    if (!autoOrder) return;
+    try {
+      const store = await getStore();
+      const [overlay, { book }] = await Promise.all([loadOverlay(store.orderFile), getBook()]);
+      const decision = {
+        enabled: autoOrder,
+        hasFreshOverlay: overlay !== null && isOverlayFresh(book, overlay),
+        jobInFlight: liveJob !== undefined,
+        fingerprint: bookFingerprint(book),
+        failedFingerprints,
+      };
+      if (shouldAutoKickOrder(decision)) kickOrderJob(store, orderModel);
+    } catch {
+      // Fail-open: no auto order this compile; the book still serves tier 0.
+    }
+  }
 
   // Serialized like review saves: concurrent PATCHes (auto-apply vs dismiss, two tabs) must not
   // interleave their read-modify-write and drop each other's sticky flag.
@@ -419,6 +461,7 @@ export function startServer(options: ServerOptions, requestedPort = 0): Promise<
   return new Promise((resolve) => {
     const server = serve({ fetch: app.fetch, port: requestedPort, hostname: '127.0.0.1' }, (info) => {
       const url = `http://127.0.0.1:${info.port}`;
+      void maybeAutoKickOrder();
       resolve({ port: info.port, url, close: () => server.close() });
     });
   });

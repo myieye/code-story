@@ -10,8 +10,19 @@ prefers the AI order 8 trials to 1 across three subjects and language mixes (2/3
 3/3 C#-only — where it fixed the 2-cycle git-order fallback `--check-order` can't see — and
 3/3 Svelte/TS; `docs/evals/dogfood-0-baseline.md` Dogfood 2+3). Tim accepted the judge
 evidence in place of the blind human read (the sealed pairs remain in
-`docs/evals/blind-read-2026-07-16/` if ever wanted). Default-on implementation is issue #71;
-until it lands, `--ai-order` remains the invocation.
+`docs/evals/blind-read-2026-07-16/` if ever wanted).
+**Default-on shipped (#71, 2026-07-17):** AI ordering is now the default. On book compile the
+daemon (and the CLI serve path) auto-runs the ordering job in the background when no fresh
+overlay exists; tier 0 is the fallback, not the request. Opt out with `--no-ai-order` (or
+`CODE_STORY_NO_AI_ORDER`), which disables the auto job and leaves the book in tier-0 order;
+`--order tier0` remains the `--export` escape hatch. The auto-kick reuses the one-in-flight
+guard and the fingerprint-freshness check, and it will not retry a fingerprint whose job
+already failed this daemon lifetime (a plain restart re-tries). Fail-open is unchanged: no
+claude CLI / network / model → tier-0 book, quiet indicator, never an error wall.
+**First-open call (gradual, recorded per #71):** book compile is never blocked on the job —
+the daemon serves tier 0 immediately and the overlay applies on the *next* book load per
+`order-logic.ts` (auto-apply when no `reviewed` mark yet; offer otherwise). No live polling /
+mid-session reorder was added — that is the deferred ambitious path (see scoping call 4).
 Date: 2026-07-16
 Satisfies: R-042 (the AI half of the ladder — this is the milestone where AI must *earn* its
 tokens), R-005 (narrative ordering + "an AI can score the readability of the generated book"),
@@ -126,8 +137,10 @@ the free mechanical gate only.
 
 ## Runtime shape
 
-- **Trigger**: explicit only — `code-story <range> --ai-order` or `POST /api/order-job`. No
-  automatic spend on every compile (scoping call 4).
+- **Trigger**: default-on since #71 — book compile auto-kicks the job in the background when no
+  fresh overlay exists (`--no-ai-order`/`CODE_STORY_NO_AI_ORDER` opts out). `code-story <range>
+  --ai-order` still runs it synchronously (needed for `--export`), and `POST /api/order-job`
+  still forces a run. (Was scoping call 4's opt-in; flipped by Tim's #28 ship verdict.)
 - **Job**: the daemon spawns `claude -p` (Agent SDK path deferred) with the manifest and a
   strict JSON output contract; job record persisted next to the overlay with status
   `running/done/failed`, model id, and timings. A `running` status is only trusted while the
@@ -164,8 +177,12 @@ the free mechanical gate only.
    guessing wrong *because* it couldn't see code — that evidence flips this switch.
 3. **Story block only; low-signal tail pinned.** Ambitious: let the model rescue a mis-stubbed
    section into the story. Wrong layer — that's a classifier fix, not an ordering decision.
-4. **Opt-in trigger.** Ambitious: auto-run on every book open behind a config flag. Deferred
-   until the eval proves the order is worth tokens on arbitrary diffs (R-042/R-024 balance).
+4. **Opt-in trigger.** ~~Ambitious: auto-run on every book open behind a config flag.~~
+   **Resolved by #71 (2026-07-17):** the eval cleared the gate (Tim's #28 ship verdict), so
+   auto-run is now the default (opt out with `--no-ai-order`). The still-deferred ambitious
+   path is *live* application — the web fetches order once at load, so an overlay produced by
+   the background job applies on the next book load, not mid-session. Adding polling / a live
+   "reading order ready" nudge is future work.
 5. **`claude -p` subprocess, not the Agent SDK.** Ambitious: SDK integration with streaming
    progress. The subprocess is the smallest Anthropic-sanctioned path (subscription rule);
    revisit when jobs need mid-flight interaction (M3 threads will).

@@ -39,6 +39,7 @@ const dumpGraph = args.includes('--dump-graph');
 const checkOrderFlag = args.includes('--check-order');
 const dumpManifest = args.includes('--dump-manifest');
 const aiOrder = args.includes('--ai-order');
+const noAiOrder = args.includes('--no-ai-order') || Boolean(process.env.CODE_STORY_NO_AI_ORDER);
 const narrate = args.includes('--narrate');
 const narration = args.includes('--narration');
 const exportIndex = args.indexOf('--export');
@@ -61,7 +62,12 @@ if (
   (orderChoice !== 'tier0' && orderChoice !== 'ai')
 ) {
   console.error(
-    'Usage: code-story <base>..<head> [--export book.md] [--narration] [--order tier0|ai] [--ai-order] [--narrate] [--model <id>] [--port <n>] [--dump-diff] [--dump-chunks] [--dump-graph] [--check-order] [--dump-manifest] [--no-open]',
+    'Usage: code-story <base>..<head> [--export book.md] [--narration] [--order tier0|ai] [--ai-order] [--no-ai-order] [--narrate] [--model <id>] [--port <n>] [--dump-diff] [--dump-chunks] [--dump-graph] [--check-order] [--dump-manifest] [--no-open]\n' +
+      '\n' +
+      'AI reading order is the default: the daemon runs the ordering job in the background on\n' +
+      'compile and applies it on the next book load. --no-ai-order (or CODE_STORY_NO_AI_ORDER)\n' +
+      'disables the auto job; the book then stays in tier-0 (deterministic) order. --order tier0\n' +
+      'forces tier-0 order on --export.',
   );
   process.exit(1);
 }
@@ -249,7 +255,7 @@ if (aiOrder || narrate || exportPath) {
   }
 }
 
-const { url } = await startServer({ repo, range: resolved }, port);
+const { url } = await startServer({ repo, range: resolved, autoOrder: !noAiOrder, orderModel: model }, port);
 
 console.log(`code-story serving ${range} (${resolved.base.slice(0, 8)}..${resolved.head.slice(0, 8)}) at ${url}`);
 console.log('Ctrl+C to stop.');
