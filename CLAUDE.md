@@ -205,7 +205,27 @@ tool-less spawn + brace-balanced JSON extraction (order-eval imports it from dis
 `pnpm build`), web overlay state lives in `useOrderOverlay.ts`, indicator only claims AI order
 when the applier actually reordered. Test counts now core 124 / server 25 / web 18 = 167.
 #26 closed with the verdict; #27 filed (order-2 prompt: locality-vs-purity rank,
-evidence-gated like #21). Next: #28 decides ship/default; then M3 scoping (narration/context
-payloads — R-036 becomes the gate) or the ambitious paths spec 02 defers (chunk-level
-interleave, code excerpts in manifest, auto-run).
+evidence-gated like #21).
+**Overnight window (2026-07-17)**: Dogfood 3 done (#30 → PR #31): lexbox PR 2309, Svelte/TS-only
+— **AI 3/3**, cleanest consensus yet; running tally AI 8 / tier-0 1 across three subjects/
+language mixes; third sealed pair added to the blind-read folder (#28 is now 3 pairs). Harvested
+**#32** (Kahn cycle-stall fallback emits dependents of a stalled SCC early — first subject where
+tier 0 itself fails `--check-order`) and **#33** (`.svelte.ts` runes modules invisible to the
+import graph; fix = recursive `stripCodeExt`, **needs CORE_VERSION bump**). **Spec 03 landed**
+(`docs/spec/03-narration.md`, PR #34) — drafted + grilled (14 findings; the blocker: narration
+keyed by order-independent per-section fingerprints so the order overlay can never invalidate a
+narration run; generator default opus — cheap-tier only after the eval clears it; faithfulness
+gated on a floor, not a median; sparse-by-design chunk lines; partial overlays must say "N of M
+sections"). M3 slices = **#35–#39**. #35 done (PR #40): core `narration.ts` — fingerprints,
+overlay types + freshness filter (fail-open = drop narration, never passthrough), register gate
+(caps/22-word/judgment-lint hard, backtick-aware Flesch soft). #36 done (PR #41):
+`buildSectionNarrationInput` (6k-token cap, `omitted` ids, in-prompt omission markers),
+renderer, `parseNarrationReply` (foreign chunk ids reject), server `narration-prompt.ts`
+(`narration-1`, snapshot-pinned). Test counts core 151 / server 28 / web 18 = 197.
+Subagent-worktree ops (hard-won): `.claude/worktrees/` is gitignored; every agent bash command
+must `cd` into its worktree (cwd resets leak into the main tree — one leak corrupted main-tree
+branch state, repaired) and push via `git push origin HEAD:refs/heads/<branch>`, never a local
+branch. Next: **#37** (resumable narration job + store + API + CLI), then #38 (web render),
+#39 (narration eval + dogfood 4). #28 still awaits Tim (now 3 pairs). The 02:09Z trigger
+message is stale-but-thin (its steps done early) — acknowledge and continue per this pointer.
 Dogfood target: languageforge/lexbox (C# + Svelte/TS); repo-agnostic (R-025).
