@@ -284,11 +284,15 @@ section grain it's the weak version), thoroughly configurable with Tim's picks a
 AI-augmented ordering by default. Work = **#72** (spec pass first — checkOrder inversion
 semantics, Kahn direction, test anchor, order prompt hard rule, and the eval rubric all encode
 dependency-first today). **#72 interacts with #71**: don't implement #71's default-on around
-axioms #72 is about to flip — coordinate or sequence them. Two questions are pending WITH TIM
-(interim direction before interleave exists; e2e-vs-unit test placement) — check the chat
-before starting #72.
-Next (as of this writing — verify freshness on wake): **#64** (definition resolution + head
-path index + store + API — the M4 heart; spec 04 "Resolution pipeline" step 2 is the
-contract, #62's model + #63's extraction are its inputs), then #65 → #66 → #67 → #68 per
-blocking edges; #71/#72 per the note above. #21/#27/#58 evidence-gated watches.
+axioms #72 is about to flip — coordinate or sequence them. **Tim answered both #72 questions
+(~07:40Z, verbatim in the addendum's follow-up section): (1) consumer-first is an MVP goal —
+build the GOOD version (chunk-level call-path flow) by whichever path is fastest, section-level
+flip only as a stepping stone if it truly speeds that; (2) test placement by kind is delegated
+to Claude's judgment, with a hard rider: one-keystroke more-context when a lone test without
+its setup isn't enough (R-008/R-009 — M4's context payloads serve exactly this).**
+Next (as of this writing — verify freshness on wake): **#72 spec pass FIRST** (spec 05
+candidate: consumer-first + call-path interleave + config + test-placement-by-kind; grill it;
+decide #71 sequencing and how much of M4 #64–#68 it pulls in — the context-payload machinery
+serves the test-context rider, so interleaving M4 slices may BE the fastest path). Then resume
+M4 per blocking edges. #21/#27/#58 evidence-gated watches.
 Dogfood target: languageforge/lexbox (C# + Svelte/TS); repo-agnostic (R-025).

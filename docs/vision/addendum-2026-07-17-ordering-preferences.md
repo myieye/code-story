@@ -19,3 +19,15 @@ book ordering.
 > whatever is configured, it sounds like it should be calculated/augmented, by default, by AI.
 >
 > I'm nervous about running more trials now. they cost a decent amount of tokens, right?
+
+## Follow-up answers (same day, ~07:40Z)
+
+Asked: (1) interim direction before chunk-level interleaving exists; (2) e2e-vs-unit test
+placement. Tim, verbatim:
+
+> 1) focus on getting a good consumer first implementation built. that's an mvp goal, so
+> whichever oath gets us there fastest - I don't mind
+>
+> 2) yes, I trust your judgments on the varied test placements depending on kinds. remember it
+> should be easy to get more context if e.g. a user finds that seeing only a single specific
+> test without setup code is not sufficient.
