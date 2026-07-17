@@ -1,6 +1,6 @@
-import type { BookResponse, OrderPatch, OrderResponse, ReviewFile, ReviewPatch } from '@code-story/core';
+import type { BookResponse, NarrationResponse, OrderPatch, OrderResponse, ReviewFile, ReviewPatch } from '@code-story/core';
 
-export type { BookResponse, OrderResponse };
+export type { BookResponse, NarrationResponse, OrderResponse };
 
 export async function fetchBook(): Promise<BookResponse> {
   const response = await fetch('/api/book');
@@ -18,6 +18,12 @@ export async function fetchOrder(): Promise<OrderResponse> {
   const response = await fetch('/api/order');
   if (!response.ok) throw new Error(`GET /api/order failed: ${response.status}`);
   return response.json() as Promise<OrderResponse>;
+}
+
+export async function fetchNarration(): Promise<NarrationResponse> {
+  const response = await fetch('/api/narration');
+  if (!response.ok) throw new Error(`GET /api/narration failed: ${response.status}`);
+  return response.json() as Promise<NarrationResponse>;
 }
 
 /** Fire-and-forget from the caller's perspective — the banner/indicator decision is local-first. */

@@ -1,13 +1,14 @@
 import { type Chunk, type ChunkReviewState, isLowSignal, type ReviewFile } from '@code-story/core';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { BookResponse, OrderResponse } from './api.js';
+import type { BookResponse, NarrationResponse, OrderResponse } from './api.js';
 import { OutlineSidebar } from './OutlineSidebar.js';
 import { batchableSections, findUnreviewed, pendingStubCount } from './review-logic.js';
 import { estimateRowHeight, RowView, type SectionAck } from './RowView.js';
 import { flattenBook, occurrenceKey, type Row } from './rows.js';
 import { ShortcutOverlay } from './ShortcutOverlay.js';
 import { useBookKeymap } from './useBookKeymap.js';
+import { useNarration } from './useNarration.js';
 import { useOrderOverlay } from './useOrderOverlay.js';
 import { useReview } from './useReview.js';
 import { useSeenTracking } from './useSeenTracking.js';
@@ -16,15 +17,22 @@ export function BookPage({
   data,
   initialReview,
   initialOrder,
+  initialNarration,
 }: {
   data: BookResponse;
   initialReview: ReviewFile;
   initialOrder: OrderResponse;
+  initialNarration: NarrationResponse;
 }) {
   const review = useReview(initialReview);
   const order = useOrderOverlay(data, initialOrder, review.states);
-  const { bookData, orderApplied, rationales: sectionRationales } = order;
-  const hasRationale = useCallback((id: string) => Boolean(sectionRationales?.[id]), [sectionRationales]);
+  const { bookData, orderApplied } = order;
+  const narration = useNarration(bookData, initialNarration, order.rationales);
+  const hasSectionLine = useCallback((id: string) => narration.sectionLine(id) !== undefined, [narration]);
+  const hasChunkLine = useCallback(
+    (sectionId: string, chunkId: string) => narration.chunkLine(sectionId, chunkId) !== undefined,
+    [narration],
+  );
 
   const flat = useMemo(() => flattenBook(bookData.book, bookData.chunks), [bookData]);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -90,7 +98,7 @@ export function BookPage({
   const virtualizer = useVirtualizer({
     count: flat.rows.length,
     getScrollElement: () => scrollRef.current,
-    estimateSize: (i) => estimateRowHeight(flat.rows[i]!, bookData, isCollapsed, hasRationale),
+    estimateSize: (i) => estimateRowHeight(flat.rows[i]!, bookData, isCollapsed, { hasSectionLine, hasChunkLine }),
     overscan: 8,
   });
 
@@ -256,6 +264,19 @@ export function BookPage({
               AI reading order
             </span>
           )}
+          {narration.indicator?.kind === 'partial' && (
+            <span
+              className="ai-narration-indicator"
+              title="Some sections carry an AI-written note; bare sections are not yet narrated"
+            >
+              AI narration: {narration.indicator.narrated} of {narration.indicator.narratable} sections
+            </span>
+          )}
+          {narration.indicator?.kind === 'complete' && (
+            <span className="ai-narration-indicator" title="These sections carry an AI-written note">
+              AI narration
+            </span>
+          )}
         </span>
         <span className="spacer" />
         {lastBatch && (
@@ -311,6 +332,12 @@ export function BookPage({
           </button>
         </div>
       )}
+      {narration.opener && (
+        <div className="book-opener" role="note" aria-label="AI opener">
+          <span className="badge ai-badge">AI</span>
+          <span className="book-opener-text">{narration.opener}</span>
+        </div>
+      )}
       <div className="body">
         <OutlineSidebar
           data={bookData}
@@ -347,7 +374,8 @@ export function BookPage({
                       reviewedCount={reviewedCount}
                       sectionStats={sectionStats}
                       sectionAck={row.kind === 'section' ? sectionAckFor(row.id) : undefined}
-                      sectionRationale={row.kind === 'section' ? sectionRationales?.[row.id] : undefined}
+                      sectionAiLine={row.kind === 'section' ? narration.sectionLine(row.id)?.text : undefined}
+                      chunkAiLine={row.kind === 'chunk' ? narration.chunkLine(row.sectionId, row.chunk.id) : undefined}
                       onMarkSection={markSection}
                       onUndoBatch={undoBatch}
                       state={row.kind === 'chunk' ? review.stateOf(row.chunk.id) : 'unseen'}
