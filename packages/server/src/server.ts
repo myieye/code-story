@@ -12,8 +12,10 @@ import {
   type Chunk,
   CORE_VERSION,
   compileBook,
+  type ContextJobResponse,
   type ContextPayload,
   type ContextResponse,
+  type ContextStoreFile,
   exportBookMarkdown,
   type FileContents,
   type FileDiff,
@@ -31,7 +33,15 @@ import {
 import { Hono } from 'hono';
 import { computeChunks } from './chunks.js';
 import { createContextResolver } from './context-resolve.js';
-import { contextFilePath, loadContextStore } from './context-store.js';
+import { eligibleContextChunks, runContextJob } from './context-job.js';
+import {
+  type ContextJobRecord,
+  contextFilePath,
+  contextJobFilePath,
+  DEFAULT_CONTEXT_STORE_CAP_BYTES,
+  loadContextJobRecord,
+  loadContextStore,
+} from './context-store.js';
 import { diffRange, fileAt, listTree, originUrl, type ResolvedRange, rootCommit } from './git.js';
 import { runNarrationJob } from './narration-job.js';
 import { NARRATION_PROMPT_VERSION } from './narration-prompt.js';
@@ -75,6 +85,23 @@ function narrationJobSummary(record: NarrationJobRecord): NonNullable<NarrationR
   };
 }
 
+function contextJobSummary(record: ContextJobRecord): NonNullable<ContextJobResponse['job']> {
+  const { status, startedAt, finishedAt, error, chunksTotal, chunksDone, computed, skipped, capped, cappedCount } =
+    record;
+  return {
+    status,
+    startedAt,
+    chunksTotal,
+    chunksDone,
+    computed,
+    skipped,
+    capped,
+    cappedCount,
+    ...(finishedAt ? { finishedAt } : {}),
+    ...(error ? { error } : {}),
+  };
+}
+
 export interface ServerOptions {
   repo: string;
   range: ResolvedRange;
@@ -88,6 +115,8 @@ export interface ServerOptions {
   orderInvoke?: (prompt: string, model: string, cwd: string) => Promise<string>;
   /** Test seam: replaces the claude subprocess the narration job spawns. */
   narrationInvoke?: (prompt: string, model: string, cwd: string) => Promise<string>;
+  /** Byte cap for the context payload store (default ~2 MB); a tiny value exercises cap behavior. */
+  contextStoreCapBytes?: number;
 }
 
 export interface RunningServer {
@@ -132,6 +161,7 @@ export function startServer(options: ServerOptions, requestedPort = 0): Promise<
         narrationFile: string;
         narrationJobFile: string;
         contextFile: string;
+        contextJobFile: string;
       }>
     | undefined;
   const getStore = () =>
@@ -147,6 +177,7 @@ export function startServer(options: ServerOptions, requestedPort = 0): Promise<
           narrationFile: narrationFilePath(dataHome, repoId, options.range),
           narrationJobFile: narrationJobFilePath(dataHome, repoId, options.range),
           contextFile: contextFilePath(dataHome, repoId, options.range),
+          contextJobFile: contextJobFilePath(dataHome, repoId, options.range),
         };
       })(),
       () => (storeCache = undefined),
@@ -398,24 +429,48 @@ export function startServer(options: ServerOptions, requestedPort = 0): Promise<
     return c.json({ ok: true });
   });
 
-  // Serializes the read-modify-write of the shared context store so two concurrent compute-on-miss
-  // GETs for different chunks don't clobber each other's payload.
+  const contextStoreCapBytes = options.contextStoreCapBytes ?? DEFAULT_CONTEXT_STORE_CAP_BYTES;
+
+  // Serializes the read-modify-write of the shared context store so a compute-on-miss GET and the
+  // bulk job never clobber each other's payload. Persists only while under the byte cap: past it a
+  // computed payload is still served (GET) but not written (spec 04 step 5) — never throws.
   let contextSaveChain = Promise.resolve();
-  const persistPayload = (file: string, payload: ContextPayload) => {
+  const persistPayload = (file: string, payload: ContextPayload): Promise<{ persisted: boolean }> => {
     const op = contextSaveChain.then(async () => {
       const current = await loadContextStore(file);
-      current.payloads[payload.chunkId] = payload;
-      await saveJson(file, current);
+      const candidate: ContextStoreFile = {
+        ...current,
+        payloads: { ...current.payloads, [payload.chunkId]: payload },
+      };
+      if (Buffer.byteLength(JSON.stringify(candidate)) > contextStoreCapBytes) return { persisted: false };
+      await saveJson(file, candidate);
+      return { persisted: true };
     });
-    contextSaveChain = op.catch(() => undefined);
+    contextSaveChain = op.then(
+      () => undefined,
+      () => undefined,
+    );
     return op;
   };
+
+  // Resolver + changed-file list, shared by the on-demand GET and the bulk job (one head-path index,
+  // one memoized (sha,path) cache per call).
+  async function contextResolveInputs() {
+    const [files, headPaths] = await Promise.all([getDiff(), getHeadPaths()]);
+    const resolver = createContextResolver({
+      fileAt: async (sha, filePath) => fileAt(options.repo, sha, filePath).catch(() => undefined),
+      headPaths,
+      headSha: options.range.head,
+      baseSha: options.range.base,
+    });
+    return { resolver, changedFiles: files.map((f) => ({ path: f.path, status: f.status })) };
+  }
 
   app.get('/api/context', async (c) => {
     const chunkId = c.req.query('chunk');
     if (!chunkId) return c.json({ error: 'missing chunk query parameter' }, 400);
 
-    const [{ chunks, graph, book }, files, { contextFile }] = await Promise.all([getBook(), getDiff(), getStore()]);
+    const [{ chunks, graph, book }, { contextFile }] = await Promise.all([getBook(), getStore()]);
     const chunk = chunks.find((ch) => ch.id === chunkId);
     if (!chunk) return c.json({ payload: null } satisfies ContextResponse);
 
@@ -423,16 +478,86 @@ export function startServer(options: ServerOptions, requestedPort = 0): Promise<
     const fresh = filterFreshContext(options.range.head, book, store)[chunkId];
     if (fresh) return c.json({ payload: fresh } satisfies ContextResponse);
 
-    const resolver = createContextResolver({
-      fileAt: async (sha, filePath) => fileAt(options.repo, sha, filePath).catch(() => undefined),
-      headPaths: await getHeadPaths(),
-      headSha: options.range.head,
-      baseSha: options.range.base,
-    });
-    const changedFiles = files.map((f) => ({ path: f.path, status: f.status }));
+    const { resolver, changedFiles } = await contextResolveInputs();
     const payload = await resolver.resolve(chunk, changedFiles, graph);
+    // At the cap the payload is served without persisting — on-demand context never stops working.
     await persistPayload(contextFile, payload);
     return c.json({ payload } satisfies ContextResponse);
+  });
+
+  // The bulk context fill, modeled on the order/narration jobs minus the model calls. One in flight
+  // per range; a persisted `running` record without this handle is an orphan from a dead daemon.
+  let liveContextJob: Promise<void> | undefined;
+  let liveContextRecord: ContextJobRecord | undefined;
+
+  app.get('/api/context-job', async (c) => {
+    const stored = await loadContextJobRecord((await getStore()).contextJobFile);
+    const record = liveContextRecord ?? stored;
+    const job =
+      record?.status === 'running' && liveContextJob === undefined
+        ? { ...record, status: 'failed' as const, error: 'job orphaned by a daemon restart — re-run it' }
+        : record;
+    return c.json({ job: job && contextJobSummary(job) } satisfies ContextJobResponse);
+  });
+
+  app.post('/api/context-job', async (c) => {
+    const { contextFile, contextJobFile } = await getStore();
+    const { chunks, graph, book } = await getBook();
+    // No awaits between this guard and the liveContextJob assignment — a second concurrent POST must
+    // see the first one's handle.
+    if (liveContextJob !== undefined) {
+      return c.json(
+        { job: liveContextRecord ? contextJobSummary(liveContextRecord) : null } satisfies ContextJobResponse,
+        200,
+      );
+    }
+    const record: ContextJobRecord = {
+      version: 1,
+      status: 'running',
+      startedAt: new Date().toISOString(),
+      chunksTotal: 0,
+      chunksDone: 0,
+      computed: 0,
+      skipped: 0,
+      capped: false,
+      cappedCount: 0,
+    };
+    liveContextRecord = record;
+    liveContextJob = (async () => {
+      try {
+        await saveJson(contextJobFile, record);
+        const eligible = eligibleContextChunks(book, chunks);
+        const freshIds = new Set(Object.keys(filterFreshContext(options.range.head, book, await loadContextStore(contextFile))));
+        const { resolver, changedFiles } = await contextResolveInputs();
+        const result = await runContextJob({
+          eligibleChunks: eligible,
+          freshIds,
+          resolve: (chunk) => resolver.resolve(chunk, changedFiles, graph),
+          persist: (payload) => persistPayload(contextFile, payload),
+          onProgress: (done, total) => {
+            record.chunksDone = done;
+            record.chunksTotal = total;
+          },
+        });
+        await saveJson(contextJobFile, {
+          ...record,
+          status: 'done',
+          finishedAt: new Date().toISOString(),
+          ...result,
+        });
+      } catch (e) {
+        await saveJson(contextJobFile, {
+          ...record,
+          status: 'failed',
+          finishedAt: new Date().toISOString(),
+          error: (e as Error).message,
+        }).catch(() => undefined);
+      } finally {
+        liveContextJob = undefined;
+        liveContextRecord = undefined;
+      }
+    })();
+    return c.json({ job: contextJobSummary(record) } satisfies ContextJobResponse, 202);
   });
 
   // `?order=ai` must never silently fall back to tier 0 — an eval comparing "both orders"

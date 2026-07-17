@@ -281,3 +281,56 @@ don't fully hold ("nulls pushed last" is true for `SyncedOldestFirst` but false 
 Verdict: `narration-3` kept (better on every axis, no register regression); spec-03 ship gate
 **stays HOLD** on the assert-vs-point mode (filed as the narration-4 candidate). Register-cap
 harvest also filed: #56 (per-text fail-open) and #57 (opener cap headroom, 3-of-4 failure rate).
+
+## Slice 0 (chunk-graph audit)
+
+**Gate half-open: awaiting Tim's blind labels.** Materials + all Claude-side numbers in `docs/evals/chunk-graph-audit-2026-07-17/` (see its README). Token-free; audits the shipped resolver (#75), not a prototype. Ranges: PR 2309 `c0448522..pr-2309`, PR 2357 `277e418d8~1..277e418d8` (baseline range), PR 2379 `8dd70ba~1..8dd70ba`. Seed `20260717`.
+
+### Edge counts (`--dump-chunk-graph`)
+
+| subject | chunks | edges | calls | exercises | file-imports |
+| --- | --- | --- | --- | --- | --- |
+| PR 2309 (Svelte/TS) | 37 | 19 | **1** | 2 | 16 |
+| PR 2357 (mixed) | 125 | 97 | **38** | 30 | 29 |
+| PR 2379 (C#-only) | 34 | 26 | **11** | 7 | 8 |
+
+First finding — **the calls layer is thin on two of three subjects.** 2309 has a single call edge (its change is mostly wiring/store migration across files that don't call each other in the diff); 2379 has 11. Only 2357 clears 30. So the sample is 42 calls edges (1 / 30 / 11), not the nominal 90, and Tim's blind subsample is 27 (1 / 15 / 11). Where a subject has fewer than 30, **all** its calls edges are sampled (spec allows it). On these subjects file-imports and exercises carry most of the relatedness; the calls precision result is strongest on 2357 and only suggestive on 2309.
+
+### Edge precision (Claude self-audit — NOT the gate)
+
+| subject | correct / sampled | precision |
+| --- | --- | --- |
+| PR 2309 | 1 / 1 | 1.00 |
+| PR 2357 | 30 / 30 | 1.00 |
+| PR 2379 | 10 / 11 | 0.909 |
+| **overall** | **41 / 42** | **0.976** |
+
+The one miss (2379-e06) is an **overload-resolution gap**: a call to `HeadwordWithTokens(ws, string, string)` resolved to the `(ws, MorphType?)` overload's chunk. The resolver is name-only and keeps the first same-name span per file, so a second overload's chunk is never a target. Not a random misfire — a nameable, fixable precision risk (arity-aware resolution, or drop edges for multi-overload names). Above 0.90 on every subject, but **this is the generator's self-grade; Tim's blind subsample is the real gate (R-026).**
+
+### Free-glance proxy (labeled a PROXY — within-pass benefit only)
+
+Linear walk in book order, marking each chunk reviewed once; per mark, count graph-neighbors (any kind) already reviewed. This **bounds the within-pass re-encounter benefit from below** — it cannot measure free-traversal value (that is dogfood 6).
+
+| subject | marks | mean | median | p90 | max | % marks with >=1 already-reviewed neighbor |
+| --- | --- | --- | --- | --- | --- | --- |
+| PR 2309 | 37 | 0.49 | 0 | 2 | 4 | 29.7% |
+| PR 2357 | 125 | 0.76 | 0 | 2 | 11 | 42.4% |
+| PR 2379 | 34 | 0.68 | 0 | 2 | 7 | 29.4% |
+
+Median 0 everywhere (in book order most chunks meet their neighbors later, not earlier), but a real tail: 30-42% of marks already have at least one reviewed neighbor, and the p90 mark has 2. That is the floor on "this chunk connects to something you already read" — modest but non-zero, and it is the pessimistic reading (book order, not a graph-guided traversal).
+
+### Chunk-size distribution (R-049 "small chunks" premise, measured)
+
+Changed-line count per chunk = sum of max(headCount, baseCount) over its hunks.
+
+| subject | min | median | p90 | max | % chunks <= 10 lines |
+| --- | --- | --- | --- | --- | --- |
+| PR 2309 | 1 | 3 | 35 | 97 | 75.7% |
+| PR 2357 | 1 | 7 | 38 | 40 | 60.8% |
+| PR 2379 | 1 | 3.5 | 20 | 37 | 82.4% |
+
+Median chunk is 3-7 changed lines and 61-82% are <=10 lines, so R-049's small-chunk premise mostly holds at M0 grain — but a p90 of ~35 and a 97-line max (2309) show a real large-chunk tail. Finer chunking stays deferred unless the UI slices show those large chunks hurt re-encounter cost.
+
+### Verdict (half-open)
+
+Claude-side precision clears 0.90 on all three subjects (0.976 overall), the free-glance floor is modest-but-real, and small-chunk grain mostly holds. **The gate stays half-open until Tim commits his blind RELEVANT/IRRELEVANT labels** in `tim-audit-*.md`; then unseal Claude's labels and compare. Note for the read: the calls layer is thin on 2309/2379, so the precision signal leans on 2357 — if Tim wants a stronger sample, a fourth calls-heavy subject would help.

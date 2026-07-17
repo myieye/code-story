@@ -1,0 +1,338 @@
+[
+  {
+    "cardId": "2309-e01",
+    "subject": "2309",
+    "from": "frontend/src/lib/components/FilterBar/FilterBar.svelte::script::mqxhkf",
+    "to": "frontend/src/lib/util/debouncedFilter.svelte.ts::debouncedFilter::1lylj32",
+    "callerLabel": "frontend/src/lib/components/FilterBar/FilterBar.svelte :: script",
+    "calleeLabel": "frontend/src/lib/util/debouncedFilter.svelte.ts :: debouncedFilter"
+  },
+  {
+    "cardId": "2357-e01",
+    "subject": "2357",
+    "from": "frontend/viewer/src/lib/activity/ActivityFilter.svelte::script.fragment 2::1yb5282",
+    "to": "frontend/viewer/src/lib/services/history-service.ts::HistoryService.listActivityChangeTypes::fq7y9q",
+    "callerLabel": "frontend/viewer/src/lib/activity/ActivityFilter.svelte :: script",
+    "calleeLabel": "frontend/viewer/src/lib/services/history-service.ts :: HistoryService.listActivityChangeTypes"
+  },
+  {
+    "cardId": "2357-e02",
+    "subject": "2357",
+    "from": "backend/FwLite/LcmCrdt/HistoryService.cs::HistoryService.ListActivityChangeTypes::74h6z7",
+    "to": "backend/FwLite/LcmCrdt/HistoryService.cs::ActivityChangeType::29pkd0",
+    "callerLabel": "backend/FwLite/LcmCrdt/HistoryService.cs :: HistoryService.ListActivityChangeTypes",
+    "calleeLabel": "backend/FwLite/LcmCrdt/HistoryService.cs :: ActivityChangeType"
+  },
+  {
+    "cardId": "2357-e03",
+    "subject": "2357",
+    "from": "frontend/viewer/src/lib/activity/ActivityView.svelte::script.fragment 1::1oylxck",
+    "to": "frontend/viewer/src/lib/activity/utils.ts::serverQueryKey::1wgif83",
+    "callerLabel": "frontend/viewer/src/lib/activity/ActivityView.svelte :: script",
+    "calleeLabel": "frontend/viewer/src/lib/activity/utils.ts :: serverQueryKey"
+  },
+  {
+    "cardId": "2357-e04",
+    "subject": "2357",
+    "from": "frontend/viewer/src/lib/services/history-service.ts::HistoryService.fetchSnapshot::b5lf69",
+    "to": "frontend/viewer/src/lib/services/history-service.ts::HistoryService.ensureLoaded::visswd",
+    "callerLabel": "frontend/viewer/src/lib/services/history-service.ts :: HistoryService.fetchSnapshot",
+    "calleeLabel": "frontend/viewer/src/lib/services/history-service.ts :: HistoryService.ensureLoaded"
+  },
+  {
+    "cardId": "2357-e05",
+    "subject": "2357",
+    "from": "frontend/viewer/src/lib/activity/utils.ts::authorSortRank::u68vum",
+    "to": "frontend/viewer/src/lib/activity/utils.ts::authorFilterKey::1c5rka7",
+    "callerLabel": "frontend/viewer/src/lib/activity/utils.ts :: authorSortRank",
+    "calleeLabel": "frontend/viewer/src/lib/activity/utils.ts :: authorFilterKey"
+  },
+  {
+    "cardId": "2357-e06",
+    "subject": "2357",
+    "from": "frontend/viewer/src/lib/activity/ActivityFilter.svelte::script.allSelectionIcon::1gejbo7",
+    "to": "frontend/viewer/src/lib/activity/utils.ts::isAllFilterSelection::wl8zn1",
+    "callerLabel": "frontend/viewer/src/lib/activity/ActivityFilter.svelte :: script.allSelectionIcon",
+    "calleeLabel": "frontend/viewer/src/lib/activity/utils.ts :: isAllFilterSelection"
+  },
+  {
+    "cardId": "2357-e07",
+    "subject": "2357",
+    "from": "backend/FwLite/FwLiteShared/Services/HistoryServiceJsInvokable.cs::HistoryServiceJsInvokable.ListActivityAuthors::lsnc9",
+    "to": "backend/FwLite/LcmCrdt/HistoryService.cs::HistoryService.ListActivityAuthors::pxevia",
+    "callerLabel": "backend/FwLite/FwLiteShared/Services/HistoryServiceJsInvokable.cs :: HistoryServiceJsInvokable.ListActivityAuthors",
+    "calleeLabel": "backend/FwLite/LcmCrdt/HistoryService.cs :: HistoryService.ListActivityAuthors"
+  },
+  {
+    "cardId": "2357-e08",
+    "subject": "2357",
+    "from": "backend/FwLite/FwLiteShared/Services/HistoryServiceJsInvokable.cs::HistoryServiceJsInvokable.ListActivityChangeTypes::8mmwdj",
+    "to": "backend/FwLite/LcmCrdt/HistoryService.cs::HistoryService.ListActivityChangeTypes::74h6z7",
+    "callerLabel": "backend/FwLite/FwLiteShared/Services/HistoryServiceJsInvokable.cs :: HistoryServiceJsInvokable.ListActivityChangeTypes",
+    "calleeLabel": "backend/FwLite/LcmCrdt/HistoryService.cs :: HistoryService.ListActivityChangeTypes"
+  },
+  {
+    "cardId": "2357-e09",
+    "subject": "2357",
+    "from": "frontend/viewer/src/lib/activity/ActivityFilter.svelte::script.fragment 2::1yb5282",
+    "to": "frontend/viewer/src/lib/activity/utils.ts::resolveFilterKeys::uywqxm",
+    "callerLabel": "frontend/viewer/src/lib/activity/ActivityFilter.svelte :: script",
+    "calleeLabel": "frontend/viewer/src/lib/activity/utils.ts :: resolveFilterKeys"
+  },
+  {
+    "cardId": "2357-e10",
+    "subject": "2357",
+    "from": "backend/FwLite/LcmCrdt/HistoryService.cs::ProjectActivity.ChangeTypes::ffudzz",
+    "to": "backend/FwLite/LcmCrdt/HistoryService.cs::HistoryService.GetChangeTypeKey::py4rw3",
+    "callerLabel": "backend/FwLite/LcmCrdt/HistoryService.cs :: ProjectActivity.ChangeTypes",
+    "calleeLabel": "backend/FwLite/LcmCrdt/HistoryService.cs :: HistoryService.GetChangeTypeKey"
+  },
+  {
+    "cardId": "2357-e11",
+    "subject": "2357",
+    "from": "frontend/viewer/src/lib/services/history-service.ts::HistoryService.activity::zyh03",
+    "to": "frontend/viewer/src/lib/services/history-service.ts::HistoryService.ensureLoaded::visswd",
+    "callerLabel": "frontend/viewer/src/lib/services/history-service.ts :: HistoryService.activity",
+    "calleeLabel": "frontend/viewer/src/lib/services/history-service.ts :: HistoryService.ensureLoaded"
+  },
+  {
+    "cardId": "2357-e12",
+    "subject": "2357",
+    "from": "backend/FwLite/LcmCrdt/HistoryService.cs::HistoryService.ProjectActivity::17et1ev",
+    "to": "backend/FwLite/LcmCrdt/HistoryService.cs::ActivityQuery::9jimum",
+    "callerLabel": "backend/FwLite/LcmCrdt/HistoryService.cs :: HistoryService.ProjectActivity",
+    "calleeLabel": "backend/FwLite/LcmCrdt/HistoryService.cs :: ActivityQuery"
+  },
+  {
+    "cardId": "2357-e13",
+    "subject": "2357",
+    "from": "backend/FwLite/FwLiteWeb/Routes/ActivityRoutes.cs::ActivityRoutes.MapActivities::kcc5o",
+    "to": "backend/FwLite/LcmCrdt/HistoryService.cs::ActivityQuery::9jimum",
+    "callerLabel": "backend/FwLite/FwLiteWeb/Routes/ActivityRoutes.cs :: ActivityRoutes.MapActivities",
+    "calleeLabel": "backend/FwLite/LcmCrdt/HistoryService.cs :: ActivityQuery"
+  },
+  {
+    "cardId": "2357-e14",
+    "subject": "2357",
+    "from": "frontend/viewer/src/lib/activity/ActivityView.svelte::script.fragment 1::1oylxck",
+    "to": "frontend/viewer/src/lib/activity/utils.ts::toServerQuery::1bo9sq2",
+    "callerLabel": "frontend/viewer/src/lib/activity/ActivityView.svelte :: script",
+    "calleeLabel": "frontend/viewer/src/lib/activity/utils.ts :: toServerQuery"
+  },
+  {
+    "cardId": "2357-e15",
+    "subject": "2357",
+    "from": "backend/FwLite/LcmCrdt/HistoryService.cs::HistoryService.ListActivityAuthors::pxevia",
+    "to": "backend/FwLite/LcmCrdt/HistoryService.cs::ActivityAuthor::i8jt6y",
+    "callerLabel": "backend/FwLite/LcmCrdt/HistoryService.cs :: HistoryService.ListActivityAuthors",
+    "calleeLabel": "backend/FwLite/LcmCrdt/HistoryService.cs :: ActivityAuthor"
+  },
+  {
+    "cardId": "2357-e16",
+    "subject": "2357",
+    "from": "frontend/viewer/src/lib/activity/ActivityView.svelte::script.fragment 1::1oylxck",
+    "to": "frontend/viewer/src/lib/activity/utils.ts::createDefaultActivityFilters::1wz9e8k",
+    "callerLabel": "frontend/viewer/src/lib/activity/ActivityView.svelte :: script",
+    "calleeLabel": "frontend/viewer/src/lib/activity/utils.ts :: createDefaultActivityFilters"
+  },
+  {
+    "cardId": "2357-e17",
+    "subject": "2357",
+    "from": "frontend/viewer/src/lib/services/history-service.ts::HistoryService.load::ookii9",
+    "to": "frontend/viewer/src/lib/services/history-service.ts::HistoryService.ensureLoaded::visswd",
+    "callerLabel": "frontend/viewer/src/lib/services/history-service.ts :: HistoryService.load",
+    "calleeLabel": "frontend/viewer/src/lib/services/history-service.ts :: HistoryService.ensureLoaded"
+  },
+  {
+    "cardId": "2357-e18",
+    "subject": "2357",
+    "from": "frontend/viewer/src/lib/activity/ActivityFilter.svelte::script.fragment 1::n4o3xn",
+    "to": "frontend/viewer/src/lib/activity/utils.ts::createDefaultActivityFilters::1wz9e8k",
+    "callerLabel": "frontend/viewer/src/lib/activity/ActivityFilter.svelte :: script",
+    "calleeLabel": "frontend/viewer/src/lib/activity/utils.ts :: createDefaultActivityFilters"
+  },
+  {
+    "cardId": "2357-e19",
+    "subject": "2357",
+    "from": "frontend/viewer/src/lib/activity/ActivityFilter.svelte::script.onAuthorValueChange::1mxab2g",
+    "to": "frontend/viewer/src/lib/activity/utils.ts::applyMultiSelectValue::1kfsejq",
+    "callerLabel": "frontend/viewer/src/lib/activity/ActivityFilter.svelte :: script.onAuthorValueChange",
+    "calleeLabel": "frontend/viewer/src/lib/activity/utils.ts :: applyMultiSelectValue"
+  },
+  {
+    "cardId": "2357-e20",
+    "subject": "2357",
+    "from": "backend/FwLite/FwLiteShared/Services/HistoryServiceJsInvokable.cs::HistoryServiceJsInvokable.ProjectActivity::qbp0yt",
+    "to": "backend/FwLite/LcmCrdt/HistoryService.cs::ActivityQuery::9jimum",
+    "callerLabel": "backend/FwLite/FwLiteShared/Services/HistoryServiceJsInvokable.cs :: HistoryServiceJsInvokable.ProjectActivity",
+    "calleeLabel": "backend/FwLite/LcmCrdt/HistoryService.cs :: ActivityQuery"
+  },
+  {
+    "cardId": "2357-e21",
+    "subject": "2357",
+    "from": "frontend/viewer/src/lib/activity/ActivityFilter.svelte::script.onChangeTypeValueChange::7o4sb6",
+    "to": "frontend/viewer/src/lib/activity/utils.ts::applyMultiSelectValue::1kfsejq",
+    "callerLabel": "frontend/viewer/src/lib/activity/ActivityFilter.svelte :: script.onChangeTypeValueChange",
+    "calleeLabel": "frontend/viewer/src/lib/activity/utils.ts :: applyMultiSelectValue"
+  },
+  {
+    "cardId": "2357-e22",
+    "subject": "2357",
+    "from": "backend/FwLite/FwLiteWeb/Routes/ActivityRoutes.cs::ActivityRoutes.MapActivities::kcc5o",
+    "to": "backend/FwLite/LcmCrdt/HistoryService.cs::HistoryService.ListActivityAuthors::pxevia",
+    "callerLabel": "backend/FwLite/FwLiteWeb/Routes/ActivityRoutes.cs :: ActivityRoutes.MapActivities",
+    "calleeLabel": "backend/FwLite/LcmCrdt/HistoryService.cs :: HistoryService.ListActivityAuthors"
+  },
+  {
+    "cardId": "2357-e23",
+    "subject": "2357",
+    "from": "backend/FwLite/FwLiteWeb/Routes/ActivityRoutes.cs::ActivityRoutes.MapActivities::kcc5o",
+    "to": "backend/FwLite/LcmCrdt/HistoryService.cs::HistoryService.ListActivityChangeTypes::74h6z7",
+    "callerLabel": "backend/FwLite/FwLiteWeb/Routes/ActivityRoutes.cs :: ActivityRoutes.MapActivities",
+    "calleeLabel": "backend/FwLite/LcmCrdt/HistoryService.cs :: HistoryService.ListActivityChangeTypes"
+  },
+  {
+    "cardId": "2357-e24",
+    "subject": "2357",
+    "from": "frontend/viewer/src/lib/services/history-service.ts::HistoryService.listActivityAuthors::1szv5ps",
+    "to": "frontend/viewer/src/lib/services/history-service.ts::HistoryService.ensureLoaded::visswd",
+    "callerLabel": "frontend/viewer/src/lib/services/history-service.ts :: HistoryService.listActivityAuthors",
+    "calleeLabel": "frontend/viewer/src/lib/services/history-service.ts :: HistoryService.ensureLoaded"
+  },
+  {
+    "cardId": "2357-e25",
+    "subject": "2357",
+    "from": "backend/FwLite/LcmCrdt/HistoryService.cs::HistoryService.ProjectActivity::17et1ev",
+    "to": "backend/FwLite/LcmCrdt/HistoryService.cs::HistoryService.ApplyActivityFilters.fragment 1::12z90jb",
+    "callerLabel": "backend/FwLite/LcmCrdt/HistoryService.cs :: HistoryService.ProjectActivity",
+    "calleeLabel": "backend/FwLite/LcmCrdt/HistoryService.cs :: HistoryService.ApplyActivityFilters"
+  },
+  {
+    "cardId": "2357-e26",
+    "subject": "2357",
+    "from": "frontend/viewer/src/lib/activity/ActivityView.svelte::script.fragment 3::1w0aeqf",
+    "to": "frontend/viewer/src/lib/activity/utils.ts::hasActiveServerSideFilters::1j7djwh",
+    "callerLabel": "frontend/viewer/src/lib/activity/ActivityView.svelte :: script",
+    "calleeLabel": "frontend/viewer/src/lib/activity/utils.ts :: hasActiveServerSideFilters"
+  },
+  {
+    "cardId": "2357-e27",
+    "subject": "2357",
+    "from": "frontend/viewer/src/lib/activity/ActivityFilter.svelte::script.authorKeyToLabel::n2ma7c",
+    "to": "frontend/viewer/src/lib/activity/utils.ts::authorFilterKey::1c5rka7",
+    "callerLabel": "frontend/viewer/src/lib/activity/ActivityFilter.svelte :: script.authorKeyToLabel",
+    "calleeLabel": "frontend/viewer/src/lib/activity/utils.ts :: authorFilterKey"
+  },
+  {
+    "cardId": "2357-e28",
+    "subject": "2357",
+    "from": "frontend/viewer/src/lib/activity/ActivityView.svelte::script.fragment 1::1oylxck",
+    "to": "frontend/viewer/src/lib/services/history-service.ts::HistoryService.activity::zyh03",
+    "callerLabel": "frontend/viewer/src/lib/activity/ActivityView.svelte :: script",
+    "calleeLabel": "frontend/viewer/src/lib/services/history-service.ts :: HistoryService.activity"
+  },
+  {
+    "cardId": "2357-e29",
+    "subject": "2357",
+    "from": "frontend/viewer/src/lib/activity/utils.ts::serverQueryKey::1wgif83",
+    "to": "frontend/viewer/src/lib/activity/utils.ts::toServerQuery::1bo9sq2",
+    "callerLabel": "frontend/viewer/src/lib/activity/utils.ts :: serverQueryKey",
+    "calleeLabel": "frontend/viewer/src/lib/activity/utils.ts :: toServerQuery"
+  },
+  {
+    "cardId": "2357-e30",
+    "subject": "2357",
+    "from": "frontend/viewer/src/lib/activity/ActivityFilter.svelte::script.fragment 2::1yb5282",
+    "to": "frontend/viewer/src/lib/services/history-service.ts::HistoryService.listActivityAuthors::1szv5ps",
+    "callerLabel": "frontend/viewer/src/lib/activity/ActivityFilter.svelte :: script",
+    "calleeLabel": "frontend/viewer/src/lib/services/history-service.ts :: HistoryService.listActivityAuthors"
+  },
+  {
+    "cardId": "2379-e01",
+    "subject": "2379",
+    "from": "backend/FwLite/LcmCrdt/LcmCrdtKernel.cs::LcmCrdtKernel.ConfigureDbOptions::8tas18",
+    "to": "backend/FwLite/LcmCrdt/Data/EntryQueryHelpers.cs::EntryQueryHelpers.QueryMorphType::a1u31y",
+    "callerLabel": "backend/FwLite/LcmCrdt/LcmCrdtKernel.cs :: LcmCrdtKernel.ConfigureDbOptions",
+    "calleeLabel": "backend/FwLite/LcmCrdt/Data/EntryQueryHelpers.cs :: EntryQueryHelpers.QueryMorphType"
+  },
+  {
+    "cardId": "2379-e02",
+    "subject": "2379",
+    "from": "backend/FwLite/LcmCrdt/Data/EntryQueryHelpers.cs::EntryQueryHelpers.QueryHeadwordWithTokensExpression::68ldhb",
+    "to": "backend/FwLite/LcmCrdt/Data/EntryQueryHelpers.cs::EntryQueryHelpers.HeadwordWithTokens::vhxv0m",
+    "callerLabel": "backend/FwLite/LcmCrdt/Data/EntryQueryHelpers.cs :: EntryQueryHelpers.QueryHeadwordWithTokensExpression",
+    "calleeLabel": "backend/FwLite/LcmCrdt/Data/EntryQueryHelpers.cs :: EntryQueryHelpers.HeadwordWithTokens"
+  },
+  {
+    "cardId": "2379-e03",
+    "subject": "2379",
+    "from": "backend/FwLite/LcmCrdt/LcmCrdtKernel.cs::LcmCrdtKernel.ConfigureDbOptions::8tas18",
+    "to": "backend/FwLite/LcmCrdt/Data/EntryQueryHelpers.cs::EntryQueryHelpers.QueryComplexFormEntry::g3cf63",
+    "callerLabel": "backend/FwLite/LcmCrdt/LcmCrdtKernel.cs :: LcmCrdtKernel.ConfigureDbOptions",
+    "calleeLabel": "backend/FwLite/LcmCrdt/Data/EntryQueryHelpers.cs :: EntryQueryHelpers.QueryComplexFormEntry"
+  },
+  {
+    "cardId": "2379-e04",
+    "subject": "2379",
+    "from": "backend/FwLite/LcmCrdt/Data/EntryQueryHelpers.cs::EntryQueryHelpers.QueryHeadwordWithTokensExpression::68ldhb",
+    "to": "backend/FwLite/LcmCrdt/Data/EntryQueryHelpers.cs::EntryQueryHelpers.QueryMorphType::a1u31y",
+    "callerLabel": "backend/FwLite/LcmCrdt/Data/EntryQueryHelpers.cs :: EntryQueryHelpers.QueryHeadwordWithTokensExpression",
+    "calleeLabel": "backend/FwLite/LcmCrdt/Data/EntryQueryHelpers.cs :: EntryQueryHelpers.QueryMorphType"
+  },
+  {
+    "cardId": "2379-e05",
+    "subject": "2379",
+    "from": "backend/FwLite/LcmCrdt/LcmCrdtKernel.cs::LcmCrdtKernel.ConfigureDbOptions::8tas18",
+    "to": "backend/FwLite/LcmCrdt/Data/EntryQueryHelpers.cs::EntryQueryHelpers.QueryComponentSense::1fdpwkk",
+    "callerLabel": "backend/FwLite/LcmCrdt/LcmCrdtKernel.cs :: LcmCrdtKernel.ConfigureDbOptions",
+    "calleeLabel": "backend/FwLite/LcmCrdt/Data/EntryQueryHelpers.cs :: EntryQueryHelpers.QueryComponentSense"
+  },
+  {
+    "cardId": "2379-e06",
+    "subject": "2379",
+    "from": "backend/FwLite/LcmCrdt/Data/EntryQueryHelpers.cs::EntryQueryHelpers.HeadwordFromMorphTypeExpression::1xth6zl",
+    "to": "backend/FwLite/LcmCrdt/Data/EntryQueryHelpers.cs::EntryQueryHelpers.HeadwordWithTokens::vhxv0m",
+    "callerLabel": "backend/FwLite/LcmCrdt/Data/EntryQueryHelpers.cs :: EntryQueryHelpers.HeadwordFromMorphTypeExpression",
+    "calleeLabel": "backend/FwLite/LcmCrdt/Data/EntryQueryHelpers.cs :: EntryQueryHelpers.HeadwordWithTokens"
+  },
+  {
+    "cardId": "2379-e07",
+    "subject": "2379",
+    "from": "backend/FwLite/LcmCrdt/LcmCrdtKernel.cs::LcmCrdtKernel.ConfigureDbOptions::8tas18",
+    "to": "backend/FwLite/LcmCrdt/Data/EntryQueryHelpers.cs::EntryQueryHelpers.QueryHeadwordWithTokens::15olqyt",
+    "callerLabel": "backend/FwLite/LcmCrdt/LcmCrdtKernel.cs :: LcmCrdtKernel.ConfigureDbOptions",
+    "calleeLabel": "backend/FwLite/LcmCrdt/Data/EntryQueryHelpers.cs :: EntryQueryHelpers.QueryHeadwordWithTokens"
+  },
+  {
+    "cardId": "2379-e08",
+    "subject": "2379",
+    "from": "backend/FwLite/LcmCrdt/Data/EntryQueryHelpers.cs::EntryQueryHelpers.HeadwordWithTokensExpression::1m01lag",
+    "to": "backend/FwLite/LcmCrdt/Data/EntryQueryHelpers.cs::EntryQueryHelpers.NullIf::m4r93a",
+    "callerLabel": "backend/FwLite/LcmCrdt/Data/EntryQueryHelpers.cs :: EntryQueryHelpers.HeadwordWithTokensExpression",
+    "calleeLabel": "backend/FwLite/LcmCrdt/Data/EntryQueryHelpers.cs :: EntryQueryHelpers.NullIf"
+  },
+  {
+    "cardId": "2379-e09",
+    "subject": "2379",
+    "from": "backend/FwLite/LcmCrdt/LcmCrdtKernel.cs::LcmCrdtKernel.ConfigureDbOptions::8tas18",
+    "to": "backend/FwLite/LcmCrdt/Data/EntryQueryHelpers.cs::EntryQueryHelpers.QueryComponentEntry::145d25g",
+    "callerLabel": "backend/FwLite/LcmCrdt/LcmCrdtKernel.cs :: LcmCrdtKernel.ConfigureDbOptions",
+    "calleeLabel": "backend/FwLite/LcmCrdt/Data/EntryQueryHelpers.cs :: EntryQueryHelpers.QueryComponentEntry"
+  },
+  {
+    "cardId": "2379-e10",
+    "subject": "2379",
+    "from": "backend/FwLite/LcmCrdt/Data/EntryQueryHelpers.cs::EntryQueryHelpers.HeadwordWithTokensExpression::1m01lag",
+    "to": "backend/FwLite/LcmCrdt/Data/EntryQueryHelpers.cs::EntryQueryHelpers.ConcatWs::kkoz05",
+    "callerLabel": "backend/FwLite/LcmCrdt/Data/EntryQueryHelpers.cs :: EntryQueryHelpers.HeadwordWithTokensExpression",
+    "calleeLabel": "backend/FwLite/LcmCrdt/Data/EntryQueryHelpers.cs :: EntryQueryHelpers.ConcatWs"
+  },
+  {
+    "cardId": "2379-e11",
+    "subject": "2379",
+    "from": "backend/FwLite/LcmCrdt/LcmCrdtKernel.cs::LcmCrdtKernel.ConfigureDbOptions::8tas18",
+    "to": "backend/FwLite/LcmCrdt/Data/EntryQueryHelpers.cs::EntryQueryHelpers.DefaultWritingSystem::1d29gl0",
+    "callerLabel": "backend/FwLite/LcmCrdt/LcmCrdtKernel.cs :: LcmCrdtKernel.ConfigureDbOptions",
+    "calleeLabel": "backend/FwLite/LcmCrdt/Data/EntryQueryHelpers.cs :: EntryQueryHelpers.DefaultWritingSystem"
+  }
+]

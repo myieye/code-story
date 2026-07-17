@@ -1,0 +1,107 @@
+{
+  "seed": 20260717,
+  "subjects": [
+    {
+      "id": "2309",
+      "range": "c0448522..pr-2309",
+      "head": "fd182f314589",
+      "seed": 2321623287,
+      "chunks": 37,
+      "edges": 19,
+      "byKind": {
+        "calls": 1,
+        "exercises": 2,
+        "file-imports": 16
+      },
+      "callsSampled": 1,
+      "timSubset": 1,
+      "freeGlance": {
+        "n": 37,
+        "min": 0,
+        "median": 0,
+        "p90": 2,
+        "max": 4,
+        "mean": 0.4864864864864865,
+        "marks": 37,
+        "withNeighborPct": 29.72972972972973
+      },
+      "size": {
+        "n": 37,
+        "min": 1,
+        "median": 3,
+        "p90": 34.8,
+        "max": 97,
+        "mean": 11.18918918918919,
+        "leTenPct": 75.67567567567568
+      }
+    },
+    {
+      "id": "2357",
+      "range": "277e418d8~1..277e418d8",
+      "head": "277e418d87c1",
+      "seed": 2321623440,
+      "chunks": 125,
+      "edges": 97,
+      "byKind": {
+        "calls": 38,
+        "exercises": 30,
+        "file-imports": 29
+      },
+      "callsSampled": 30,
+      "timSubset": 15,
+      "freeGlance": {
+        "n": 125,
+        "min": 0,
+        "median": 0,
+        "p90": 2,
+        "max": 11,
+        "mean": 0.76,
+        "marks": 125,
+        "withNeighborPct": 42.4
+      },
+      "size": {
+        "n": 125,
+        "min": 1,
+        "median": 7,
+        "p90": 37.60000000000001,
+        "max": 40,
+        "mean": 13.184,
+        "leTenPct": 60.8
+      }
+    },
+    {
+      "id": "2379",
+      "range": "8dd70ba~1..8dd70ba",
+      "head": "8dd70ba171e1",
+      "seed": 2321623504,
+      "chunks": 34,
+      "edges": 26,
+      "byKind": {
+        "exercises": 7,
+        "calls": 11,
+        "file-imports": 8
+      },
+      "callsSampled": 11,
+      "timSubset": 11,
+      "freeGlance": {
+        "n": 34,
+        "min": 0,
+        "median": 0,
+        "p90": 2,
+        "max": 7,
+        "mean": 0.6764705882352942,
+        "marks": 34,
+        "withNeighborPct": 29.41176470588235
+      },
+      "size": {
+        "n": 34,
+        "min": 1,
+        "median": 3.5,
+        "p90": 19.499999999999996,
+        "max": 37,
+        "mean": 7.176470588235294,
+        "leTenPct": 82.3529411764706
+      }
+    }
+  ]
+}
