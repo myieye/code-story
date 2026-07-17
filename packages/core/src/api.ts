@@ -41,6 +41,25 @@ export interface ContextResponse {
   payload: ContextPayload | null;
 }
 
+/**
+ * `GET/POST /api/context-job`: the bulk-fill job state (facts are free, so there is no overlay to
+ * return — the payloads land in the store the on-demand GET reads). `job` is null before any run.
+ */
+export interface ContextJobResponse {
+  job: {
+    status: 'running' | 'done' | 'failed';
+    startedAt: string;
+    finishedAt?: string;
+    error?: string;
+    chunksTotal: number;
+    chunksDone: number;
+    computed: number;
+    skipped: number;
+    capped: boolean;
+    cappedCount: number;
+  } | null;
+}
+
 /** `PATCH /api/order`: the reviewer's banner decision (spec 02 — never re-ask on reload). */
 export interface OrderPatch {
   applied?: boolean;
