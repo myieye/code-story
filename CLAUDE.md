@@ -349,9 +349,16 @@ orphan TOCTOU (fast job finishes between record read and handle check → re-rea
 declaring orphan; server suite was ~1-in-3 flaky, now 6/6) — found via a CI flake whose
 error-surfacing assert was added deliberately. Composition hazard learned: #71's default-on
 auto-order made every pre-#71 server test spawn REAL claude (fixed 6c62a44: `autoOrder:
-false` everywhere; new server tests MUST pass it unless testing auto-order). Suite now
-**335** (core 210 / server 82 / web 43). Review pass over the whole window commissioned
-(docs/reviews/2026-07-17-m4-m5-review.md — read it before touching M4/M5 code).
+false` everywhere; new server tests MUST pass it unless testing auto-order). **Review pass
+DONE** (docs/reviews/2026-07-17-m4-m5-review.md — READ IT before touching M4/M5 code: 6
+fix-soon structural items incl. resolver unification, job-lifecycle triplication,
+server.ts/cli.ts doubling, two Tarjans, and the section-id coupling trap that bites when
+slice 5 wires chapter books into the anchor path). Its 2 fix-now items landed same-window
+(PR #95): `justifiedUniqueFile` in references.ts is THE shared #91 rule (both resolvers;
+graph edges 2357 38→36, the unjustified pair); context fill + GET now actually fail open
+per chunk. #93 done (PR #96: `--dump-context --verbose` lists unresolved names). Suite
+**337** (core 210 / server 84 / web 43). Remote branch deletes 403 — stale merged claude/*
+branches on origin are cosmetic, ignore.
 Next (as of this writing — verify freshness on wake): **#77** (AI traversal augmentation:
 order prompt v2 against configured axioms, default flip to consumer-first/tests-before/chapter
 mode, judge eval re-run ~70k plan-tokens/subject — **the eval spend is the thing Tim was
