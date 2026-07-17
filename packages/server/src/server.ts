@@ -272,7 +272,14 @@ export function startServer(options: ServerOptions, requestedPort = 0): Promise<
     const { orderFile, jobFile } = await getStore();
     const [overlay, stored, { book }] = await Promise.all([loadOverlay(orderFile), loadJobRecord(jobFile), getBook()]);
     const fresh = overlay !== null && isOverlayFresh(book, overlay) ? overlay : null;
-    const record = liveRecord ?? stored;
+    // A stored `running` with no live handle is ambiguous: a fast job may have finished during the
+    // read above. The terminal write always lands before the handle clears, so one re-read decides —
+    // still `running` with no handle means a genuine orphan. Same pattern at the narration and
+    // context-job GETs.
+    let record = liveRecord ?? stored;
+    if (record?.status === 'running' && liveJob === undefined) {
+      record = liveRecord ?? (await loadJobRecord(jobFile));
+    }
     const job =
       record?.status === 'running' && liveJob === undefined
         ? { ...record, status: 'failed' as const, error: 'job orphaned by a daemon restart — re-run it' }
@@ -345,7 +352,10 @@ export function startServer(options: ServerOptions, requestedPort = 0): Promise<
       getBook(),
     ]);
     const filtered = overlay !== null ? filterFreshNarration(book, options.range.head, overlay) : null;
-    const record = liveNarrationRecord ?? stored;
+    let record = liveNarrationRecord ?? stored;
+    if (record?.status === 'running' && liveNarrationJob === undefined) {
+      record = liveNarrationRecord ?? (await loadNarrationJobRecord(narrationJobFile));
+    }
     const job =
       record?.status === 'running' && liveNarrationJob === undefined
         ? { ...record, status: 'failed' as const, error: 'job orphaned by a daemon restart — re-run it' }
@@ -491,8 +501,12 @@ export function startServer(options: ServerOptions, requestedPort = 0): Promise<
   let liveContextRecord: ContextJobRecord | undefined;
 
   app.get('/api/context-job', async (c) => {
-    const stored = await loadContextJobRecord((await getStore()).contextJobFile);
-    const record = liveContextRecord ?? stored;
+    const { contextJobFile } = await getStore();
+    const stored = await loadContextJobRecord(contextJobFile);
+    let record = liveContextRecord ?? stored;
+    if (record?.status === 'running' && liveContextJob === undefined) {
+      record = liveContextRecord ?? (await loadContextJobRecord(contextJobFile));
+    }
     const job =
       record?.status === 'running' && liveContextJob === undefined
         ? { ...record, status: 'failed' as const, error: 'job orphaned by a daemon restart — re-run it' }
