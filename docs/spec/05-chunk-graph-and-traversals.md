@@ -1,6 +1,9 @@
 # Spec 05 — Milestone 5: the chunk graph and its traversals
 
-**Status: draft — not yet grilled.**
+**Status: grilled same-day (14 findings, verdict "needs surgery" — folded in below; the big
+three: chunk-grain call-path flow requires a new traversal-derived *chapter* primitive, not
+the file-section renderer; the graph decouples from M4's unchanged-file machinery; and the
+frontier display is honest surfacing, not a gate). Slices filed when this lands.**
 
 ## Why this milestone
 
@@ -17,161 +20,189 @@ Two of Tim's directives converged into one design (both 2026-07-17, verbatim in
 > everything" (R-048/R-049)
 
 They are the same thing seen twice: Baum & Schneider's review-ordering theory says an optimal
-reading order is "an optimal grouping of the change parts by relatedness" — i.e. **every story
-is a linearization of a relatedness graph** (research 06 §3). Today we compute fragments of
-that graph (file-level imports for ordering, line-level references for context payloads), use
-them, and throw the graph away — exactly what research 06 shows every competitor doing. M5
-makes the graph a first-class primitive: consumer-first call-path stories fall out as its
-default traversal, and the lawn-mower falls out as its free traversal.
+reading order is "an optimal grouping of the change parts by relatedness" — **every story is a
+linearization of a relatedness graph** (research 06 §3). Today we compute fragments of that
+graph, use them, and throw the graph away — exactly what research 06 shows every competitor
+doing. M5 makes the graph a first-class primitive: consumer-first call-path stories fall out
+as its default traversal, the lawn-mower as its free traversal.
 
 Research verdict (docs/research/06-chunk-graph-traversal.md): the combination — chunk grain,
-line-provenance edges, status-carrying links, free traversal under a coverage guarantee, linear
-backbone — is unoccupied; the ingredients are separately validated (Stacksplorer/Blaze/Prodet
-on filtered graph navigation, GBSCI on change-dependency graphs, Reviewable on
-minimize-re-review); and the one way to build it *badly* is known and named (§ the design
-gates below).
+line-provenance edges, status-carrying links, free traversal under a coverage guarantee,
+linear backbone — is unoccupied; the ingredients are separately validated (Stacksplorer/Blaze
+/Prodet on filtered graph navigation, GBSCI on change-dependency graphs, Reviewable on
+minimize-re-review); and the known way to build it badly is named in the design gates below.
 
 Requirements: R-044, R-045, R-046, R-048, R-049 (new); R-043 + its context rider; advances
 R-004 (occurrences as graph re-encounters), R-005 (the backbone), R-007 (edges are
-navigation), R-001 (coverage extends to edges). R-034 stays the eval bar.
+navigation), R-001 (unchanged — see gate 1's honesty note). R-034 stays the eval bar.
+**R-049 scope honesty**: M5 delivers the *within-pass* half of "minimize re-review"
+(status-visible neighbors turn re-encounters into free glances). The *across-version* half —
+never re-reviewing a chunk that survived a new PR revision — is the R-038–R-041 fingerprint
+carry-forward, deferred with those requirements. The spec does not claim it.
 
 ## The model: ChunkGraph
 
 ```
 ChunkEdge {
   from, to: chunkId
-  kind: 'calls' | 'imports' | 'exercises'   // exercises = test chunk → impl chunk
-  fromLines: LineRange[]                     // the lines responsible (R-048), from-side
+  kind: 'calls' | 'file-imports' | 'exercises'
+  fromLines: LineRange[]      // caller/test-side lines responsible (R-048)
   source: 'references' | 'import-graph' | 'test-anchor'
 }
 ```
 
-- **Built from what exists**: `references.ts` hits (M4 slice 2) resolved to *defining chunks*
-  (the M4 #64 resolver retargeted one level finer — file+symbol → the chunk containing that
-  symbol's definition, when it is a changed chunk); `import-graph.ts` edges demoted to
-  section-level fallback edges when no call edge exists; test anchors as `exercises` edges.
+- **`calls`** — from `references.ts` hits (M4 slice 2, built) resolved to the defining
+  *changed* chunk via the tree-sitter symbol tables `computeChunks` already builds. This is a
+  small new changed-file-only resolver — **not** M4 #64's unchanged-file machinery (head path
+  index, `fileAt` on unchanged files, definition bodies): none of that is on the edge path.
+  M4 #64–#68 proceed independently and in parallel; neither milestone blocks the other.
+- **Provenance is caller-sided by design**: `fromLines` are the call-site lines; the
+  callee-side "lines responsible" are the defining chunk itself, so they are not stored —
+  an incoming edge in the UI reads "called from <file>:<lines>", an outgoing one "calls
+  <symbol> (defined in <chunk>)".
+- **`file-imports`** — the existing file-level import edges, kept at their true granularity:
+  they connect *section-anchor chunks* (each file's first primary chunk) and are labeled
+  file-level in any UI. They exist as fallback relatedness where no call edge resolved; they
+  never pretend to chunk precision (the grill killed the silent file→chunk demotion).
+- **`exercises`** — the sole test→impl edge kind (a test's call into its impl is *not* also a
+  `calls` edge). The calls-DFS never traverses `exercises`; the test-placement rule owns them.
 - **Precision over recall, edges are hints** (research 06 §5e): a missing edge costs a jump
-  affordance, never coverage — coverage rides the backbone (R-001), not the graph. A wrong
-  edge is worse than a missing one; the resolver's ambiguity rules stay strict, and every edge
-  carries its provenance lines so the reviewer can see *why* the link exists and judge it.
-- **Chunk-grained, occurrence-rendered**: edges connect chunks; the UI resolves a jump to the
-  nearest occurrence (R-004). A neighbor shown "already reviewed" is a *re-encounter* (free
-  glance), never a *re-audit* — the R-004/R-049 reconciliation from research 06 §5d.
-- Persisted per range next to the other artifacts, keyed by the same CORE_VERSION-folding
-  fingerprint discipline; fail-open to no-graph (the book still works bare).
+  affordance, never coverage — coverage rides the backbone (R-001). A wrong edge is worse
+  than a missing one; ambiguity rules stay strict; every edge shows its provenance lines so
+  the reviewer can judge the link.
+- **Chunk-grained, occurrence-rendered**: edges connect chunks; jumps resolve to the nearest
+  occurrence (R-004). A neighbor shown "already reviewed" is a *re-encounter* (free glance),
+  never a *re-audit* (research 06 §5d).
+- **Chunk grain inherited from M0** (fragments split >40 lines): whether that is small enough
+  for R-049's "small chunks" premise is *measured, not assumed* — slice 0 reports the chunk
+  -size distribution and per-re-encounter cost alongside edge precision. Finer chunking is
+  deferred unless those numbers demand it.
+- Persisted per range, CORE_VERSION-folding fingerprints, fail-open to no-graph.
 
 ## Traversal 1: the story (default path, consumer-first)
 
-The compiled book becomes the graph's default linearization, direction-configurable (R-045)
-with **consumer-first as the shipped default** (R-044):
+**This is a new linearizer and a new grouping primitive — priced honestly (grill F1).** The
+current Book model is one section per file; cross-file call-path flow cannot live inside it.
+M5 introduces the **chapter**: a Section whose occurrences may span files, produced by the
+traversal. `checkOrder` moves from section-position to **chunk-position** semantics. What
+survives from `book.ts`: role classification, the low-signal tail, leftovers-last, cycle
+discipline (Tarjan break, deterministic ties). What is superseded: file-section assembly,
+`topoSort`-over-files as the story's spine, and `orderTestBlock` (rewritten, not
+parameterized — R-043 inverts both its anchor logic and `checkOrder`'s `testBeforeImpl`
+gate, which currently treats tests-first as the violation).
 
-- **Chunk-level call-path flow**: starting from anchor chunks (entry points: the chunks
-  nothing in the diff calls; ties broken by role — pages/routes/tests first per config), walk
-  DFS along `calls` edges so each callee chunk appears right after the call site that uses it.
-  The IOU becomes the next page. File-section boundaries dissolve into chapter groupings by
-  path locality (sections remain as headings; a chunk renders under its file heading at its
-  first traversal visit — later visits are occurrences).
-- **Tests by kind** (R-043, delegated judgment): unit-test chunks ride their `exercises` edge
-  *before* the impl chunk they exercise (contract first); e2e/journey specs close the book
-  ("proof the feature works") — their page-object helpers just-in-time before them; setup
-  fixtures collapse like low-signal stubs. The rider is honored via M4: one keystroke on a
-  lone test pulls its setup/helper context (payload panel), so sparse test slices never
-  strand the reader.
-- **Cycles and disconnected chunks**: same discipline as tier 0 today — deterministic
-  fallbacks, git order ties, leftovers last, `checkOrder` grows a direction parameter (its
-  inversion semantics flip with the configured direction; the validator gates AI proposals
-  against the *configured* axioms, not hardcoded dependency-first).
-- **AI augmentation on by default** (R-046, converges with #71): the model proposes the
-  anchor choice, path ordering among siblings, and chapter grouping *within* the configured
-  hard constraints; the validator + `checkOrder(direction)` still reject violations outright.
-  Fail-open to the deterministic linearization; the R-026 labeling rules carry over unchanged.
+- **Anchors, precisely** (grill F11): a chunk with no incoming intra-diff `calls` edge is an
+  entry point; anchors order by role config (pages/routes first), then git order. A diff with
+  no `calls` edges at all (all leaves — common) degenerates gracefully: the story falls back
+  to file-grouped git order, i.e. today's backbone. The graph adds nothing there, and that is
+  fine — the strip still shows `file-imports` relatedness.
+- **Call-path DFS**: from each anchor, callee chunks follow their call sites. A chapter is one
+  DFS run; its heading names the anchor's file (occurrences from other files carry a `from
+  <file>` label). First visit renders the chunk; later meetings are occurrences (R-004).
+- **Tests by kind** (R-043, delegated judgment): unit-test chunks precede the impl chunk they
+  exercise (contract first); e2e/journey specs close the book, page-objects just-in-time
+  before them; setup fixtures collapse like stubs. The rider is honored via M4's payload
+  panel: one keystroke on a lone test pulls its setup/helper context.
+- **Two independent config axes** (R-045, grill F3): call-direction (consumer-first default /
+  dependency-first) and test placement (before default / after / end) — CLI flags + per-repo
+  config file. `checkOrder(direction, testPlacement)` validates against the *configured*
+  axioms.
+- **AI augmentation on by default** (R-046): the model proposes anchor choice, sibling order,
+  chapter grouping *within* the configured constraints; validator + `checkOrder` reject
+  violations; fail-open to the deterministic linearization; R-026 labeling unchanged.
+- **#71 ships first, on current axioms** (grill F6 — surfaced, decided, Tim can veto): the
+  ratified default-on is a default flag plus auto-run plumbing that is direction-agnostic.
+  Deferring it weeks behind slice 3 to avoid one later default flip would silently reverse a
+  ship decision. #71 lands on today's dependency-first axioms; slice 3 re-flips the default
+  direction when the consumer-first linearizer passes its gates.
+- Ordering changes bump **CORE_VERSION** (invalidating persisted overlays) — budgeted in
+  slice 3, regeneration noted.
 
 ## Traversal 2: the lawn-mower (free criss-cross)
 
 - **The neighbor strip** — the only graph UI in M5: on the focused chunk, an in-flow strip of
-  its direct neighbors (`calls` in/out, `exercises`, fallback `imports`), each showing its
-  review state: **reviewed ✓ / unreviewed / unreviewed-with-more-behind-it** (that last =
-  R-048's "only the next step, but not everything behind it": the neighbor itself plus any
-  unreviewed chunks reachable beyond it). Research 06 is emphatic here: *filtered local
-  neighborhood, never a whole-PR canvas* (Stacksplorer's null result; CodeSee's grave). There
-  is no pan-and-zoom graph view in M5.
-- **Jump and return**: a keystroke follows an edge (to the target's nearest occurrence);
-  a back-stack returns. The reading cursor, seen-tracking, and marking work identically
-  wherever the reviewer lands — a chunk CAN be marked reviewed while its neighbors aren't
-  (R-048, already true of the review model today).
-- **The queue stays the safety net**: n/N (next unreviewed) and the coverage queue are
-  unchanged — mowing the lawn in any pattern, the reviewer can always fall back to "take me
-  to the next unmowed patch," and 100% means 100% of chunks regardless of path taken.
+  direct neighbors (`calls` in/out, `exercises`, `file-imports` labeled as such), each showing
+  review state: **reviewed ✓ / unreviewed / unreviewed-with-more-behind-it** (R-048's "only
+  the next step, but not everything behind it" — the count of unreviewed chunks reachable
+  beyond that neighbor). Research 06 §3's design lesson: Stacksplorer *won* by showing the
+  filtered local neighborhood; the baseline that showed more of the graph (Eclipse's Call
+  Hierarchy) was the null result. There is no whole-PR canvas in M5, ever.
+- **Jump and return**: a keystroke follows an edge to the target's nearest occurrence; a
+  back-stack returns. Cursor, seen-tracking, and marking work identically anywhere — a chunk
+  CAN be marked reviewed while neighbors aren't (R-048; already true today).
+- **The queue stays the safety net**: n/N and the coverage queue are unchanged; any mowing
+  pattern can always fall back to "next unmowed patch," and 100% means 100% of chunks.
 
-## The design gates (from research 06 — non-negotiable)
+## The design gates (from research 06)
 
-1. **Edge-aware done state (the false-confidence gate, §5b).** Node-by-node green-marking
-   with green neighbors is an anchoring machine unless composition is surfaced. M5 defines a
-   derived edge state: an edge is *settled* when both endpoints are reviewed; the done banner
-   and progress cluster report **frontier edges** (reviewed chunk ↔ unreviewed chunk) and the
-   done state is reached only at zero frontier — which follows automatically from all-chunks
-   -reviewed, so R-001 semantics don't change, but the *display* makes the composition
-   surface visible throughout: "12 of 40 edges frontier" tells the reviewer how much
-   glue code sits between green and red. Explicit per-edge sign-off ("I checked this
-   interaction") is recorded as the ambitious path, not built in M5.
-2. **The backbone must survive (§5a).** The book order remains the default surface a reviewer
-   can follow mindlessly to 100%; the graph is an affordance layered on it. If dogfood shows
-   the strip pulling attention while comprehension drops, the strip collapses to on-demand.
-3. **Local only (§5c).** No whole-graph rendering. The strip shows direct neighbors; "more
-   behind it" is a count, not a subgraph.
-4. **Hints, not promises (§5e).** Edge coverage is never claimed complete; the UI language is
-   "related chunks we found," and the done state's authority remains chunk coverage.
+1. **Frontier surfacing — honest scope (grill F4).** The progress cluster and done banner
+   report **frontier edges** (reviewed ↔ unreviewed) throughout the review; the strip colors
+   them. This *prevents nothing*: 100% chunk coverage always implies zero frontier, and M5
+   adds no completion barrier — it is composition *surfacing*, not a gate. The research's
+   real gate (explicit per-edge "interaction checked" sign-off with its own queue) is the
+   recorded ambitious path. What M5 does bind: the done banner states plainly, R-026-style,
+   "all chunks reviewed; N cross-chunk interactions were surfaced during review — none were
+   individually verified" — the tool never implies composition was checked when it wasn't.
+2. **The backbone must survive.** The book order remains the surface a reviewer can follow
+   mindlessly to 100%; the graph is an affordance on top. If dogfood shows strip-chasing with
+   comprehension loss, the strip collapses to on-demand.
+3. **Local only.** Direct neighbors in-flow; "more behind it" is a count, never a subgraph.
+4. **Hints, not promises.** Edge coverage is never claimed complete; UI language is "related
+   chunks we found"; done-state authority remains chunk coverage.
 
-## The gated experiment (slice 0 — before any UI)
+## The gated experiment (slice 0 — before any UI, token-free)
 
-Research 06's falsification plan, verbatim in spirit: (1) build the chunk graph offline on the
-three dogfood subjects and **hand-measure edge precision on a sample** — if precision is bad,
-M5 stops at the resolver, not the UI; (2) instrument the existing walk to count would-be "free
-glances" (neighbors already reviewed at each mark) — if the graph wouldn't actually save
-re-encounters, the strip is decoration and we learn it for the price of a script. Both are
-token-free. The UI slices are gated on both.
+1. **Edge precision, falsifiably** (grill F5): build the graph offline on the three dogfood
+   subjects; sample **30 `calls` edges per subject** (or all, if fewer); **blind audit: Tim
+   labels a 15-edge subsample per subject** (relevant / irrelevant, with Claude's labels
+   sealed until after), Claude labels all 90. **Go threshold: ≥0.90 precision on Tim's blind
+   subsample** and no systematic disagreement with Claude's labels (if Claude's self-audit
+   diverges optimistically, Claude's number is discarded — generator self-grading is the
+   trap R-026 exists for). Below threshold, M5 stops at the resolver until precision is
+   fixed; the UI slices never start.
+2. **Free-glance proxy** (labeled a proxy — grill F14): instrument the existing linear walk
+   to count, per mark, how many graph-neighbors were already reviewed. This bounds the
+   *within-pass* re-encounter benefit from below; it cannot measure free-traversal value
+   (that's dogfood 6's job). Also reports chunk-size distribution (grill F7).
 
 ## Scoping calls (gradual auto-picked; ambitious path recorded)
 
-1. **Derived edge state, no explicit edge sign-off.** Ambitious: per-edge "interaction
-   checked" marks with their own queue. Deferred until the frontier display proves wanted.
-2. **Call-path DFS at chunk grain within the existing section renderer** (chunks regroup
-   under file headings at first visit) — not a full chapter-authoring system. Ambitious:
-   AI-authored chapter titles/groupings; deferred to keep #72's "fastest path to good
-   consumer-first" promise.
-3. **Anchors from graph shape + role config; AI refines.** Ambitious: salient-chunk detection
-   à la GBSCI (research 06 §3). The eval decides if the deterministic anchor is good enough.
-4. **Config = CLI flags + per-repo file for direction and test placement** (R-045). Ambitious:
-   per-reviewer profiles (R-017 territory) — deferred.
-5. **Graph build reuses M4's resolver (#64)** — M4 slices #64–#65 land first (they are the
-   resolution machinery this spec's edges need); #66–#68 proceed unchanged. #71's default-on
-   lands *with* the R-046 slice here, not before (avoids shipping dependency-first defaults
-   twice).
+1. **Frontier display, no edge sign-off.** Ambitious: per-edge "interaction checked" marks
+   with their own queue — the real composition gate, deferred until the display proves wanted.
+2. **Chapters as traversal-derived sections; no AI chapter authoring.** Ambitious: AI-titled
+   chapters/groupings. The heading is the anchor file's path; good enough for M5.
+3. **Anchors from graph shape + role config; AI refines.** Ambitious: GBSCI-style salient
+   -chunk detection. The eval decides if deterministic anchoring suffices.
+4. **Config = CLI flags + per-repo file** (two axes). Ambitious: per-reviewer profiles
+   (R-017) — deferred.
+5. **Graph needs only #63 + a changed-file symbol→chunk resolver** (grill F2). M4 #64–#68
+   continue independently; neither blocks the other. #71 ships before slice 3 (see above).
 
 ## Non-goals (M5)
 
-- Whole-graph canvas or minimap; SCIP indexes; caller edges into unchanged code (edges exist
-  only between changed chunks — unchanged-code context stays M4's payload panel).
-- Explicit edge sign-off; per-reviewer adaptive traversal (R-017); threads.
-- Any change to R-001's chunk-coverage definition (the frontier display adds, never replaces).
+- Whole-graph canvas/minimap; SCIP; edges into unchanged code (that context stays M4's panel).
+- Explicit edge sign-off (ambitious path of gate 1); per-reviewer traversal (R-017); threads.
+- Across-version re-review carry-forward (R-038–R-041 — deferred with those requirements).
+- Any change to R-001's chunk-coverage definition.
+- Finer chunking than M0's grain (unless slice 0's size numbers demand a follow-up issue).
 
 ## Slices (filed just-in-time when this spec lands)
 
-1. **Slice 0 — the gated experiment**: offline graph build on three subjects, edge-precision
-   hand-audit, walk instrumentation for free-glance counting. Produces a go/no-go note in the
-   baseline doc. Token-free.
-2. **Core ChunkGraph** — edge model, build from references+imports+test-anchors via the M4
-   resolver, fingerprint/freshness, precision rules; `--dump-chunk-graph`.
-3. **Consumer-first linearization** — direction-parameterized `checkOrder` + compiler,
-   call-path DFS, test placement by kind, config plumbing (R-045); dogfood on all three
-   subjects (mechanical gates only, token-free).
-4. **AI traversal augmentation** — order prompt v2 against configured axioms, validator
-   direction-awareness, #71's default-on folded in (R-046); judge eval re-run (the one
-   token-spending slice, ~70k tokens/subject).
-5. **The neighbor strip + jump/back** — status-aware local edges in the book UI, keyboard
-   model, re-encounter vs re-audit presentation; ux-expert pass (R-029).
-6. **Edge-frontier display** — progress cluster + done banner facts; gate 1's surface.
+1. **Slice 0 — the gated experiment** (token-free): offline graph build, blind edge-precision
+   audit with the ≥0.90 threshold, free-glance proxy + chunk-size distribution; go/no-go note
+   in the baseline doc. **Blocks slices 4–6, not #71 or M4.**
+2. **Core ChunkGraph** — edge model, changed-file symbol→chunk resolver over #63's
+   references, file-import fallback at anchor chunks, `exercises` edges, fingerprints,
+   `--dump-chunk-graph`.
+3. **The chapter linearizer** — chunk-position `checkOrder(direction, testPlacement)`,
+   call-path DFS chapters, tests-by-kind placement (orderTestBlock rewrite), config plumbing,
+   CORE_VERSION bump; mechanical gates on all three dogfood subjects (token-free).
+4. **AI traversal augmentation** — order prompt v2 against configured axioms; judge eval
+   re-run (the token-spending slice, ~70k tokens/subject). (#71 has already shipped by now;
+   this re-flips the default direction.)
+5. **The neighbor strip + jump/back** — status-aware local edges, keyboard model,
+   re-encounter presentation; ux-expert pass (R-029). Gated on slice 0.
+6. **Frontier surfacing** — progress cluster + honest done-banner language (gate 1). Gated
+   on slice 0.
 7. **Dogfood 6** — lawn-mower session on a real PR: coverage time, re-review counts,
-   comprehension probe (research 06's step 3), baseline-doc verdict.
-
-Each slice demoable on a real diff; slices 5–6 gated on slice 0's numbers.
+   comprehension probe; baseline-doc verdict on the whole bet.
