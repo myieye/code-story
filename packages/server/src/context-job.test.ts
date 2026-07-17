@@ -104,6 +104,8 @@ describe('context-job server', () => {
     try {
       expect((await postJob(server.url)).status).toBe(202);
       const body = await waitForDone(server.url);
+      // Checked before status so a CI failure shows the job's actual error, not just 'failed'.
+      expect(body.job?.error).toBeUndefined();
       expect(body.job?.status).toBe('done');
       expect(body.job?.chunksTotal).toBeGreaterThan(0);
       expect(body.job?.chunksDone).toBe(body.job?.chunksTotal);
@@ -176,6 +178,8 @@ describe('context-job server', () => {
     try {
       await postJob(server.url);
       const body = await waitForDone(server.url);
+      // Checked before status so a CI failure shows the job's actual error, not just 'failed'.
+      expect(body.job?.error).toBeUndefined();
       expect(body.job?.status).toBe('done');
       expect(body.job?.capped).toBe(true);
       expect(body.job?.cappedCount).toBeGreaterThan(0);
