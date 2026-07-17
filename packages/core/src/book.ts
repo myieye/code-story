@@ -1,7 +1,8 @@
 import { type FileDiff, type Hunk } from './diff.js';
 import { type ImportGraph } from './import-graph.js';
-import { type Book, type Chunk, chunkId, LEFTOVERS_SECTION_ID, type Occurrence, type Section } from './model.js';
+import { type Book, CHAPTER_SECTION_PREFIX, type Chunk, chunkId, LEFTOVERS_SECTION_ID, type Occurrence, type Section } from './model.js';
 import { type FileRole, fileRoles } from './roles.js';
+import { sourceSccToBreak } from './scc.js';
 
 export interface CompileBookInput {
   /** Changed files in git diff order — the ordering tie-break source. */
@@ -161,81 +162,20 @@ function topoSort(files: string[], graph: ImportGraph): string[] {
 }
 
 /**
- * A Kahn stall means the still-unemitted files hold at least one import cycle. Break the cycle
- * whose members have the fewest dependencies pending outside it (a condensation source, so
- * emitting into it forces no avoidable inversion; ties resolve by git order of the SCC's
- * earliest member), and within that cycle emit the git-earliest member. Resuming Kahn then
- * unwinds the rest, leaving only the one unavoidable same-cycle inversion (informational per
- * checkOrder's cycleInversions). Returns the index in `remaining` of the node to emit.
+ * A Kahn stall means the still-unemitted files hold at least one import cycle. `sourceSccToBreak`
+ * picks the git-earliest member of a condensation-source SCC to force-emit; here the precedence is
+ * dependencies-first, so its emission-forward `successors` map is the reverse of `deps`. Returns the
+ * index in `remaining` of that node.
  */
 function cycleBreakIndex(remaining: string[], deps: Map<string, string[]>): number {
   const present = new Set(remaining);
-  const rank = new Map(remaining.map((f, i) => [f, i]));
-
-  let best: { members: Set<string>; externalInDegree: number; firstRank: number } | undefined;
-  for (const scc of stronglyConnected(remaining, deps)) {
-    const isCycle = scc.length > 1 || deps.get(scc[0]!)!.includes(scc[0]!);
-    if (!isCycle) continue;
-    const members = new Set(scc);
-    let externalInDegree = 0;
-    for (const f of scc) {
-      for (const d of deps.get(f)!) if (present.has(d) && !members.has(d)) externalInDegree++;
-    }
-    const firstRank = Math.min(...scc.map((f) => rank.get(f)!));
-    if (
-      best === undefined ||
-      externalInDegree < best.externalInDegree ||
-      (externalInDegree === best.externalInDegree && firstRank < best.firstRank)
-    ) {
-      best = { members, externalInDegree, firstRank };
-    }
+  const successors = new Map<string, string[]>(remaining.map((f) => [f, []]));
+  for (const f of remaining) {
+    for (const d of deps.get(f)!) if (present.has(d)) successors.get(d)!.push(f);
   }
-
-  // A stalled remainder always contains a cycle, so `best` is always set; the git-order fallback
-  // only exists to bound the loop rather than trust that invariant.
-  if (best === undefined) return 0;
-  return best.firstRank;
-}
-
-/** Tarjan SCCs of the subgraph induced on `nodes`; deterministic given node and edge order. */
-function stronglyConnected(nodes: string[], deps: Map<string, string[]>): string[][] {
-  const present = new Set(nodes);
-  const index = new Map<string, number>();
-  const low = new Map<string, number>();
-  const onStack = new Set<string>();
-  const stack: string[] = [];
-  const sccs: string[][] = [];
-  let counter = 0;
-
-  const connect = (v: string) => {
-    index.set(v, counter);
-    low.set(v, counter);
-    counter++;
-    stack.push(v);
-    onStack.add(v);
-    for (const w of deps.get(v)!) {
-      if (!present.has(w)) continue;
-      if (!index.has(w)) {
-        connect(w);
-        low.set(v, Math.min(low.get(v)!, low.get(w)!));
-      } else if (onStack.has(w)) {
-        low.set(v, Math.min(low.get(v)!, index.get(w)!));
-      }
-    }
-    if (low.get(v) === index.get(v)) {
-      const scc: string[] = [];
-      let w: string;
-      do {
-        w = stack.pop()!;
-        onStack.delete(w);
-        scc.push(w);
-      } while (w !== v);
-      sccs.push(scc);
-    }
-  };
-
-  for (const v of nodes) if (!index.has(v)) connect(v);
-  return sccs;
+  const rank = new Map(remaining.map((f, i) => [f, i]));
+  const seed = sourceSccToBreak(remaining, (f) => successors.get(f)!, (f) => rank.get(f)!);
+  return rank.get(seed)!;
 }
 
 /**
@@ -245,6 +185,9 @@ function stronglyConnected(nodes: string[], deps: Map<string, string[]>): string
  * the same relation the story uses. `files` is the book's section files (git order).
  */
 export function testImplAnchors(files: string[], chunks: Chunk[], graph: ImportGraph): { test: string; impl: string }[] {
+  if (files.some((f) => f.startsWith(CHAPTER_SECTION_PREFIX))) {
+    throw new Error('testImplAnchors requires file paths, not chapter-mode section ids (see isFileModeBook)');
+  }
   const roles = fileRoles(files, chunks, graph);
   const byRole = (role: FileRole) => files.filter((f) => roles.get(f) === role);
   const impl = topoSort(byRole('impl'), graph);

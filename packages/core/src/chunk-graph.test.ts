@@ -11,7 +11,8 @@ import {
   filterFreshGraph,
   sectionAnchors,
 } from './chunk-graph.js';
-import { type Book, LEFTOVERS_SECTION_ID } from './model.js';
+import { testImplAnchors } from './book.js';
+import { type Book, CHAPTER_SECTION_PREFIX, isFileModeBook, LEFTOVERS_SECTION_ID } from './model.js';
 
 function edge(from: string, to: string, kind: ChunkEdgeKind, source: ChunkEdge['source'] = 'references', fromLines: ChunkEdge['fromLines'] = []): ChunkEdge {
   return { from, to, kind, source, fromLines };
@@ -108,5 +109,16 @@ describe('sectionAnchors / fileImportEdges', () => {
     const graph = { edges: [{ from: 'a.ts', to: 'b.ts' }, { from: 'a.ts', to: 'gone.ts' }], unresolved: 0 };
     const edges = fileImportEdges(graph, sectionAnchors(book));
     expect(edges).toEqual([{ from: 'a#1', to: 'b#1', kind: 'file-imports', fromLines: [], source: 'import-graph' }]);
+  });
+
+  it('rejects a chapter-mode book rather than silently returning empty anchors', () => {
+    const chapterBook: Book = {
+      headSha: 'H',
+      sections: [{ id: `${CHAPTER_SECTION_PREFIX}a#1`, title: 'a.ts', occurrences: [{ chunkId: 'a#1', ordinal: 0, role: 'primary' }] }],
+    };
+    expect(isFileModeBook(book)).toBe(true);
+    expect(isFileModeBook(chapterBook)).toBe(false);
+    expect(() => sectionAnchors(chapterBook)).toThrow(/file-mode/);
+    expect(() => testImplAnchors([`${CHAPTER_SECTION_PREFIX}a#1`], [], { edges: [], unresolved: 0 })).toThrow(/file paths/);
   });
 });
