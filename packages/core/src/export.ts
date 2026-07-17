@@ -55,7 +55,8 @@ export function exportBookMarkdown(input: ExportBookInput): string {
       const chunk = byId.get(occurrence.chunkId);
       if (!chunk) continue;
       const lowSignal = isLowSignal(chunk) ? ` · low-signal (${lowSignalReason(chunk)})` : '';
-      out.push(`### ${chunkTitle(chunk)}`, '', `${chunk.kind} · ${sizeLabel(chunk)}${lowSignal}`, '');
+      const from = occurrence.label ? ` — from ${occurrence.label}` : '';
+      out.push(`### ${chunkTitle(chunk)}${from}`, '', `${chunk.kind} · ${sizeLabel(chunk)}${lowSignal}`, '');
       const line = entry?.chunks[chunk.id];
       if (line) out.push(`> AI: ${line}`, '');
       out.push(...diffBlock(chunk, input.contents.get(chunk.file)), '');

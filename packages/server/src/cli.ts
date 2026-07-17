@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-import { writeFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
+import path from 'node:path';
 import {
   applyOrderOverlay,
   type Book,
@@ -9,14 +10,19 @@ import {
   type Chunk,
   chunkLineCount,
   compileBook,
+  compileChapterBook,
   type ContextStoreFile,
+  DEFAULT_STORY_CONFIG,
   exportBookMarkdown,
   filterFreshContext,
   filterFreshNarration,
+  isDefaultStoryConfig,
   isLowSignal,
   type NarrationOverlay,
   lowSignalReason,
   renderOrderManifest,
+  resolveStoryConfig,
+  type StoryConfig,
 } from '@code-story/core';
 import open from 'open';
 import { buildChunkGraph } from './chunk-graph-build.js';
@@ -91,24 +97,56 @@ const modelIndex = args.indexOf('--model');
 const model = modelIndex >= 0 ? args[modelIndex + 1] : 'opus';
 const orderIndex = args.indexOf('--order');
 const orderChoice = orderIndex >= 0 ? args[orderIndex + 1] : 'tier0';
-const valueIndexes = new Set([exportIndex + 1, portIndex + 1, modelIndex + 1, orderIndex + 1].filter((i) => i > 0));
+const directionIndex = args.indexOf('--direction');
+const directionArg = directionIndex >= 0 ? args[directionIndex + 1] : undefined;
+const testPlacementIndex = args.indexOf('--test-placement');
+const testPlacementArg = testPlacementIndex >= 0 ? args[testPlacementIndex + 1] : undefined;
+const valueIndexes = new Set(
+  [exportIndex + 1, portIndex + 1, modelIndex + 1, orderIndex + 1, directionIndex + 1, testPlacementIndex + 1].filter(
+    (i) => i > 0,
+  ),
+);
 const range = args.find((a, i) => !a.startsWith('--') && !valueIndexes.has(i));
 const repo = process.cwd();
+
+/**
+ * Effective story config (spec 05, R-045): defaults, overlaid with a per-repo `.code-story.json`
+ * (top-level or under `ordering`), then CLI flags. Unknown/malformed values are ignored, not fatal.
+ * The active default is today's file-mode behaviour — chapter mode is opt-in via config until #77.
+ */
+async function effectiveStoryConfig(): Promise<StoryConfig> {
+  let raw: unknown;
+  try {
+    raw = JSON.parse(await readFile(path.join(repo, '.code-story.json'), 'utf8'));
+  } catch {
+    raw = undefined;
+  }
+  const fileOrdering = (raw as { ordering?: unknown })?.ordering ?? raw;
+  const fromFile = resolveStoryConfig(DEFAULT_STORY_CONFIG, fileOrdering as Record<string, unknown> | undefined);
+  return resolveStoryConfig(fromFile, { direction: directionArg, testPlacement: testPlacementArg });
+}
 
 if (
   !range ||
   (exportIndex >= 0 && !exportPath) ||
   Number.isNaN(port) ||
   !model ||
-  (orderChoice !== 'tier0' && orderChoice !== 'ai')
+  (orderChoice !== 'tier0' && orderChoice !== 'ai') ||
+  (directionArg !== undefined && directionArg !== 'consumer-first' && directionArg !== 'dependency-first') ||
+  (testPlacementArg !== undefined && !['before', 'after', 'end'].includes(testPlacementArg))
 ) {
   console.error(
-    'Usage: code-story <base>..<head> [--export book.md] [--narration] [--order tier0|ai] [--ai-order] [--no-ai-order] [--narrate] [--context] [--dump-context] [--model <id>] [--port <n>] [--dump-diff] [--dump-chunks] [--dump-graph] [--dump-chunk-graph] [--check-order] [--dump-manifest] [--no-open]\n' +
+    'Usage: code-story <base>..<head> [--export book.md] [--narration] [--order tier0|ai] [--ai-order] [--no-ai-order] [--narrate] [--context] [--dump-context] [--model <id>] [--port <n>] [--direction consumer-first|dependency-first] [--test-placement before|after|end] [--dump-diff] [--dump-chunks] [--dump-graph] [--dump-chunk-graph] [--check-order] [--dump-manifest] [--no-open]\n' +
       '\n' +
       'AI reading order is the default: the daemon runs the ordering job in the background on\n' +
       'compile and applies it on the next book load. --no-ai-order (or CODE_STORY_NO_AI_ORDER)\n' +
       'disables the auto job; the book then stays in tier-0 (deterministic) order. --order tier0\n' +
-      'forces tier-0 order on --export.',
+      'forces tier-0 order on --export.\n' +
+      '\n' +
+      '--direction / --test-placement (or a per-repo .code-story.json) select the chapter\n' +
+      'linearizer: call-path chapters that may span files. Both default to today’s file-mode\n' +
+      'behaviour (dependency-first, tests after their impl); the intended defaults (consumer-first,\n' +
+      'tests before) ship in a later slice. Currently honoured by --export and --check-order.',
   );
   process.exit(1);
 }
@@ -175,14 +213,35 @@ if (dumpChunkGraph) {
 
 if (checkOrderFlag) {
   const files = await diffRange(repo, resolved);
-  const { chunks, graph } = await computeChunks(repo, resolved, files);
-  const { book } = compileBook({ files, chunks, graph, headSha: resolved.head });
-  const report = checkOrder(book, graph, chunks);
+  const { chunks, contents, graph } = await computeChunks(repo, resolved, files);
+  const config = await effectiveStoryConfig();
 
-  for (const inv of report.importInversions) console.log(`import inversion: ${inv.earlier} reads before ${inv.later}`);
+  let book;
+  let report;
+  if (isDefaultStoryConfig(config)) {
+    book = compileBook({ files, chunks, graph, headSha: resolved.head }).book;
+    report = checkOrder(book, graph, chunks);
+  } else {
+    const fileBook = compileBook({ files, chunks, graph, headSha: resolved.head });
+    const cg = await buildChunkGraph({
+      chunks: fileBook.chunks,
+      contents,
+      graph,
+      book: fileBook.book,
+      files,
+      headSha: resolved.head,
+    });
+    const chunkGraph = { edges: cg.edges };
+    const compiled = compileChapterBook({ files, chunks, graph, chunkGraph, headSha: resolved.head }, config);
+    book = compiled.book;
+    report = checkOrder(book, graph, compiled.chunks, { config, chunkGraph });
+    console.log(`config: direction=${config.direction}, test-placement=${config.testPlacement} (chapter mode)`);
+  }
+
+  for (const inv of report.importInversions) console.log(`order inversion: ${inv.earlier} reads before ${inv.later}`);
   for (const inv of report.cycleInversions) console.log(`cycle inversion (unavoidable): ${inv.earlier} <-> ${inv.later}`);
-  for (const inv of report.testBeforeImpl) console.log(`test before impl: ${inv.test} reads before ${inv.impl}`);
-  const counts = `${report.importInversions.length} import inversions, ${report.testBeforeImpl.length} test-before-impl, ${report.cycleInversions.length} within cycles`;
+  for (const inv of report.testBeforeImpl) console.log(`test-placement violation: ${inv.test} vs ${inv.impl}`);
+  const counts = `${report.importInversions.length} import inversions, ${report.testBeforeImpl.length} test-placement, ${report.cycleInversions.length} within cycles`;
   console.log(report.ok ? `order: OK (${book.sections.length} sections, ${counts})` : `order: FAILED — ${counts}`);
   process.exit(report.ok ? 0 : 1);
 }
@@ -370,33 +429,59 @@ if (aiOrder || narrate || exportPath) {
   }
 
   if (exportPath) {
+    const config = await effectiveStoryConfig();
     let book = compiled.book;
-    if (orderChoice === 'ai') {
-      const overlay = await loadOverlay(orderFile);
-      const applied = overlay === null ? book : applyOrderOverlay(book, graph, compiled.chunks, overlay);
-      if (applied === book) {
-        console.error('code-story: no fresh AI order overlay for this range (run --ai-order first)');
-        process.exit(1);
-      }
-      book = applied;
-    }
+    let exportChunks = compiled.chunks;
     let narrationOverlay: NarrationOverlay | undefined;
-    if (narration) {
-      const raw = await loadNarrationOverlay(narrationFile);
-      if (raw === null) {
-        console.error('code-story: no narration overlay for this range (run --narrate first)');
-        process.exit(1);
+
+    if (!isDefaultStoryConfig(config)) {
+      // Chapter mode: AI order / narration overlays are keyed to the file-mode book, so they can't
+      // apply here — this export is the deterministic chapter linearization.
+      const cg = await buildChunkGraph({
+        chunks: compiled.chunks,
+        contents,
+        graph,
+        book: compiled.book,
+        files,
+        headSha: resolved.head,
+      });
+      const chapter = compileChapterBook(
+        { files, chunks, graph, chunkGraph: { edges: cg.edges }, headSha: resolved.head },
+        config,
+      );
+      book = chapter.book;
+      exportChunks = chapter.chunks;
+      console.log(
+        `code-story: chapter mode (direction=${config.direction}, test-placement=${config.testPlacement}); AI order/narration are file-mode only and skipped`,
+      );
+    } else {
+      if (orderChoice === 'ai') {
+        const overlay = await loadOverlay(orderFile);
+        const applied = overlay === null ? book : applyOrderOverlay(book, graph, compiled.chunks, overlay);
+        if (applied === book) {
+          console.error('code-story: no fresh AI order overlay for this range (run --ai-order first)');
+          process.exit(1);
+        }
+        book = applied;
       }
-      narrationOverlay = filterFreshNarration(book, resolved.head, raw);
+      if (narration) {
+        const raw = await loadNarrationOverlay(narrationFile);
+        if (raw === null) {
+          console.error('code-story: no narration overlay for this range (run --narrate first)');
+          process.exit(1);
+        }
+        narrationOverlay = filterFreshNarration(book, resolved.head, raw);
+      }
     }
+
     await writeFile(
       exportPath,
-      exportBookMarkdown({ book, chunks: compiled.chunks, contents, title: range, narration: narrationOverlay }),
+      exportBookMarkdown({ book, chunks: exportChunks, contents, title: range, narration: narrationOverlay }),
     );
 
-    const leftovers = compiled.chunks.length - chunks.length;
+    const leftovers = exportChunks.length - chunks.length;
     console.log(
-      `wrote ${exportPath}: ${compiled.chunks.length} chunks, ${compiled.book.sections.length} sections` +
+      `wrote ${exportPath}: ${exportChunks.length} chunks, ${book.sections.length} sections` +
         (leftovers > 0 ? ` — WARNING: ${leftovers} leftover chunks (chunker gaps)` : ''),
     );
     process.exit(0);

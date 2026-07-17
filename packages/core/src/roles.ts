@@ -13,6 +13,30 @@ export function isTestPath(path: string): boolean {
 }
 
 /**
+ * End-to-end / journey test heuristic (spec 05 tests-by-kind): a spec that drives the whole app
+ * rather than one unit. Path-only — an `e2e`/`playwright` directory, or an `.e2e.` filename. Used
+ * to close the book with journey specs; the impl-relative test axiom still wins over it when a
+ * test carries a real `exercises` edge, so a mislabel only affects trailing ordering.
+ */
+export function isE2ePath(path: string): boolean {
+  const segments = path.split('/').map((s) => s.toLowerCase());
+  if (segments.slice(0, -1).some((s) => s === 'e2e' || s === 'playwright')) return true;
+  return /\.e2e\./i.test(segments.at(-1) ?? '');
+}
+
+/**
+ * Entry-point / route file heuristic (spec 05 anchor ordering: "pages/routes first"): a SvelteKit
+ * route or layout, a file under a `routes`/`pages` directory, or a C# controller. Anchors from
+ * these read before other anchors so a chapter opens at the surface the change is reached from.
+ */
+export function isRouteFile(path: string): boolean {
+  const segments = path.split('/');
+  if (segments.slice(0, -1).some((s) => s.toLowerCase() === 'routes' || s.toLowerCase() === 'pages')) return true;
+  const name = segments.at(-1) ?? '';
+  return name.startsWith('+page') || name.startsWith('+layout') || /Controller\.cs$/.test(name);
+}
+
+/**
  * One role per changed file (spec 01 tier 0, input 1). Precedence is deliberate:
  * low-signal wins over test (an all-stub test file is still a stub), test wins over
  * periphery (an unconnected test file is still a test), impl is the default.

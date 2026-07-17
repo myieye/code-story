@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { compileBook } from './book.js';
 import { checkOrder } from './check-order.js';
+import { type ChunkEdge, type ChunkGraph } from './chunk-graph.js';
 import { type FileDiff } from './diff.js';
 import { type ImportGraph } from './import-graph.js';
 import { type Book, type ChangeType, type Chunk } from './model.js';
@@ -231,5 +232,84 @@ describe('checkOrder', () => {
       expect(pos(dashboard)).toBeLessThan(pos(e2e));
       expect(pos(service)).toBeLessThan(pos(serviceTest)); // normal impl+test anchoring still holds
     });
+  });
+});
+
+// Chapter-mode chunk-position semantics (spec 05): positions are the flattened occurrence order,
+// edges come from the chunk graph, and the direction / test gates invert with config.
+describe('checkOrder — chapter mode', () => {
+  const bookOfChunks = (ids: string[]): Book => ({
+    sections: [{ id: 'chapter', title: 'chapter', occurrences: ids.map((id) => ({ chunkId: id, ordinal: 0, role: 'primary' as const })) }],
+    headSha: 'h',
+  });
+  const chunkOf = (id: string, file: string): Chunk => ({
+    id,
+    file,
+    symbolPath: [],
+    displayPath: [],
+    kind: 'method',
+    changeTypes: [],
+    hunks: [HUNK],
+  });
+  const cedge = (from: string, to: string, kind: ChunkEdge['kind'] = 'calls'): ChunkEdge => ({
+    from,
+    to,
+    kind,
+    fromLines: [{ start: 1, end: 1 }],
+    source: 'references',
+  });
+  const cg = (...edges: ChunkEdge[]): ChunkGraph => ({ edges });
+
+  it('consumer-first flags a callee read before its caller', () => {
+    const report = checkOrder(bookOfChunks(['callee', 'caller']), graphOf(), [chunkOf('caller', 'a.ts'), chunkOf('callee', 'b.ts')], {
+      config: { direction: 'consumer-first', testPlacement: 'after' },
+      chunkGraph: cg(cedge('caller', 'callee')),
+    });
+    expect(report.ok).toBe(false);
+    expect(report.importInversions).toEqual([{ earlier: 'callee', later: 'caller' }]);
+  });
+
+  it('consumer-first passes when the caller reads first', () => {
+    const report = checkOrder(bookOfChunks(['caller', 'callee']), graphOf(), [chunkOf('caller', 'a.ts'), chunkOf('callee', 'b.ts')], {
+      config: { direction: 'consumer-first', testPlacement: 'after' },
+      chunkGraph: cg(cedge('caller', 'callee')),
+    });
+    expect(report.ok).toBe(true);
+  });
+
+  it('test-placement=before flags a test read after its impl, and passes when read before', () => {
+    const chunks = [chunkOf('t', 'x.test.ts'), chunkOf('impl', 'x.ts')];
+    const after = checkOrder(bookOfChunks(['impl', 't']), graphOf(), chunks, {
+      config: { direction: 'consumer-first', testPlacement: 'before' },
+      chunkGraph: cg(cedge('t', 'impl', 'exercises')),
+    });
+    expect(after.ok).toBe(false);
+    expect(after.testBeforeImpl).toEqual([{ test: 't', impl: 'impl' }]);
+
+    const before = checkOrder(bookOfChunks(['t', 'impl']), graphOf(), chunks, {
+      config: { direction: 'consumer-first', testPlacement: 'before' },
+      chunkGraph: cg(cedge('t', 'impl', 'exercises')),
+    });
+    expect(before.ok).toBe(true);
+  });
+
+  it('does not gate a test calling a page-object (test → test-role exercises edge)', () => {
+    const chunks = [chunkOf('spec', 'tests/admin.test.ts'), chunkOf('po', 'tests/pages/loginPage.ts')];
+    const report = checkOrder(bookOfChunks(['po', 'spec']), graphOf(), chunks, {
+      config: { direction: 'consumer-first', testPlacement: 'before' },
+      chunkGraph: cg(cedge('spec', 'po', 'exercises')),
+    });
+    expect(report.ok).toBe(true);
+  });
+
+  it('reports a chunk-level call cycle informationally without failing', () => {
+    const chunks = [chunkOf('a', 'a.ts'), chunkOf('b', 'b.ts')];
+    const report = checkOrder(bookOfChunks(['a', 'b']), graphOf(), chunks, {
+      config: { direction: 'consumer-first', testPlacement: 'after' },
+      chunkGraph: cg(cedge('a', 'b'), cedge('b', 'a')),
+    });
+    expect(report.ok).toBe(true);
+    expect(report.cycleInversions).toEqual([{ earlier: 'a', later: 'b' }]);
+    expect(report.importInversions).toEqual([]);
   });
 });
