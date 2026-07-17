@@ -260,7 +260,19 @@ needs the head path index (`git ls-tree`) and covers path-specifier languages on
 unchanged callees = SCIP door; definitions get an additive budget that never evicts diff
 text; narration prompt bumps stay owned by spec 03's eval track). M4 slices = **#62–#68**;
 #62 (core payload model) in flight.
-Next: land **#62**, then #63 (server reference extraction) → #64 (resolution+API) → #65–#68
-per blocking edges. #21/#27/#58 evidence-gated watches. Ship decisions wait on Tim's reads:
-**#28** (blind order A/B, 3 pairs) and **#54** (narrated-vs-bare, narration-4 copies).
+#62 done (PR #69: core `context.ts` — ContextPayload v1 types + store shape,
+`contextFingerprint` folds CORE_VERSION, `filterFreshContext` fail-open-to-absent, `capBody`
+statement-boundary truncation; core 171). #63 done (PR #70: server `references.ts` —
+`extractReferences` new parse pass, call/new/JSX-component (TS/TSX/JS) +
+invocation/object-creation (C#), Svelte script-blocks-only per spec non-goal, tail-identifier
+semantics, stoplist floor, no scope analysis; treesitter.ts exports `wasmForExtension` +
+`svelteScriptBlocks` for routing reuse; server 47). Suite core 171 / server 47 / web 33 = 251.
+**Session stopped here on Tim's instruction (2026-07-17 ~05:05Z, quota discipline); repo is
+clean: no open PRs, all remote claude/* branches merged, working tree clean.**
+Next: **#64** (definition resolution + head path index + store + API — the M4 heart; spec 04
+"Resolution pipeline" step 2 is the contract, #62's model + #63's extraction are its inputs),
+then #65 (bulk job + CLI) → #66 (web panel) → #67 (narration-input definitions block) → #68
+(dogfood 5) per blocking edges. #21/#27/#58 evidence-gated watches. Ship decisions wait on
+Tim's reads: **#28** (blind order A/B, 3 pairs) and **#54** (narrated-vs-bare, narration-4
+copies). A thin one-shot continuation trigger is armed for 09:25Z (Tim declined disabling it).
 Dogfood target: languageforge/lexbox (C# + Svelte/TS); repo-agnostic (R-025).
