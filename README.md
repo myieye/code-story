@@ -55,3 +55,10 @@ Build once (`pnpm install && pnpm -r build`), then start a daemon on any diff/ra
 `node packages/server/dist/cli.js <base>..<head> --port 7357`. To drive the book UI
 programmatically (walk latency, mark/unmark round-trips) against a running daemon, use
 `node tools/dogfood-walk.mjs --port 7357` (flags: `--walk`, `--marks`, `--headless`).
+
+AI reading order is the default: the daemon runs the ordering job in the background on compile
+(spending ~1 min of your Claude plan per range) and applies it on the next book load. The book
+always opens immediately in the deterministic tier-0 order and never blocks on the job; if the
+job fails (no `claude` CLI, no network) the book simply stays in tier-0 order. Pass
+`--no-ai-order` (or set `CODE_STORY_NO_AI_ORDER`) to disable the auto job. `--order tier0`
+forces tier-0 order on `--export`.
