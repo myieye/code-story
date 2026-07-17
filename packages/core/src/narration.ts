@@ -1,5 +1,18 @@
 import { fnv1a } from './chunker.js';
-import { type Book, CORE_VERSION, type Section } from './model.js';
+import { type FileContents } from './export.js';
+import { type ImportGraph } from './import-graph.js';
+import {
+  type Book,
+  type Chunk,
+  type ChunkKind,
+  chunkLineCount,
+  chunkTitle,
+  CORE_VERSION,
+  isLowSignal,
+  type Section,
+} from './model.js';
+import { unifiedChunkLines } from './render.js';
+import { type FileRole, fileRoles } from './roles.js';
 
 export type NarrationKind = 'opener' | 'intro' | 'chunkLine';
 
@@ -148,4 +161,157 @@ export function fleschScore(text: string): number {
   const sentenceCount = Math.max(1, splitSentences(collapsed).length);
   const syllables = words.reduce((n, w) => n + countSyllables(w), 0);
   return 206.835 - 1.015 * (wordCount / sentenceCount) - 84.6 * (syllables / wordCount);
+}
+
+/** Per-call diff budget (spec 03 runtime shape); reuses the order manifest's ~4-chars-per-token heuristic. */
+export const NARRATION_INPUT_TOKEN_CAP = 6000;
+
+export interface NarrationChunkInput {
+  id: string;
+  title: string;
+  kind: ChunkKind;
+  lines: number;
+  /** Rendered unified diff; absent when the chunk was dropped for budget (see `omitted`) or has no fetchable content. */
+  diff?: string;
+}
+
+export interface SectionNarrationInput {
+  /** Section id = the changed-file path. */
+  key: string;
+  role: FileRole;
+  /** Other changed files this section imports. */
+  imports: string[];
+  /** Other changed files that import this section. */
+  importedBy: string[];
+  chunks: NarrationChunkInput[];
+  /** Chunk ids whose diff didn't fit the budget — the job records these as gateFailures (never narrate code the model didn't see). */
+  omitted: string[];
+  estimatedTokens: number;
+}
+
+/** Unified-diff text for a chunk, built from its hunks (never re-diffed); empty string when no content is fetchable. */
+function chunkDiffText(chunk: Chunk, contents: FileContents | undefined): string {
+  const marks = { add: '+', del: '-', context: ' ' } as const;
+  return unifiedChunkLines(chunk, contents)
+    .map((line) => (line.type === 'gap' ? '…' : `${marks[line.type]}${line.text}`))
+    .join('\n');
+}
+
+/**
+ * The per-section narration prompt input: section role, its cross-file import edges, and each
+ * non-low-signal chunk's id, metadata, and diff — capped at ~6k tokens. Chunks past the cap keep
+ * their id and metadata but lose their diff and land in `omitted`, so the job can record them as
+ * gateFailures rather than narrate code the model never saw. Low-signal stubs are excluded here.
+ */
+export function buildSectionNarrationInput(
+  section: Section,
+  chunks: Chunk[],
+  graph: ImportGraph,
+  contents: Map<string, FileContents>,
+): SectionNarrationInput {
+  const chunksById = new Map(chunks.map((c) => [c.id, c]));
+  const role = fileRoles([section.id], chunks, graph).get(section.id) ?? 'impl';
+
+  const imports = new Set<string>();
+  const importedBy = new Set<string>();
+  for (const edge of graph.edges) {
+    if (edge.from === edge.to) continue;
+    if (edge.from === section.id) imports.add(edge.to);
+    if (edge.to === section.id) importedBy.add(edge.from);
+  }
+
+  const seen = new Set<string>();
+  const narratable: Chunk[] = [];
+  for (const occurrence of section.occurrences) {
+    const chunk = chunksById.get(occurrence.chunkId);
+    if (!chunk || isLowSignal(chunk) || seen.has(chunk.id)) continue;
+    seen.add(chunk.id);
+    narratable.push(chunk);
+  }
+
+  const base = {
+    key: section.id,
+    role,
+    imports: [...imports],
+    importedBy: [...importedBy],
+  };
+  const diffs = narratable.map((c) => chunkDiffText(c, contents.get(c.file)));
+  const entries: NarrationChunkInput[] = narratable.map((c) => ({
+    id: c.id,
+    title: chunkTitle(c),
+    kind: c.kind,
+    lines: chunkLineCount(c),
+  }));
+
+  const omitted: string[] = [];
+  let overBudget = false;
+  for (let i = 0; i < entries.length; i++) {
+    if (overBudget) {
+      omitted.push(entries[i]!.id);
+      continue;
+    }
+    entries[i]!.diff = diffs[i];
+    const rendered = renderSectionNarrationInput({ ...base, chunks: entries, omitted });
+    if (Math.ceil(rendered.length / 4) > NARRATION_INPUT_TOKEN_CAP) {
+      entries[i]!.diff = undefined;
+      overBudget = true;
+      omitted.push(entries[i]!.id);
+    }
+  }
+
+  const draft = { ...base, chunks: entries, omitted };
+  return { ...draft, estimatedTokens: Math.ceil(renderSectionNarrationInput(draft).length / 4) };
+}
+
+/**
+ * Deterministic plain-text rendering of one section's narration input for the prompt: a header
+ * (key, role, import edges), then one block per chunk with its exact id, metadata, and diff.
+ * Plain text, following renderOrderManifest — the model reads it, it does not parse it back.
+ */
+export function renderSectionNarrationInput(input: Omit<SectionNarrationInput, 'estimatedTokens'>): string {
+  const header = [`${input.key} [${input.role}]`];
+  if (input.imports.length > 0) header.push(`imports: ${input.imports.join(', ')}`);
+  if (input.importedBy.length > 0) header.push(`imported by: ${input.importedBy.join(', ')}`);
+
+  const blocks = input.chunks.map((chunk) => {
+    const meta = `chunk ${chunk.id}\n  ${chunk.title} (${chunk.kind}, ~${chunk.lines} lines)`;
+    if (chunk.diff === undefined) return `${meta}\n  (diff omitted — over token budget)`;
+    if (chunk.diff === '') return `${meta}\n  (no diff content available)`;
+    return `${meta}\n${chunk.diff}`;
+  });
+
+  return [header.join('\n'), ...blocks].join('\n\n');
+}
+
+export interface ParsedNarrationReply {
+  intro: string;
+  /** Sparse by design: a subset of the section's chunk ids, each mapped to its one-line orientation. */
+  chunks: Record<string, string>;
+}
+
+/**
+ * Validates one model reply against a section: `intro` must be a string, and every `chunks` key must
+ * be one of the section's chunk ids (unknown keys reject the whole reply — never attach a line to a
+ * chunk the section doesn't own). Missing keys are fine; sparse is the design. Register/judgment is
+ * not checked here — that's checkNarrationText's job.
+ */
+export function parseNarrationReply(
+  section: Section,
+  json: unknown,
+): { ok: true; reply: ParsedNarrationReply } | { ok: false; error: string } {
+  if (typeof json !== 'object' || json === null) return { ok: false, error: 'reply is not an object' };
+  const obj = json as { intro?: unknown; chunks?: unknown };
+  if (typeof obj.intro !== 'string') return { ok: false, error: 'reply has no "intro" string' };
+
+  const validIds = new Set(section.occurrences.map((o) => o.chunkId));
+  const chunks: Record<string, string> = {};
+  if (obj.chunks !== undefined) {
+    if (typeof obj.chunks !== 'object' || obj.chunks === null) return { ok: false, error: '"chunks" is not an object' };
+    for (const [id, line] of Object.entries(obj.chunks as Record<string, unknown>)) {
+      if (!validIds.has(id)) return { ok: false, error: `unknown chunk id in reply: ${id}` };
+      if (typeof line !== 'string') return { ok: false, error: `chunk line for ${id} is not a string` };
+      chunks[id] = line;
+    }
+  }
+  return { ok: true, reply: { intro: obj.intro, chunks } };
 }
