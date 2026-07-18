@@ -260,7 +260,6 @@ describe('chapter-mode ordering (overlay v2)', () => {
     ]);
     expect(manifest.tier0Chapters).toEqual(tier0.storyComposition);
     expect(manifest.bookFingerprint).toBe(bookFingerprint(tier0.book));
-    expect(manifest.estimatedTokens).toBe(Math.ceil(renderChunkOrderManifest(manifest).length / 4));
   });
 
   it('renderChunkOrderManifest names each chunk, the calls, and the tier-0 chapters', () => {
@@ -268,7 +267,7 @@ describe('chapter-mode ordering (overlay v2)', () => {
     const rendered = renderChunkOrderManifest(buildChunkOrderManifest(tier0.book, tier0.chunks, cg, tier0.storyComposition));
     expect(rendered).toContain('a — a (method, ~2 lines) [a.ts]');
     expect(rendered).toContain('a -> b (line 3)');
-    expect(rendered).toContain('placed automatically');
+    expect(rendered).toContain('regroup and reorder');
   });
 
   it('applyChapterOverlay recomposes when fresh and valid', () => {

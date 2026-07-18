@@ -13,6 +13,7 @@ import {
   type ImportGraph,
   type OrderOverlay,
   type OrderOverlayV2,
+  renderChunkOrderManifest,
   renderOrderManifest,
   type StoryConfig,
   validateChapterComposition,
@@ -93,12 +94,6 @@ export async function runOrderJob(input: OrderJobInput): Promise<OrderOverlay> {
  */
 export async function runChapterOrderJob(input: ChapterOrderJobInput): Promise<OrderOverlayV2> {
   const manifest = buildChunkOrderManifest(input.book, input.chunks, input.chunkGraph, input.storyComposition);
-  if (manifest.estimatedTokens > MANIFEST_TOKEN_LIMIT) {
-    throw new OrderJobError(
-      'refused',
-      `manifest is ~${manifest.estimatedTokens} tokens (limit ${MANIFEST_TOKEN_LIMIT}) — a range this large reads fine in tier-0 order`,
-    );
-  }
   if (manifest.chunks.length < 3) {
     throw new OrderJobError('refused', `only ${manifest.chunks.length} story chunks — nothing to reorder`);
   }
@@ -113,7 +108,18 @@ export async function runChapterOrderJob(input: ChapterOrderJobInput): Promise<O
     idOf.set(alias, c.id);
   });
 
-  const prompt = chapterOrderPrompt(renderAliasedManifest(manifest, aliasOf), input.config.direction);
+  // Guard against the aliased text the model actually receives, not the raw-id rendering — aliases
+  // are ~3-4x shorter, so estimating on raw ids would refuse ranges that fit comfortably.
+  const rendered = renderChunkOrderManifest(manifest, (id) => aliasOf.get(id) ?? id);
+  const estimatedTokens = Math.ceil(rendered.length / 4);
+  if (estimatedTokens > MANIFEST_TOKEN_LIMIT) {
+    throw new OrderJobError(
+      'refused',
+      `manifest is ~${estimatedTokens} tokens (limit ${MANIFEST_TOKEN_LIMIT}) — a range this large reads fine in tier-0 order`,
+    );
+  }
+
+  const prompt = chapterOrderPrompt(rendered, input.config.direction);
   return invokeUntilValid(input, prompt, (raw) => tryBuildChapterOverlay(input, manifest, idOf, raw));
 }
 
@@ -192,20 +198,6 @@ function tryBuildOverlay(
     };
   }
   return { overlay };
-}
-
-/** Renders the chunk manifest with aliases in place of raw ids — the only text the model reads. */
-function renderAliasedManifest(manifest: ChunkOrderManifest, aliasOf: Map<string, string>): string {
-  const chunkLines = manifest.chunks.map(
-    (c) => `${aliasOf.get(c.id)} — ${c.title} (${c.kind}, ~${c.lines} lines) [${c.file}]`,
-  );
-  const callLines = manifest.calls.map((e) => `${aliasOf.get(e.fromId)} -> ${aliasOf.get(e.toId)} (line ${e.fromLine})`);
-  const callsBlock = ['calls:', ...(callLines.length > 0 ? callLines : ['(none)'])].join('\n');
-  const chapterLines = manifest.tier0Chapters.map(
-    (ids, i) => `${i + 1}. ${ids.map((id) => aliasOf.get(id)).join(', ')}`,
-  );
-  const note = 'The grouping above is a starting point; regroup and reorder the chunks into chapters.';
-  return [chunkLines.join('\n'), callsBlock, chapterLines.join('\n'), note].join('\n\n');
 }
 
 /**

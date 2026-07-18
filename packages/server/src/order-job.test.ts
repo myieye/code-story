@@ -1,5 +1,6 @@
 import {
   type Book,
+  buildChunkOrderManifest,
   type Chunk,
   type ChunkGraph,
   type CompileChapterBookInput,
@@ -7,6 +8,7 @@ import {
   DEFAULT_STORY_CONFIG,
   type FileDiff,
   type ImportGraph,
+  renderChunkOrderManifest,
 } from '@code-story/core';
 import { describe, expect, test } from 'vitest';
 import { OrderJobError, runChapterOrderJob, runOrderJob, shouldAutoKickOrder } from './order-job.js';
@@ -235,5 +237,45 @@ describe('runChapterOrderJob (#77)', () => {
       }),
     ).rejects.toMatchObject({ failure: 'refused' });
     expect(invoked).toBe(false);
+  });
+
+  // Regression for the review's finding #1: the size guard must measure the aliased text the model
+  // receives, not the raw-id rendering. Long ids blow past the limit raw but fit once aliased.
+  test('the size guard measures the aliased prompt, not the raw ids', async () => {
+    const longFiles = Array.from({ length: 60 }, (_, i) => `src/${'segment/'.repeat(24)}module-${i}.ts`);
+    const longChunks = longFiles.map((f) => chunk(f));
+    const longDiffs: FileDiff[] = longFiles.map((path) => ({
+      path,
+      status: 'modified',
+      binary: false,
+      hunks: [{ baseStart: 0, baseCount: 0, headStart: 1, headCount: 3 }],
+    }));
+    const noEdges: ChunkGraph = { edges: [] };
+    const longInput: CompileChapterBookInput = {
+      files: longDiffs,
+      chunks: longChunks,
+      graph: { edges: [], unresolved: 0 },
+      chunkGraph: noEdges,
+      headSha: 'deadbeef',
+    };
+    const tier0 = compileChapterBook(longInput, DEFAULT_STORY_CONFIG);
+    const manifest = buildChunkOrderManifest(tier0.book, tier0.chunks, noEdges, tier0.storyComposition);
+    // Precondition: the old raw-id render trips the 8000-token guard; the aliased render does not.
+    expect(Math.ceil(renderChunkOrderManifest(manifest).length / 4)).toBeGreaterThan(8000);
+
+    const composition = tier0.storyComposition.flat().map((_, i) => [`c${i + 1}`]);
+    let invoked = false;
+    const overlay = await runChapterOrderJob({
+      ...chapterBase,
+      book: tier0.book,
+      chunks: tier0.chunks,
+      graph: longInput.graph,
+      input: longInput,
+      chunkGraph: noEdges,
+      storyComposition: tier0.storyComposition,
+      invoke: async () => ((invoked = true), chapterEnvelope(composition)),
+    });
+    expect(invoked).toBe(true);
+    expect(overlay.version).toBe(2);
   });
 });
