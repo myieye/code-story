@@ -389,14 +389,30 @@ unchanged, eval still valid), `estimatedTokens` dropped, regression-tested. Also
 `assembleSections` label lookup. Deferred (in the review doc, not urgent): `/api/book` +
 `export?order=ai` double-compile via `applyChapterOverlay` — measure before changing the contract.
 Suite 365 (core 221 / server 96 / web 48).
-Next (verify freshness on wake): **the buildable frontier is Tim-gated — do NOT jump the gates.**
-M5 UI slices #78 (neighbor strip + jump/back), #79 (frontier surfacing), #80 (dogfood 6
-lawn-mower) are ALL gated on Tim's #74 blind edge-precision labels (≥0.90; 27 cards in
-`docs/evals/chunk-graph-audit-2026-07-17/`; Claude self-audit 0.976 but Tim's independent labels
-are the real gate). #54 (narrated-vs-bare read, `docs/evals/narration-read-2026-07-17/`) is Tim's
-decision, still open. Evidence-gated watches (act only on NEW dogfood recurrence): #100 (tier-0
-fragmentation), #21 (C# ancestor-namespace), #27 (order-2 locality-vs-purity), #58 (narration
-point-don't-assert), #92 (Svelte template reach). No open PRs; main green (a8db0d8).
+**Fifth window (2026-07-18, "build all night"): #74 gate CLEARED by Tim → M5 UI COMPLETE (#74–#80).**
+Tim trusts the chunk graph ("I trust your graph"; self-audit 0.976 + a spot-confirmed edge) and
+steered navigation to **mouse-click-first** (keyboard secondary; amends R-004's "keystroke"). **#78**
+(PR #103): chunk graph exposed on BookResponse + core `neighborsOf`; the neighbor strip is an
+ARIA-toolbar of clickable chips in the focused chunk's header (click primary, `g`/arrows/Enter/`b`
+secondary), three states + `+N behind`, back-stack, re-encounter≠re-audit, hide-when-empty, never a
+canvas. **#79** (PR #104): honest display-only frontier surfacing (progress-cluster count +
+done-banner "N interactions surfaced — none individually verified"; `file-imports` excluded; gates
+nothing, 100% coverage ⇒ 0 frontier). **#80 dogfood 6** (PR #105, `tools/dogfood-mow.mjs`): full UI
+works E2E on lexbox, but real changed-file graphs are **island-dominated** (2379 53% / 2309 89% of
+chunks touch no interaction edge), so the mow aids only a change's **connected core** (it
+reconstructed the `EntryQueryHelpers` hub-and-spoke from the strip alone) — a local aid on the linear
+safety net, not a whole-PR navigator; chunk-size premise (R-049) holds. **#108** (PR #110): symbol-less
+chip labels use the file basename. No CORE_VERSION bump this window (read-only derivations / display /
+web only). Suite **381** (core 225 / server 97 / web 59).
+Next (verify freshness on wake): **the specced roadmap M0–M5 is COMPLETE; the frontier is now
+Tim-gated — do NOT jump the gates, and do NOT spec M6 unprompted (Tim scopes milestones).** Tim's open
+reads/calls: **#109** (M5 lawn-mower felt read — did criss-crossing beat the straight read;
+`docs/evals/m5-mow-read-2026-07-18/`), **#54** (narrated-vs-bare read,
+`docs/evals/narration-read-2026-07-17/`), **#106** (mow-gesture design — Enter mark-and-advance fights
+following the strip; waits on #109's verdict). Evidence-gated watches (act only on NEW dogfood
+recurrence): #100 (tier-0 fragmentation — now double-confirmed by dogfood 6's island rate), #21, #27,
+#58, #92, #107 (frontier wording). PR-versions (R-038–R-041) stay deferred by Tim's instruction —
+don't build. No open PRs; main green (c92329e).
 Dogfood target: languageforge/lexbox (C# + Svelte/TS); repo-agnostic (R-025). lexbox clone
 lives at /home/user/lexbox this container (refs pr-2309, pr-2357 fetched; ranges
 c0448522..pr-2309, 277e418d8~1..277e418d8, 8dd70ba~1..8dd70ba).
