@@ -377,9 +377,18 @@ subjects, zero invalid; reports `docs/evals/reports/eval-chapter-{2309,2357,2379
 02/05 flipped to SHIP, baseline doc "Chapter-mode ordering eval". Win is partly consumer-first
 ordering, partly consolidation — the tier-0 chapter linearizer over-fragments on sparse call
 graphs (2357: 76 sections vs AI 32) → harvest **#100**. Does NOT settle chapter-vs-file mode (the
-#74-gated question). Suite 364 (core 221 / server 95 / web 48). Signing note: this container has
+#74-gated question). Signing note: this container has
 no SSH signing private key (`commit_signing_key` absent), so all commits show Unverified on
 GitHub — established all-session condition, not fixable here.
+**#77 post-merge review done** (`docs/reviews/2026-07-18-m5-77-review.md`, PR #102): verdict SOUND
+to build the M5 UI on. Fixed one correctness bug — the chapter-order size guard measured the
+raw-id manifest, not the aliased prompt the model actually receives (~3-4x shorter), so AI ordering
+silently refused on moderate+ diffs and fell back to tier-0; now guards the aliased text, the two
+manifest renderers are unified behind one label fn (server output byte-identical → prompt version
+unchanged, eval still valid), `estimatedTokens` dropped, regression-tested. Also a quadratic
+`assembleSections` label lookup. Deferred (in the review doc, not urgent): `/api/book` +
+`export?order=ai` double-compile via `applyChapterOverlay` — measure before changing the contract.
+Suite 365 (core 221 / server 96 / web 48).
 Next (verify freshness on wake): **the buildable frontier is Tim-gated — do NOT jump the gates.**
 M5 UI slices #78 (neighbor strip + jump/back), #79 (frontier surfacing), #80 (dogfood 6
 lawn-mower) are ALL gated on Tim's #74 blind edge-precision labels (≥0.90; 27 cards in
