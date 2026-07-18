@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { BookResponse, NarrationResponse, OrderResponse } from './api.js';
 import { OutlineSidebar } from './OutlineSidebar.js';
 import { computeNeighborChips } from './neighbor-strip-logic.js';
+import { frontierCount, interactionCount } from './frontier-logic.js';
 import { batchableSections, findUnreviewed, pendingStubCount } from './review-logic.js';
 import { estimateRowHeight, RowView, type SectionAck } from './RowView.js';
 import { chunkTitle, flattenBook, occurrenceKey, type Row } from './rows.js';
@@ -330,6 +331,13 @@ export function BookPage({
   }, [cursorRow, bookData, chunksById, review.states, flat]);
   const done = distinctChunks > 0 && reviewedCount === distinctChunks;
 
+  // Frontier surfacing (spec 05 gate 1) — display-only, gates nothing. The graph carries edges into
+  // out-of-book chunks; only in-book endpoints count (same predicate the strip uses).
+  const graph = bookData.chunkGraph ?? { edges: [] };
+  const inBook = useCallback((id: string) => flat.firstIndexByChunkId.has(id), [flat]);
+  const frontier = useMemo(() => frontierCount(graph, review.stateOf, inBook), [graph, review.states, inBook]);
+  const interactions = useMemo(() => interactionCount(graph, inBook), [graph, inBook]);
+
   return (
     <div className="app">
       <header className="top-bar">
@@ -351,6 +359,14 @@ export function BookPage({
           <span className="progress-bar">
             <span className="progress-fill" style={{ width: `${distinctChunks ? (reviewedCount / distinctChunks) * 100 : 0}%` }} />
           </span>
+          {!done && frontier > 0 && (
+            <span
+              className="frontier-indicator"
+              title="Edges linking a reviewed chunk to an unreviewed one. Surfacing only — nothing is blocked, and no interaction is verified."
+            >
+              {frontier} cross-chunk interaction{frontier === 1 ? '' : 's'} still open
+            </span>
+          )}
           {orderApplied && (
             <span className="ai-order-indicator" title="The section order was proposed by AI">
               AI reading order
@@ -469,6 +485,7 @@ export function BookPage({
                       totalOccurrences={totalOccurrences}
                       distinctChunks={distinctChunks}
                       reviewedCount={reviewedCount}
+                      interactions={interactions}
                       sectionStats={sectionStats}
                       sectionAck={row.kind === 'section' ? sectionAckFor(row.id) : undefined}
                       sectionAiLine={row.kind === 'section' ? narration.sectionLine(row.id)?.text : undefined}

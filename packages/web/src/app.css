@@ -128,6 +128,17 @@ body {
   white-space: nowrap;
 }
 
+/* Open review-boundary count (spec 05 gate 1). Amber, matching the chip "behind"/frontier accent —
+   orientation, not alarm and not an AI claim; disappears at 100% coverage. */
+.frontier-indicator {
+  font-size: 11px;
+  color: #7a4a12;
+  background: #f6ede0;
+  border-radius: 9px;
+  padding: 1px 8px;
+  white-space: nowrap;
+}
+
 .top-bar .spacer {
   flex: 1;
 }
@@ -526,6 +537,12 @@ body {
 .chip-file-level {
   font-style: italic;
 }
+/* Frontier: the focused chunk and this neighbor differ in reviewed-state — the review boundary
+   (spec 05 gate 1). A subtle edge accent, echoing the "behind" amber; the aria label spells it out.
+   Surfacing only — never a claim the interaction itself was verified. */
+.neighbor-chip.chip-frontier {
+  box-shadow: inset 2px 0 0 #b8791f;
+}
 
 /* Brief post-jump re-encounter flash, distinct from the cursor focus ring; reviewed stays reviewed. */
 .chunk.reencounter .chunk-main > .chunk-header {
@@ -707,6 +724,13 @@ body {
   font-size: 16px;
   font-weight: 600;
   margin: 0 0 4px;
+}
+
+/* Honest frontier note (spec 05 gate 1 / R-026): muted, never the celebratory green — coverage is
+   proven, cross-chunk composition is not. */
+.done-frontier {
+  color: #6b675f;
+  margin: 4px 0 0;
 }
 
 .done-table {

@@ -54,7 +54,7 @@ export function NeighborStrip({
         <button
           key={`${chip.chunkId}:${chip.kind}:${chip.direction}`}
           type="button"
-          className={`neighbor-chip chip-${chip.state}${chip.fileLevel ? ' chip-file-level' : ''}`}
+          className={`neighbor-chip chip-${chip.state}${chip.fileLevel ? ' chip-file-level' : ''}${chip.frontier ? ' chip-frontier' : ''}`}
           tabIndex={i === active ? 0 : -1}
           title={chip.fileLevel ? chip.file : undefined}
           aria-label={chipAriaLabel(chip)}

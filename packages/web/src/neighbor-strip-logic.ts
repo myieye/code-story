@@ -7,6 +7,7 @@ import {
   chunkTitle,
   neighborsOf,
 } from '@code-story/core';
+import { INTERACTION_KINDS } from './frontier-logic.js';
 
 /** A chip is reviewed (a free re-encounter glance) or unreviewed (still owes a mark). Never by colour alone. */
 export type ChipState = 'reviewed' | 'unreviewed';
@@ -32,6 +33,11 @@ export interface NeighborChip {
   state: ChipState;
   /** Count of further UNREVIEWED chunks reachable beyond this neighbor along the same relation — a wayfinding hint, never a completeness claim (R-048). */
   behind: number;
+  /**
+   * This chip sits on the review frontier: an interaction edge (spec 05 gate 1) whose two endpoints
+   * differ in reviewed-state. Display-only — a boundary affordance, never a claim the edge was verified.
+   */
+  frontier: boolean;
 }
 
 interface Relation {
@@ -113,6 +119,7 @@ export function computeNeighborChips(
   inBook: (id: string) => boolean,
 ): NeighborChip[] {
   const chips: NeighborChip[] = [];
+  const focusedReviewed = stateOf(focusedChunkId) === 'reviewed';
   for (const nb of neighborsOf(graph, focusedChunkId)) {
     if (!inBook(nb.chunkId)) continue;
     const chunk = chunksById.get(nb.chunkId);
@@ -120,6 +127,7 @@ export function computeNeighborChips(
     const { arrow, relation } = relationOf(nb.kind, nb.direction);
     const fileLevel = nb.kind === 'file-imports';
     const line = nb.direction === 'out' ? nb.fromLines[0]?.start : undefined;
+    const neighborReviewed = stateOf(nb.chunkId) === 'reviewed';
     chips.push({
       chunkId: nb.chunkId,
       kind: nb.kind,
@@ -130,8 +138,9 @@ export function computeNeighborChips(
       file: chunk.file,
       fileLevel,
       ...(line !== undefined ? { line } : {}),
-      state: stateOf(nb.chunkId) === 'reviewed' ? 'reviewed' : 'unreviewed',
+      state: neighborReviewed ? 'reviewed' : 'unreviewed',
       behind: reachableUnreviewed(graph.edges, nb.chunkId, nb.kind, nb.direction, focusedChunkId, stateOf),
+      frontier: INTERACTION_KINDS.has(nb.kind) && neighborReviewed !== focusedReviewed,
     });
   }
   chips.sort(
@@ -154,6 +163,7 @@ export function chipAriaLabel(chip: NeighborChip): string {
   if (chip.fileLevel) parts.push('(file-level)');
   if (chip.line !== undefined) parts.push(`at line ${chip.line}`);
   parts.push(chip.state);
+  if (chip.frontier) parts.push('review boundary');
   if (chip.behind > 0) parts.push(`${chip.behind} more unreviewed behind`);
   return parts.join(', ');
 }

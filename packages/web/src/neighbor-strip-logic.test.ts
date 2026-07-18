@@ -91,8 +91,35 @@ describe('chip text + aria', () => {
     expect(chipText(chip(chips, 'b'))).toBe('→ calls bFn (L10)');
     expect(chipText(chip(chips, 'z'))).toBe('← called by zFn');
   });
-  it('spells out the accessible name including state and behind', () => {
-    expect(chipAriaLabel(chip(chips, 'b'))).toBe('calls bFn, at line 10, reviewed, 1 more unreviewed behind');
+  it('spells out the accessible name including state, boundary, and behind', () => {
+    // Focus 'a' is unreviewed, 'b' reviewed → the calls edge is a review boundary.
+    expect(chipAriaLabel(chip(chips, 'b'))).toBe('calls bFn, at line 10, reviewed, review boundary, 1 more unreviewed behind');
     expect(chipAriaLabel(chip(chips, 'f'))).toBe('imports from helper.ts, (file-level), unreviewed');
+  });
+});
+
+describe('frontier chips', () => {
+  const chips = computeNeighborChips(graph, 'a', chunksById, stateOf, inBook);
+
+  it('flags an interaction edge whose endpoints differ in reviewed-state', () => {
+    // Focus 'a' unreviewed, 'b' reviewed, calls edge → boundary.
+    expect(chip(chips, 'b').frontier).toBe(true);
+  });
+
+  it('does not flag an interaction edge whose endpoints share reviewed-state', () => {
+    // Both 'a' and 'c' unreviewed.
+    expect(chip(chips, 'c').frontier).toBe(false);
+    expect(chip(chips, 't').frontier).toBe(false);
+  });
+
+  it('never flags a file-imports edge, even across a state split', () => {
+    expect(chip(chips, 'f').frontier).toBe(false);
+  });
+
+  it('flags the reverse split too — focused reviewed, neighbor unreviewed', () => {
+    // Focus on 'b' (reviewed); its calls-out neighbor 'd' is unreviewed → boundary.
+    const fromB = computeNeighborChips(graph, 'b', chunksById, stateOf, inBook);
+    expect(chip(fromB, 'd').frontier).toBe(true);
+    expect(chip(fromB, 'a').frontier).toBe(true); // a→b incoming, a unreviewed vs b reviewed
   });
 });
