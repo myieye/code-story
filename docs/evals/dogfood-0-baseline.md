@@ -441,3 +441,48 @@ precision bug to close first.
 Repro: `code-story <range> --context --dump-context` for hit-rate; daemon + `curl /api/context?chunk=<id>`
 for latency; `tools/dogfood-context-walk.mjs <port>` against a daemon with a fresh review cursor
 for the walk (a resumed cursor parks at the last chunk and the walk can't advance).
+
+## Chapter-mode ordering eval (2026-07-18, issue #77) — consumer-first re-eval
+
+The default flipped to Tim's ratified axioms (R-043–R-046): consumer-first, tests-before, chapter
+mode. This re-eval asks the narrower question that flip needs answered — *within the new mode,
+does the opus AI order still beat the deterministic fallback?* — so the auto-order default (#71)
+can't quietly make books worse. Both books are chapter mode on the same chunks: A = tier-0
+chapter linearization, B = opus chapter regrouping. Same protocol as Dogfood 2/3 (generator opus,
+judge sonnet, self-preference caveat, K=3, A/B randomized per trial, rationales stripped).
+CORE_VERSION 0.0.5. Reports: `docs/evals/reports/eval-chapter-{2309,2357,2379}.json`.
+
+| Subject | Judge verdict | tier-0 → AI chapters | What the AI changed |
+| --- | --- | --- | --- |
+| PR 2309 (Svelte/TS) | **AI 3 / tier-0 0** | 32 → 12 | Debounce fix, then query-params migration, then consumers + tests as contiguous units — tier-0 scattered the trivial store-unwrap call sites ahead of the mechanism that explains them. |
+| PR 2357 (mixed-stack) | **AI 3 / tier-0 0** | 76 → 32 | Backend `HistoryService`/query logic together, then frontend consumers in dependency order — tier-0 fragmented each file across many sections interleaved with unrelated files. |
+| PR 2379 (C#-only) | **AI 3 / tier-0 0** | 22 → 7 | `EntryQueryHelpers`/kernel infrastructure grouped into cohesive sections before the `FwData`/`MiniLcm` consumers — tier-0 splintered the same file's methods and interleaved test/impl. |
+
+**Headline: AI 9 / tier-0 0, zero invalid trials.** Unanimous across three subjects and three
+language mixes.
+
+**The shape of the win is two things, and honesty means separating them.** Part of it is the
+consumer-first *ordering* the flip is for. But the larger, repeated driver in the judge's own words
+is *consolidation*: tier-0 chapter linearization produced far more sections than the AI (76 vs 32
+on 2357), and the judge kept preferring the book that read one file/concern as a unit over the one
+that "fragments the same file into dozens of scattered sections." So this eval is a clean ship
+signal for AI-augmented chapter ordering, but it is **not** evidence that chapter mode beats file
+mode — that is a different question, and it belongs to the #74-gated UI dogfood, not here.
+
+**Nameable tier-0 finding (harvest candidate).** The chapter linearizer groups by `calls` edges;
+when the call graph between changed chunks is sparse — which it often is — most chunks fall into
+singleton chapters and tier-0 can't group by concern at all. The AI wins exactly there, by
+grouping on concern the graph doesn't express. Tier-0 could close much of the gap with a
+same-file / same-feature grouping pass before the call-path Kahn, independent of any AI. Filed as
+a follow-up (see issues).
+
+**Verdict: SHIP the consumer-first/chapter default (#77).** Consistent with Tim's #71 SHIP call
+(judge evidence accepted, blind read waived). File mode stays fully selectable
+(`--direction dependency-first --test-placement after`, or `.code-story.json`) — the flip changes
+the default, it removes nothing. Same standing caveats as Dogfood 2/3: single-family judge, K=3
+directional; and the eval's same-book guard now keys on the chunk multiset, since chapter mode
+legitimately regroups sections.
+
+Repro: per subject, `code-story <range> --export t.md` (tier-0 chapter book) and
+`code-story <range> --ai-order --model opus --order ai --export ai.md` (opus chapter book) run in
+the lexbox clone, then `node tools/order-eval.mjs t.md ai.md --trials 3 --judge-model sonnet`.

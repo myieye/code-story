@@ -5,6 +5,13 @@ three: chunk-grain call-path flow requires a new traversal-derived *chapter* pri
 the file-section renderer; the graph decouples from M4's unchanged-file machinery; and the
 frontier display is honest surfacing, not a gate). Slices filed when this lands.**
 
+**Update (2026-07-18): #76 + #77 landed.** The chapter linearizer (consumer-first, tests-by-kind,
+#76) and the default flip to chapter mode (#77) shipped. The chapter order prompt
+(`order-chapter-1`) plus opus augmentation beats the deterministic tier-0 chapter linearization
+**9 trials to 0** on the three archived subjects (`docs/evals/dogfood-0-baseline.md`, "Chapter-mode
+ordering eval"). Remaining slices #78–#80 (the neighbor strip, frontier surfacing, lawn-mower
+dogfood) stay gated on Tim's #74 edge-precision labels (≥0.90).
+
 ## Why this milestone
 
 Two of Tim's directives converged into one design (both 2026-07-17, verbatim in
