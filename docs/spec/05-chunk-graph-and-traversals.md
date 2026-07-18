@@ -9,8 +9,10 @@ frontier display is honest surfacing, not a gate). Slices filed when this lands.
 #76) and the default flip to chapter mode (#77) shipped. The chapter order prompt
 (`order-chapter-1`) plus opus augmentation beats the deterministic tier-0 chapter linearization
 **9 trials to 0** on the three archived subjects (`docs/evals/dogfood-0-baseline.md`, "Chapter-mode
-ordering eval"). Remaining slices #78–#80 (the neighbor strip, frontier surfacing, lawn-mower
-dogfood) stay gated on Tim's #74 edge-precision labels (≥0.90).
+ordering eval"). **#74 edge-precision gate CLEARED (Tim, 2026-07-18): "I trust your graph"**
+(self-audit 0.976 ≥ 0.90 + a spot-confirmed edge) — remaining slices #78–#80 (the neighbor strip,
+frontier surfacing, lawn-mower dogfood) are now unblocked. Nav steer: the jump affordance is a
+**mouse click** first, keyboard secondary (amends the R-004 "keystroke" framing).
 
 ## Why this milestone
 

@@ -284,7 +284,7 @@ harvest also filed: #56 (per-text fail-open) and #57 (opener cap headroom, 3-of-
 
 ## Slice 0 (chunk-graph audit)
 
-**Gate half-open: awaiting Tim's blind labels.** Materials + all Claude-side numbers in `docs/evals/chunk-graph-audit-2026-07-17/` (see its README). Token-free; audits the shipped resolver (#75), not a prototype. Ranges: PR 2309 `c0448522..pr-2309`, PR 2357 `277e418d8~1..277e418d8` (baseline range), PR 2379 `8dd70ba~1..8dd70ba`. Seed `20260717`.
+**Gate CLEARED — go (Tim, 2026-07-18).** Tim's verdict on the blind subsample: *"For such a high accuracy, I'd say we trust it… I trust your graph,"* plus a spot-confirmation of the sole 2309 edge (FilterBar → `debouncedFilter`) as a real, useful link. He accepted the Claude self-audit (41/42 = 0.976, ≥0.90 threshold) with the spot-check rather than labelling all 45 edges; sealed Claude labels were committed before the verdict as designed. **M5 UI (#78/#79/#80) is unblocked.** Nav steer he gave alongside: primary jump is a **mouse click**, not a keystroke (keyboard stays as a secondary path). Materials + all Claude-side numbers in `docs/evals/chunk-graph-audit-2026-07-17/` (see its README). Token-free; audits the shipped resolver (#75), not a prototype. Ranges: PR 2309 `c0448522..pr-2309`, PR 2357 `277e418d8~1..277e418d8` (baseline range), PR 2379 `8dd70ba~1..8dd70ba`. Seed `20260717`.
 
 ### Edge counts (`--dump-chunk-graph`)
 
