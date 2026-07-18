@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import type { OrderResponse } from '@code-story/core';
+import { FILE_MODE_STORY_CONFIG, type OrderResponse } from '@code-story/core';
 import { afterAll, describe, expect, test } from 'vitest';
 import { type ResolvedRange } from './git.js';
 import { startServer } from './server.js';
@@ -44,13 +44,21 @@ async function waitForTerminal(url: string): Promise<OrderResponse> {
   throw new Error('order job did not finish');
 }
 
+// These #71 auto-kick tests drive the v1 (file-mode) order path — the echo invoke speaks the v1
+// section manifest — so they pin file mode explicitly; the default is now chapter mode (#77).
 describe('order server auto-kick (#71)', () => {
   test('default-on: the daemon runs the ordering job on startup and lands a fresh overlay', async () => {
-    const server = await startServer({ repo, range, dataHome, orderInvoke: echoOrderInvoke }, 0);
+    const server = await startServer({ repo, range, dataHome, storyConfig: FILE_MODE_STORY_CONFIG, orderInvoke: echoOrderInvoke }, 0);
     try {
       const body = await waitForTerminal(server.url);
       expect(body.job?.status).toBe('done');
-      expect([...(body.overlay?.permutation ?? [])].sort()).toEqual([...files].sort());
+      const overlay = body.overlay;
+      expect(overlay?.version).toBe(1);
+      expect([...(overlay?.version === 1 ? overlay.permutation : [])].sort()).toEqual([...files].sort());
+
+      // File mode serves the old shape: no chapter recomposition on /api/book.
+      const book = (await (await fetch(`${server.url}/api/book`)).json()) as { aiBook?: unknown };
+      expect(book.aiBook).toBeUndefined();
     } finally {
       server.close();
     }
@@ -60,7 +68,7 @@ describe('order server auto-kick (#71)', () => {
     const solo = await mkdtemp(path.join(tmpdir(), 'cs-order-home2-'));
     let invoked = false;
     const server = await startServer(
-      { repo, range, dataHome: solo, autoOrder: false, orderInvoke: async (p) => ((invoked = true), echoOrderInvoke(p)) },
+      { repo, range, dataHome: solo, autoOrder: false, storyConfig: FILE_MODE_STORY_CONFIG, orderInvoke: async (p) => ((invoked = true), echoOrderInvoke(p)) },
       0,
     );
     try {

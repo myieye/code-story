@@ -4,32 +4,43 @@ import { fileURLToPath } from 'node:url';
 import { serve } from '@hono/node-server';
 import { serveStatic } from '@hono/node-server/serve-static';
 import {
+  applyChapterOverlay,
   applyOrderOverlay,
   applyReviewPatch,
   type Book,
   type BookResponse,
   bookFingerprint,
   type Chunk,
+  type ChunkGraph,
+  type CompileChapterBookInput,
+  compileChapterBook,
   CORE_VERSION,
   compileBook,
   type ContextJobResponse,
   type ContextPayload,
   type ContextResponse,
+  DEFAULT_STORY_CONFIG,
   exportBookMarkdown,
   type FileContents,
   type FileDiff,
   filterFreshContext,
+  filterFreshGraph,
   type ImportGraph,
   filterFreshNarration,
+  isFileModeConfig,
   isOverlayFresh,
   type NarrationResponse,
+  type OrderOverlayV2,
   type OrderPatch,
   type OrderResponse,
   type ReviewFile,
   type ReviewPatch,
+  type StoryConfig,
   unifiedChunkLines,
 } from '@code-story/core';
 import { Hono } from 'hono';
+import { buildChunkGraph } from './chunk-graph-build.js';
+import { chunkGraphFilePath, loadChunkGraph } from './chunk-graph-store.js';
 import { computeChunks } from './chunks.js';
 import { createContextResolver } from './context-resolve.js';
 import { eligibleContextChunks, runContextJob } from './context-job.js';
@@ -53,8 +64,8 @@ import {
   narrationFilePath,
   narrationJobFilePath,
 } from './narration-store.js';
-import { runOrderJob, shouldAutoKickOrder } from './order-job.js';
-import { ORDER_PROMPT_VERSION } from './order-prompt.js';
+import { runChapterOrderJob, runOrderJob, shouldAutoKickOrder } from './order-job.js';
+import { CHAPTER_ORDER_PROMPT_VERSION, ORDER_PROMPT_VERSION } from './order-prompt.js';
 import { loadJobRecord, loadOverlay, orderFilePath, orderJobFilePath, type OrderJobRecord, saveJson } from './order-store.js';
 import { defaultDataHome, loadReview, repoIdFrom, reviewFilePath, saveReview } from './review-store.js';
 
@@ -108,6 +119,11 @@ export interface ServerOptions {
   range: ResolvedRange;
   /** Override of `~/.code-story` for tests. */
   dataHome?: string;
+  /**
+   * Ordering axes for this daemon (spec 05, #77). Defaults to the ratified chapter mode
+   * (consumer-first, tests before); `FILE_MODE_STORY_CONFIG` selects the file-section linearizer.
+   */
+  storyConfig?: StoryConfig;
   /** Auto-run the ordering job on compile when no fresh overlay exists (default true; #71). */
   autoOrder?: boolean;
   /** Model for the auto-kicked ordering job and the default for POST /api/order-job. */
@@ -128,9 +144,21 @@ export interface RunningServer {
 
 export function startServer(options: ServerOptions, requestedPort = 0): Promise<RunningServer> {
   const app = new Hono();
+  const storyConfig = options.storyConfig ?? DEFAULT_STORY_CONFIG;
+  const chapterMode = !isFileModeConfig(storyConfig);
+
   let diffCache: Promise<FileDiff[]> | undefined;
   let bookCache:
-    | Promise<{ book: Book; chunks: Chunk[]; contents: Map<string, FileContents>; graph: ImportGraph }>
+    | Promise<{
+        book: Book;
+        chunks: Chunk[];
+        contents: Map<string, FileContents>;
+        graph: ImportGraph;
+        /** Chapter mode only: the recompose inputs the order job and `applyChapterOverlay` need. */
+        chunkGraph?: ChunkGraph;
+        storyComposition?: string[][];
+        chapterInput?: CompileChapterBookInput;
+      }>
     | undefined;
 
   // A rejected promise must not stay cached, or one transient git failure bricks the daemon.
@@ -147,11 +175,52 @@ export function startServer(options: ServerOptions, requestedPort = 0): Promise<
       (async () => {
         const files = await getDiff();
         const { chunks, contents, graph } = await computeChunks(options.repo, options.range, files);
-        const compiled = compileBook({ files, chunks, graph, headSha: options.range.head });
-        return { ...compiled, contents, graph };
+        const fileCompiled = compileBook({ files, chunks, graph, headSha: options.range.head });
+        if (!chapterMode) return { ...fileCompiled, contents, graph };
+
+        const chunkGraph = await resolveChunkGraph(files, contents, graph, fileCompiled);
+        const chapterInput: CompileChapterBookInput = { files, chunks, graph, chunkGraph, headSha: options.range.head };
+        const chapter = compileChapterBook(chapterInput, storyConfig);
+        return {
+          book: chapter.book,
+          chunks: chapter.chunks,
+          contents,
+          graph,
+          chunkGraph,
+          storyComposition: chapter.storyComposition,
+          chapterInput,
+        };
       })(),
       () => (bookCache = undefined),
     ));
+
+  // Chapter-graph reuse: load the persisted graph if fingerprint-fresh, else build (from already
+  // fetched content — no git) and persist. Fail-open to an empty graph so a tree-sitter hiccup
+  // degenerates the chapter book to git order rather than bricking the daemon.
+  async function resolveChunkGraph(
+    files: FileDiff[],
+    contents: Map<string, FileContents>,
+    graph: ImportGraph,
+    fileCompiled: { book: Book; chunks: Chunk[] },
+  ): Promise<ChunkGraph> {
+    const { graphFile } = await getStore();
+    const fresh = filterFreshGraph(options.range.head, await loadChunkGraph(graphFile));
+    if (fresh) return fresh;
+    try {
+      const built = await buildChunkGraph({
+        chunks: fileCompiled.chunks,
+        contents,
+        graph,
+        book: fileCompiled.book,
+        files,
+        headSha: options.range.head,
+      });
+      await saveJson(graphFile, built);
+      return { edges: built.edges };
+    } catch {
+      return { edges: [] };
+    }
+  }
 
   let storeCache:
     | Promise<{
@@ -159,6 +228,7 @@ export function startServer(options: ServerOptions, requestedPort = 0): Promise<
         reviewFile: string;
         orderFile: string;
         jobFile: string;
+        graphFile: string;
         narrationFile: string;
         narrationJobFile: string;
         contextFile: string;
@@ -175,6 +245,7 @@ export function startServer(options: ServerOptions, requestedPort = 0): Promise<
           reviewFile: reviewFilePath(dataHome, repoId, options.range),
           orderFile: orderFilePath(dataHome, repoId, options.range),
           jobFile: orderJobFilePath(dataHome, repoId, options.range),
+          graphFile: chunkGraphFilePath(dataHome, repoId, options.range),
           narrationFile: narrationFilePath(dataHome, repoId, options.range),
           narrationJobFile: narrationJobFilePath(dataHome, repoId, options.range),
           contextFile: contextFilePath(dataHome, repoId, options.range),
@@ -211,11 +282,21 @@ export function startServer(options: ServerOptions, requestedPort = 0): Promise<
   });
 
   app.get('/api/book', async (c) => {
-    const { book, chunks, contents, graph } = await getBook();
+    const built = await getBook();
+    const { book, chunks, contents, graph } = built;
     const diffs = Object.fromEntries(
       chunks.map((chunk) => [chunk.id, unifiedChunkLines(chunk, contents.get(chunk.file))]),
     );
     const response: BookResponse = { ...options.range, book, chunks, diffs, graph };
+    // Chapter mode: recompose per request (milliseconds) so the web gets the applied book — it
+    // can't build a chapter book itself. Never cached across overlay writes.
+    if (chapterMode && built.chapterInput) {
+      const overlay = await loadOverlay((await getStore()).orderFile);
+      if (overlay?.version === 2) {
+        const aiBook = applyChapterOverlay(built.chapterInput, storyConfig, overlay);
+        if (aiBook) response.aiBook = aiBook.book;
+      }
+    }
     return c.json(response);
   });
 
@@ -236,7 +317,7 @@ export function startServer(options: ServerOptions, requestedPort = 0): Promise<
       version: 1,
       status: 'running',
       model,
-      promptVersion: ORDER_PROMPT_VERSION,
+      promptVersion: chapterMode ? CHAPTER_ORDER_PROMPT_VERSION : ORDER_PROMPT_VERSION,
       startedAt: new Date().toISOString(),
     };
     let fingerprint: string | undefined;
@@ -244,9 +325,30 @@ export function startServer(options: ServerOptions, requestedPort = 0): Promise<
       record,
       store.jobFile,
       async () => {
-        const { book, chunks, graph } = await getBook();
-        fingerprint = bookFingerprint(book);
-        const overlay = await runOrderJob({ book, graph, chunks, model, cwd: store.dataHome, invoke: options.orderInvoke });
+        const built = await getBook();
+        fingerprint = bookFingerprint(built.book);
+        const overlay =
+          chapterMode && built.chapterInput
+            ? await runChapterOrderJob({
+                book: built.book,
+                chunks: built.chunks,
+                graph: built.graph,
+                model,
+                cwd: store.dataHome,
+                invoke: options.orderInvoke,
+                input: built.chapterInput,
+                config: storyConfig,
+                chunkGraph: built.chunkGraph ?? { edges: [] },
+                storyComposition: built.storyComposition ?? [],
+              })
+            : await runOrderJob({
+                book: built.book,
+                graph: built.graph,
+                chunks: built.chunks,
+                model,
+                cwd: store.dataHome,
+                invoke: options.orderInvoke,
+              });
         await saveJson(store.orderFile, overlay);
         return {};
       },
@@ -501,14 +603,22 @@ export function startServer(options: ServerOptions, requestedPort = 0): Promise<
   // `?order=ai` must never silently fall back to tier 0 — an eval comparing "both orders"
   // would then confidently judge two identical books.
   app.get('/api/export.md', async (c) => {
-    const { book, chunks, contents, graph } = await getBook();
+    const built = await getBook();
+    const { book, chunks, contents, graph } = built;
     let exported = book;
     if (c.req.query('order') === 'ai') {
       const overlay = await loadOverlay((await getStore()).orderFile);
-      if (overlay === null || !isOverlayFresh(book, overlay)) {
-        return c.text('no fresh AI order overlay for this range (run the order job first)', 409);
+      const stale = () => c.text('no fresh AI order overlay for this range (run the order job first)', 409);
+      if (overlay === null || !isOverlayFresh(book, overlay)) return stale();
+      if (chapterMode) {
+        if (overlay.version !== 2 || !built.chapterInput) return stale();
+        const applied = applyChapterOverlay(built.chapterInput, storyConfig, overlay);
+        if (!applied) return stale();
+        exported = applied.book;
+      } else {
+        if (overlay.version !== 1) return stale();
+        exported = applyOrderOverlay(book, graph, chunks, overlay);
       }
-      exported = applyOrderOverlay(book, graph, chunks, overlay);
     }
     const title = `${options.range.base.slice(0, 8)}..${options.range.head.slice(0, 8)}`;
     return c.text(exportBookMarkdown({ book: exported, chunks, contents, title }));

@@ -2,6 +2,7 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import {
+  applyChapterOverlay,
   applyOrderOverlay,
   type Book,
   buildOrderManifest,
@@ -21,7 +22,7 @@ import {
   exportBookMarkdown,
   filterFreshContext,
   filterFreshNarration,
-  isDefaultStoryConfig,
+  isFileModeConfig,
   isLowSignal,
   type NarrationOverlay,
   lowSignalReason,
@@ -52,8 +53,8 @@ import {
   narrationFilePath,
   narrationJobFilePath,
 } from './narration-store.js';
-import { runOrderJob } from './order-job.js';
-import { ORDER_PROMPT_VERSION } from './order-prompt.js';
+import { runChapterOrderJob, runOrderJob } from './order-job.js';
+import { CHAPTER_ORDER_PROMPT_VERSION, ORDER_PROMPT_VERSION } from './order-prompt.js';
 import { loadOverlay, orderFilePath, orderJobFilePath, type OrderJobRecord, saveJson } from './order-store.js';
 import { defaultDataHome, repoIdFrom } from './review-store.js';
 import { startServer } from './server.js';
@@ -155,7 +156,8 @@ const repo = process.cwd();
 /**
  * Effective story config (spec 05, R-045): defaults, overlaid with a per-repo `.code-story.json`
  * (top-level or under `ordering`), then CLI flags. Unknown/malformed values are ignored, not fatal.
- * The active default is today's file-mode behaviour — chapter mode is opt-in via config until #77.
+ * The active default is chapter mode (consumer-first, tests before, R-043/R-044); file mode is
+ * selectable via `--direction dependency-first --test-placement after` or config.
  */
 async function effectiveStoryConfig(): Promise<StoryConfig> {
   let raw: unknown;
@@ -205,10 +207,10 @@ if (
       'disables the auto job; the book then stays in tier-0 (deterministic) order. --order tier0\n' +
       'forces tier-0 order on --export.\n' +
       '\n' +
-      '--direction / --test-placement (or a per-repo .code-story.json) select the chapter\n' +
-      'linearizer: call-path chapters that may span files. Both default to today’s file-mode\n' +
-      'behaviour (dependency-first, tests after their impl); the intended defaults (consumer-first,\n' +
-      'tests before) ship in a later slice. Currently honoured by --export and --check-order.',
+      '--direction / --test-placement (or a per-repo .code-story.json) tune the chapter\n' +
+      'linearizer: call-path chapters that may span files. The defaults are consumer-first, tests\n' +
+      'before their impl (R-043/R-044). Select the file-section linearizer with --direction\n' +
+      'dependency-first --test-placement after. Honoured by the daemon, --export, and --check-order.',
   );
   process.exit(1);
 }
@@ -275,7 +277,7 @@ if (checkOrderFlag) {
 
   let book;
   let report;
-  if (isDefaultStoryConfig(config)) {
+  if (isFileModeConfig(config)) {
     book = fileBook;
     report = checkOrder(book, graph, chunks);
   } else {
@@ -404,6 +406,19 @@ if (aiOrder || narrate || exportPath) {
   const repoId = repoIdFrom(repo, await rootCommit(repo), await originUrl(repo));
   const orderFile = orderFilePath(dataHome, repoId, resolved);
   const narrationFile = narrationFilePath(dataHome, repoId, resolved);
+  const config = await effectiveStoryConfig();
+  const chapterMode = !isFileModeConfig(config);
+
+  // Chapter-mode artifacts (chunk graph + tier-0 chapter book), built once and shared by the
+  // order job and the export.
+  const buildChapterBits = async () => {
+    const cg = await buildChunkGraph({ chunks: compiledChunks, contents, graph, book: compiledBook, files, headSha: resolved.head });
+    const chunkGraph = { edges: cg.edges };
+    const chapterInput = { files, chunks, graph, chunkGraph, headSha: resolved.head };
+    return { chunkGraph, chapterInput, chapter: compileChapterBook(chapterInput, config) };
+  };
+  let chapterBitsCache: Awaited<ReturnType<typeof buildChapterBits>> | undefined;
+  const getChapterBits = async () => (chapterBitsCache ??= await buildChapterBits());
 
   if (aiOrder) {
     const jobFile = orderJobFilePath(dataHome, repoId, resolved);
@@ -411,16 +426,33 @@ if (aiOrder || narrate || exportPath) {
       version: 1,
       status: 'running',
       model,
-      promptVersion: ORDER_PROMPT_VERSION,
+      promptVersion: chapterMode ? CHAPTER_ORDER_PROMPT_VERSION : ORDER_PROMPT_VERSION,
       startedAt: new Date().toISOString(),
     };
     await saveJson(jobFile, record);
     console.log(`code-story: running the AI ordering job (${model})…`);
     try {
-      const overlay = await runOrderJob({ book: compiledBook, graph, chunks: compiledChunks, model, cwd: dataHome });
-      await saveJson(orderFile, overlay);
+      if (chapterMode) {
+        const { chunkGraph, chapterInput, chapter } = await getChapterBits();
+        const overlay = await runChapterOrderJob({
+          book: chapter.book,
+          chunks: chapter.chunks,
+          graph,
+          model,
+          cwd: dataHome,
+          input: chapterInput,
+          config,
+          chunkGraph,
+          storyComposition: chapter.storyComposition,
+        });
+        await saveJson(orderFile, overlay);
+        console.log(`code-story: AI order saved (${overlay.chapters.length} chapters)`);
+      } else {
+        const overlay = await runOrderJob({ book: compiledBook, graph, chunks: compiledChunks, model, cwd: dataHome });
+        await saveJson(orderFile, overlay);
+        console.log(`code-story: AI order saved (${overlay.permutation.length} story sections)`);
+      }
       await saveJson(jobFile, { ...record, status: 'done', finishedAt: new Date().toISOString() });
-      console.log(`code-story: AI order saved (${overlay.permutation.length} story sections)`);
     } catch (e) {
       await saveJson(jobFile, {
         ...record,
@@ -480,35 +512,32 @@ if (aiOrder || narrate || exportPath) {
   }
 
   if (exportPath) {
-    const config = await effectiveStoryConfig();
     let book = compiledBook;
     let exportChunks = compiledChunks;
     let narrationOverlay: NarrationOverlay | undefined;
 
-    if (!isDefaultStoryConfig(config)) {
-      // Chapter mode: AI order / narration overlays are keyed to the file-mode book, so they can't
-      // apply here — this export is the deterministic chapter linearization.
-      const cg = await buildChunkGraph({
-        chunks: compiledChunks,
-        contents,
-        graph,
-        book: compiledBook,
-        files,
-        headSha: resolved.head,
-      });
-      const chapter = compileChapterBook(
-        { files, chunks, graph, chunkGraph: { edges: cg.edges }, headSha: resolved.head },
-        config,
-      );
+    if (chapterMode) {
+      const { chapterInput, chapter } = await getChapterBits();
       book = chapter.book;
       exportChunks = chapter.chunks;
-      console.log(
-        `code-story: chapter mode (direction=${config.direction}, test-placement=${config.testPlacement}); AI order/narration are file-mode only and skipped`,
-      );
+      if (orderChoice === 'ai') {
+        const overlay = await loadOverlay(orderFile);
+        const applied = overlay?.version === 2 ? applyChapterOverlay(chapterInput, config, overlay) : undefined;
+        if (!applied) {
+          console.error('code-story: no fresh AI order overlay for this range (run --ai-order first)');
+          process.exit(1);
+        }
+        book = applied.book;
+        exportChunks = applied.chunks;
+      }
+      // Narration overlays are keyed to the file-mode book, so they don't apply in chapter mode.
+      if (narration) console.log('code-story: narration is file-mode only and is skipped in chapter mode');
+      console.log(`code-story: chapter mode (direction=${config.direction}, test-placement=${config.testPlacement})`);
     } else {
       if (orderChoice === 'ai') {
         const overlay = await loadOverlay(orderFile);
-        const applied = overlay === null ? book : applyOrderOverlay(book, graph, compiledChunks, overlay);
+        const v1 = overlay?.version === 1 ? overlay : null;
+        const applied = v1 === null ? book : applyOrderOverlay(book, graph, compiledChunks, v1);
         if (applied === book) {
           console.error('code-story: no fresh AI order overlay for this range (run --ai-order first)');
           process.exit(1);
@@ -539,7 +568,10 @@ if (aiOrder || narrate || exportPath) {
   }
 }
 
-const { url } = await startServer({ repo, range: resolved, autoOrder: !noAiOrder, orderModel: model }, port);
+const { url } = await startServer(
+  { repo, range: resolved, autoOrder: !noAiOrder, orderModel: model, storyConfig: await effectiveStoryConfig() },
+  port,
+);
 
 console.log(`code-story serving ${range} (${resolved.base.slice(0, 8)}..${resolved.head.slice(0, 8)}) at ${url}`);
 console.log('Ctrl+C to stop.');

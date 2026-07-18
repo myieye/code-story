@@ -456,6 +456,12 @@ body {
   white-space: nowrap;
 }
 
+.chunk-from {
+  font-size: 11px;
+  color: var(--muted, #888);
+  white-space: nowrap;
+}
+
 /* Quiet toggle under the diff; the panel below it is deliberately un-diff-like (R-006). */
 .definitions-affordance {
   padding: 5px 12px 0;

@@ -1,18 +1,25 @@
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 import { compileBook } from './book.js';
+import { compileChapterBook } from './chapters.js';
 import { chunkFile } from './chunker.js';
+import { type ChunkEdge, type ChunkGraph } from './chunk-graph.js';
 import { type FileDiff } from './diff.js';
 import { type ImportGraph } from './import-graph.js';
-import { type Book } from './model.js';
+import { type Book, type Chunk } from './model.js';
 import {
+  applyChapterOverlay,
   applyOrderOverlay,
   bookFingerprint,
+  buildChunkOrderManifest,
   buildOrderManifest,
   type OrderOverlay,
+  type OrderOverlayV2,
+  renderChunkOrderManifest,
   renderOrderManifest,
   validatePermutation,
 } from './order.js';
+import { DEFAULT_STORY_CONFIG } from './story-config.js';
 
 function file(path: string, hunks: FileDiff['hunks'], status: FileDiff['status'] = 'modified'): FileDiff {
   return { path, status, binary: false, hunks };
@@ -193,5 +200,90 @@ describe('estimatedTokens', () => {
     const { book: compiled } = compileBook({ files, chunks, graph: noGraph, headSha: 'x' });
     const manifest = buildOrderManifest(compiled, noGraph, chunks);
     expect(manifest.estimatedTokens).toBe(Math.ceil(renderOrderManifest(manifest).length / 4));
+  });
+});
+
+describe('chapter-mode ordering (overlay v2)', () => {
+  const fileDiff = (path: string, start: number, count: number): FileDiff => ({
+    path,
+    status: 'modified',
+    binary: false,
+    hunks: [{ baseStart: 1, baseCount: 0, headStart: start, headCount: count }],
+  });
+  const chunkOf = (file: string, id: string, symbol: string[]): Chunk => ({
+    id,
+    file,
+    symbolPath: symbol,
+    displayPath: symbol,
+    kind: 'method',
+    changeTypes: [],
+    hunks: [{ baseStart: 1, baseCount: 0, headStart: 1, headCount: 2 }],
+    headRange: { start: 1, end: 2 },
+  });
+  const cedge = (from: string, to: string, kind: ChunkEdge['kind'] = 'calls', line = 3): ChunkEdge => ({
+    from,
+    to,
+    kind,
+    fromLines: [{ start: line, end: line }],
+    source: 'references',
+  });
+
+  const files = [fileDiff('a.ts', 1, 2), fileDiff('b.ts', 1, 2), fileDiff('c.ts', 1, 2), fileDiff('a.test.ts', 1, 2)];
+  const chunks = [
+    chunkOf('a.ts', 'a', ['a']),
+    chunkOf('b.ts', 'b', ['b']),
+    chunkOf('c.ts', 'c', ['c']),
+    chunkOf('a.test.ts', 't', ['aTest']),
+  ];
+  const cg: ChunkGraph = { edges: [cedge('a', 'b'), cedge('a', 'c'), cedge('t', 'a', 'exercises')] };
+  const input = { files, chunks, graph: graph(), chunkGraph: cg, headSha: 'h' };
+
+  const overlayV2 = (bookFp: string, chapters: string[][]): OrderOverlayV2 => ({
+    version: 2,
+    bookFingerprint: bookFp,
+    chapters,
+    rationales: {},
+    model: 'test-model',
+    promptVersion: 'order-2',
+    createdAt: '2026-07-17T00:00:00Z',
+  });
+
+  it('buildChunkOrderManifest lists only story chunks and calls among them', () => {
+    const tier0 = compileChapterBook(input, DEFAULT_STORY_CONFIG);
+    const manifest = buildChunkOrderManifest(tier0.book, tier0.chunks, cg, tier0.storyComposition);
+
+    expect(manifest.chunks.map((c) => c.id)).toEqual(tier0.storyComposition.flat());
+    expect(new Set(manifest.chunks.map((c) => c.id))).toEqual(new Set(['a', 'b', 'c'])); // no test/leftover
+    expect(manifest.calls).toEqual([
+      { fromId: 'a', toId: 'b', fromLine: 3 },
+      { fromId: 'a', toId: 'c', fromLine: 3 },
+    ]);
+    expect(manifest.tier0Chapters).toEqual(tier0.storyComposition);
+    expect(manifest.bookFingerprint).toBe(bookFingerprint(tier0.book));
+    expect(manifest.estimatedTokens).toBe(Math.ceil(renderChunkOrderManifest(manifest).length / 4));
+  });
+
+  it('renderChunkOrderManifest names each chunk, the calls, and the tier-0 chapters', () => {
+    const tier0 = compileChapterBook(input, DEFAULT_STORY_CONFIG);
+    const rendered = renderChunkOrderManifest(buildChunkOrderManifest(tier0.book, tier0.chunks, cg, tier0.storyComposition));
+    expect(rendered).toContain('a — a (method, ~2 lines) [a.ts]');
+    expect(rendered).toContain('a -> b (line 3)');
+    expect(rendered).toContain('placed automatically');
+  });
+
+  it('applyChapterOverlay recomposes when fresh and valid', () => {
+    const tier0 = compileChapterBook(input, DEFAULT_STORY_CONFIG);
+    const overlay = overlayV2(bookFingerprint(tier0.book), [['a', 'c'], ['b']]);
+    const composed = applyChapterOverlay(input, DEFAULT_STORY_CONFIG, overlay);
+    const storyIds = composed!.book.sections.filter((s) => s.id.startsWith('chapter:')).map((s) => s.id);
+    expect(storyIds).toEqual(['chapter:a', 'chapter:b']);
+  });
+
+  it('applyChapterOverlay fails open to undefined on a stale fingerprint or bad composition', () => {
+    expect(applyChapterOverlay(input, DEFAULT_STORY_CONFIG, overlayV2('stale', [['a', 'b', 'c']]))).toBeUndefined();
+    const tier0 = compileChapterBook(input, DEFAULT_STORY_CONFIG);
+    const fresh = bookFingerprint(tier0.book);
+    expect(applyChapterOverlay(input, DEFAULT_STORY_CONFIG, overlayV2(fresh, [['a', 'b']]))).toBeUndefined(); // missing c
+    expect(applyChapterOverlay(input, DEFAULT_STORY_CONFIG, overlayV2(fresh, [['a', 'b', 'c', 'ghost']]))).toBeUndefined();
   });
 });

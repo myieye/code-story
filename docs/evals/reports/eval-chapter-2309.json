@@ -1,0 +1,49 @@
+{
+  "promptVersion": "order-eval-2",
+  "judgeModel": "sonnet",
+  "inputs": {
+    "firstArg": "/tmp/claude-0/-home-user-code-story/0e4fa192-08e1-59ac-a59c-4837f8fdf3fd/scratchpad/eval-books/2309-tier0.md",
+    "secondArg": "/tmp/claude-0/-home-user-code-story/0e4fa192-08e1-59ac-a59c-4837f8fdf3fd/scratchpad/eval-books/2309-ai.md"
+  },
+  "timestamp": "2026-07-18T05:13:29.510Z",
+  "trials": [
+    {
+      "trial": 1,
+      "assignment": {
+        "A": "first-arg",
+        "B": "second-arg"
+      },
+      "choice": "B",
+      "resolvedWinner": "second-arg",
+      "reason": "Book B groups the FilterBar/debouncedFilter fix, the query-params rewrite, and the consumer call-site updates each as adjacent units before moving to tests and lockfile, whereas Book A scatters the trivial consumer $-removal edits before the core debouncedFilter/query-params mechanism that explains why they're needed."
+    },
+    {
+      "trial": 2,
+      "assignment": {
+        "A": "first-arg",
+        "B": "second-arg"
+      },
+      "choice": "B",
+      "resolvedWinner": "second-arg",
+      "reason": "B groups all FilterBar/debouncedFilter changes first (the core debounce fix), then the query-params migration, then consumer call-site updates and tests, whereas A scatters trivial store-unwrap call sites before introducing the debouncedFilter core mechanism that explains them."
+    },
+    {
+      "trial": 3,
+      "assignment": {
+        "A": "first-arg",
+        "B": "second-arg"
+      },
+      "choice": "B",
+      "resolvedWinner": "second-arg",
+      "reason": "Book B groups the FilterBar/debouncedFilter core fix, then the query-params store migration, then all consuming components and tests as adjacent sections, whereas Book A scatters the reactive-store-to-plain-object migration across many unrelated files before ever introducing the debouncedFilter mechanism that motivates it."
+    }
+  ],
+  "totals": {
+    "/tmp/claude-0/-home-user-code-story/0e4fa192-08e1-59ac-a59c-4837f8fdf3fd/scratchpad/eval-books/2309-tier0.md": 0,
+    "/tmp/claude-0/-home-user-code-story/0e4fa192-08e1-59ac-a59c-4837f8fdf3fd/scratchpad/eval-books/2309-ai.md": 3
+  },
+  "invalidTrials": 0,
+  "metadata": {
+    "note": "single-family judge (Claude): self-preference caveat applies; generator/judge ids must differ where possible"
+  }
+}

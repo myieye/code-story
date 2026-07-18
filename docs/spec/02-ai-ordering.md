@@ -23,6 +23,13 @@ claude CLI / network / model → tier-0 book, quiet indicator, never an error wa
 the daemon serves tier 0 immediately and the overlay applies on the *next* book load per
 `order-logic.ts` (auto-apply when no `reviewed` mark yet; offer otherwise). No live polling /
 mid-session reorder was added — that is the deferred ambitious path (see scoping call 4).
+**Chapter-mode re-eval (#77, 2026-07-18):** the default flipped to consumer-first / tests-before /
+chapter mode (R-043–R-046) and the order prompt gained a chapter variant (`order-chapter-1`). The
+same blind pairwise judge prefers the opus chapter order over the deterministic tier-0 chapter
+linearization **9 trials to 0** across all three subjects (`docs/evals/dogfood-0-baseline.md`,
+"Chapter-mode ordering eval"). This confirms AI augmentation still earns its tokens in the new
+mode; it does *not* settle chapter-vs-file mode, which is a separate, #74-gated question. File
+mode stays fully selectable, so the flip changes the default and removes nothing.
 Date: 2026-07-16
 Satisfies: R-042 (the AI half of the ladder — this is the milestone where AI must *earn* its
 tokens), R-005 (narrative ordering + "an AI can score the readability of the generated book"),

@@ -1,9 +1,8 @@
 /**
- * Story ordering configuration (spec 05, R-045): two independent axes the reviewer controls.
- * Tim's preferred values (`TIM_STORY_CONFIG`) are the intended defaults, but this slice ships
- * `DEFAULT_STORY_CONFIG` as the active default so the shipped AI order prompt (dependency-first)
- * keeps passing its checkOrder pre-gate — the flip to Tim's values is slice 3's job (#77), gated
- * on the consumer-first linearizer clearing its evals.
+ * Story ordering configuration (spec 05, R-045): two independent axes the reviewer controls, each
+ * defaulting to Tim's ratified axioms (R-043/R-044) — consumer-first, tests before their impl.
+ * File mode (`FILE_MODE_STORY_CONFIG`, selected by `isFileModeConfig`) stays reachable via config
+ * so the file-section linearizer and its v1 AI-order path remain available (R-045).
  */
 export interface StoryConfig {
   /**
@@ -15,14 +14,14 @@ export interface StoryConfig {
   testPlacement: 'before' | 'after' | 'end';
 }
 
-/** Active default: today's file-mode behaviour (see the file header for why this isn't Tim's picks yet). */
-export const DEFAULT_STORY_CONFIG: StoryConfig = { direction: 'dependency-first', testPlacement: 'after' };
+/** Active default: Tim's axioms (R-043/R-044) — consumer-first, tests before their impl. */
+export const DEFAULT_STORY_CONFIG: StoryConfig = { direction: 'consumer-first', testPlacement: 'before' };
 
-/** Tim's stated preferences — the intended defaults, deferred to slice 3 (#77). */
-export const TIM_STORY_CONFIG: StoryConfig = { direction: 'consumer-first', testPlacement: 'before' };
+/** The file-section linearizer's axes (dependency-first, tests after) — selectable, no longer default. */
+export const FILE_MODE_STORY_CONFIG: StoryConfig = { direction: 'dependency-first', testPlacement: 'after' };
 
-/** True when a config selects only today's file-mode behaviour (no chapter linearizer needed). */
-export function isDefaultStoryConfig(config: StoryConfig): boolean {
+/** True when a config selects the file-mode linearizer (no chapter linearizer needed). */
+export function isFileModeConfig(config: StoryConfig): boolean {
   return config.direction === 'dependency-first' && config.testPlacement === 'after';
 }
 

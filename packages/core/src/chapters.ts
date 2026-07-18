@@ -20,6 +20,20 @@ export interface CompileChapterBookInput {
 }
 
 /**
+ * An explicit chapter partition of the story chunks (spec 05, #77): the AI-proposed alternative to
+ * the deterministic spine. Each inner array is one chapter in read order; its first element is the
+ * anchor. Must be an exact partition of the story chunk ids (`validateChapterComposition`).
+ */
+export interface ChapterComposition {
+  chapters: string[][];
+}
+
+export interface CompiledChapterBook extends CompiledBook {
+  /** The spine chapters' chunk-id lists (story chunks only) — echoes an explicit composition back. */
+  storyComposition: string[][];
+}
+
+/**
  * The chapter linearizer (spec 05, Traversal 1). A chapter is a Section whose occurrences may span
  * files, produced by a call-path DFS over the chunk graph's `calls` edges: from each anchor (a
  * story chunk with no incoming intra-diff `calls` edge, ordered routes-first then git) the
@@ -31,8 +45,17 @@ export interface CompileChapterBookInput {
  * This is a distinct linearizer from `compileBook`, not a parameterization of it (grill F1): it
  * reuses roles, the leftovers backstop, and the tail discipline, and supersedes file-section
  * assembly, the file-level topo spine, and the old test anchoring.
+ *
+ * A `composition` (spec 05, #77) replaces the deterministic spine with an explicit chapter partition
+ * (the AI proposal): the spine is skipped and chapters are built straight from it. Everything
+ * downstream — test weave, low-signal tail, leftovers — is unchanged and stays deterministic. An
+ * invalid composition throws (programmer error; the fail-open lives in `applyChapterOverlay`).
  */
-export function compileChapterBook(input: CompileChapterBookInput, config: StoryConfig): CompiledBook {
+export function compileChapterBook(
+  input: CompileChapterBookInput,
+  config: StoryConfig,
+  composition?: ChapterComposition,
+): CompiledChapterBook {
   const inputByFile = new Map<string, Chunk[]>();
   for (const chunk of input.chunks) {
     const list = inputByFile.get(chunk.file) ?? [];
@@ -72,15 +95,66 @@ export function compileChapterBook(input: CompileChapterBookInput, config: Story
     return 'story';
   };
 
-  const storyIds = new Set(gitOrder.filter((c) => bucketOf(c) === 'story').map((c) => c.id));
+  const storyIdList = gitOrder.filter((c) => bucketOf(c) === 'story').map((c) => c.id);
+  const storyIds = new Set(storyIdList);
   const testIds = new Set(gitOrder.filter((c) => bucketOf(c) === 'test').map((c) => c.id));
-  const chapters = buildSpine(gitOrder, storyIds, chunkById, gitRank, roles, input.chunkGraph, config);
+
+  let chapters: Chapter[];
+  if (composition) {
+    const check = validateChapterComposition(storyIdList, composition.chapters);
+    if (!check.ok) throw new Error(`invalid chapter composition: ${check.errors.join('; ')}`);
+    chapters = composition.chapters.map((ids) => ({
+      id: `${CHAPTER_SECTION_PREFIX}${ids[0]}`,
+      anchorFile: chunkById.get(ids[0]!)!.file,
+      chunkIds: [...ids],
+    }));
+  } else {
+    chapters = buildSpine(gitOrder, storyIds, chunkById, gitRank, roles, input.chunkGraph, config);
+  }
+  const storyComposition = chapters.map((ch) => [...ch.chunkIds]);
 
   const flat = weaveTests(chapters, gitOrder, storyIds, testIds, chunkById, gitRank, input, config);
 
   const sections = assembleSections(flat, gitOrder, bucketOf);
   const allChunks = [...input.chunks, ...[...leftoverByFile.values()].flat()];
-  return { book: { sections, headSha: input.headSha }, chunks: allChunks };
+  return { book: { sections, headSha: input.headSha }, chunks: allChunks, storyComposition };
+}
+
+/**
+ * Script-enforced check (R-024) that `proposed` is an exact chapter partition of the story chunks:
+ * every story id appears once, no foreign ids, no empty chapters. Errors name offenders, capped at
+ * a few — mirrors `validatePermutation`.
+ */
+export function validateChapterComposition(
+  storyChunkIds: readonly string[],
+  proposed: readonly (readonly string[])[],
+): { ok: boolean; errors: string[] } {
+  const expected = new Set(storyChunkIds);
+  const seen = new Set<string>();
+  const unknown: string[] = [];
+  const duplicated: string[] = [];
+  let empty = 0;
+  for (const chapter of proposed) {
+    if (chapter.length === 0) {
+      empty++;
+      continue;
+    }
+    for (const id of chapter) {
+      if (seen.has(id)) duplicated.push(id);
+      else seen.add(id);
+      if (!expected.has(id)) unknown.push(id);
+    }
+  }
+  const missing = [...expected].filter((id) => !seen.has(id));
+
+  const cap = (ids: string[]) => ids.slice(0, 5).join(', ');
+  const errors: string[] = [];
+  if (empty > 0) errors.push(`empty chapters: ${empty}`);
+  if (missing.length > 0) errors.push(`missing from composition: ${cap(missing)}`);
+  if (unknown.length > 0) errors.push(`not a story chunk: ${cap(unknown)}`);
+  if (duplicated.length > 0) errors.push(`duplicated: ${cap(duplicated)}`);
+
+  return { ok: errors.length === 0, errors };
 }
 
 interface Chapter {

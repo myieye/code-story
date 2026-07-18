@@ -1,0 +1,49 @@
+{
+  "promptVersion": "order-eval-2",
+  "judgeModel": "sonnet",
+  "inputs": {
+    "firstArg": "/tmp/claude-0/-home-user-code-story/0e4fa192-08e1-59ac-a59c-4837f8fdf3fd/scratchpad/eval-books/2357-tier0.md",
+    "secondArg": "/tmp/claude-0/-home-user-code-story/0e4fa192-08e1-59ac-a59c-4837f8fdf3fd/scratchpad/eval-books/2357-ai.md"
+  },
+  "timestamp": "2026-07-18T05:15:09.986Z",
+  "trials": [
+    {
+      "trial": 1,
+      "assignment": {
+        "A": "first-arg",
+        "B": "second-arg"
+      },
+      "choice": "B",
+      "resolvedWinner": "second-arg",
+      "reason": "Book B groups all backend HistoryService/query logic together, then all frontend consumers (ActivityFilter, ActivityView, ActivityItem) in dependency order, whereas Book A interleaves backend and frontend tests/chunks in a way that revisits HistoryService.cs repeatedly out of logical order."
+    },
+    {
+      "trial": 2,
+      "assignment": {
+        "A": "second-arg",
+        "B": "first-arg"
+      },
+      "choice": "A",
+      "resolvedWinner": "second-arg",
+      "reason": "Book A groups each file's full set of changes into one section (e.g. all of HistoryService.cs's methods together, all of ActivityFilter.svelte's script/template together), so related code is read as one coherent unit, whereas Book B fragments the same file into dozens of scattered sections interleaved with unrelated files, forcing constant context-switching."
+    },
+    {
+      "trial": 3,
+      "assignment": {
+        "A": "second-arg",
+        "B": "first-arg"
+      },
+      "choice": "A",
+      "resolvedWinner": "second-arg",
+      "reason": "Book A groups whole files/features into 32 coherent sections (e.g., all of HistoryService.cs's related methods together, all ActivityFilter.svelte pieces together), while Book B fragments the same file into 76 tiny interleaved sections that force jumping back and forth between unrelated files before completing one concern."
+    }
+  ],
+  "totals": {
+    "/tmp/claude-0/-home-user-code-story/0e4fa192-08e1-59ac-a59c-4837f8fdf3fd/scratchpad/eval-books/2357-tier0.md": 0,
+    "/tmp/claude-0/-home-user-code-story/0e4fa192-08e1-59ac-a59c-4837f8fdf3fd/scratchpad/eval-books/2357-ai.md": 3
+  },
+  "invalidTrials": 0,
+  "metadata": {
+    "note": "single-family judge (Claude): self-preference caveat applies; generator/judge ids must differ where possible"
+  }
+}

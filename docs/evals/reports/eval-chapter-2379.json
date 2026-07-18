@@ -1,0 +1,49 @@
+{
+  "promptVersion": "order-eval-2",
+  "judgeModel": "sonnet",
+  "inputs": {
+    "firstArg": "/tmp/claude-0/-home-user-code-story/0e4fa192-08e1-59ac-a59c-4837f8fdf3fd/scratchpad/eval-books/2379-tier0.md",
+    "secondArg": "/tmp/claude-0/-home-user-code-story/0e4fa192-08e1-59ac-a59c-4837f8fdf3fd/scratchpad/eval-books/2379-ai.md"
+  },
+  "timestamp": "2026-07-18T05:14:03.011Z",
+  "trials": [
+    {
+      "trial": 1,
+      "assignment": {
+        "A": "first-arg",
+        "B": "second-arg"
+      },
+      "choice": "B",
+      "resolvedWinner": "second-arg",
+      "reason": "Book B groups the entire live-derivation infrastructure (kernel wiring, association helpers, headword expressions, and their tests) into one coherent section before moving to consumers of it, whereas Book A scatters the same EntryQueryHelpers.cs pieces across many separate sections in a less logical build-up."
+    },
+    {
+      "trial": 2,
+      "assignment": {
+        "A": "second-arg",
+        "B": "first-arg"
+      },
+      "choice": "A",
+      "resolvedWinner": "second-arg",
+      "reason": "Book A groups related chunks into 7 coherent sections (core helpers, kernel wiring, tests, snapshots) so each builds on prior context, whereas Book B splinters the same file into 22 fragmented sections that scatter closely related methods and interleave test/implementation chunks without a clear cumulative build-up."
+    },
+    {
+      "trial": 3,
+      "assignment": {
+        "A": "first-arg",
+        "B": "second-arg"
+      },
+      "choice": "B",
+      "resolvedWinner": "second-arg",
+      "reason": "Book B groups the entire EntryQueryHelpers/LcmCrdtKernel infrastructure build-up (associations, morph type, headword expressions, sqlite helpers) into fewer, cohesive sections before moving to the consumer-side FwData/MiniLcm test changes, whereas Book A splits EntryQueryHelpers edits and their tests across scattered, interleaved chunks that jump between infrastructure and consumers repeatedly."
+    }
+  ],
+  "totals": {
+    "/tmp/claude-0/-home-user-code-story/0e4fa192-08e1-59ac-a59c-4837f8fdf3fd/scratchpad/eval-books/2379-tier0.md": 0,
+    "/tmp/claude-0/-home-user-code-story/0e4fa192-08e1-59ac-a59c-4837f8fdf3fd/scratchpad/eval-books/2379-ai.md": 3
+  },
+  "invalidTrials": 0,
+  "metadata": {
+    "note": "single-family judge (Claude): self-preference caveat applies; generator/judge ids must differ where possible"
+  }
+}
