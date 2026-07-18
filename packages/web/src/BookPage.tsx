@@ -3,9 +3,10 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { BookResponse, NarrationResponse, OrderResponse } from './api.js';
 import { OutlineSidebar } from './OutlineSidebar.js';
+import { computeNeighborChips } from './neighbor-strip-logic.js';
 import { batchableSections, findUnreviewed, pendingStubCount } from './review-logic.js';
 import { estimateRowHeight, RowView, type SectionAck } from './RowView.js';
-import { flattenBook, occurrenceKey, type Row } from './rows.js';
+import { chunkTitle, flattenBook, occurrenceKey, type Row } from './rows.js';
 import { ShortcutOverlay } from './ShortcutOverlay.js';
 import { affordanceLabel, type PayloadState } from './context-panel-logic.js';
 import { useBookKeymap } from './useBookKeymap.js';
@@ -37,9 +38,11 @@ export function BookPage({
   );
 
   const flat = useMemo(() => flattenBook(bookData.book, bookData.chunks), [bookData]);
+  const chunksById = useMemo(() => new Map(bookData.chunks.map((c) => [c.id, c])), [bookData]);
   const scrollRef = useRef<HTMLDivElement>(null);
   const rowEls = useRef(new Map<number, HTMLElement>());
   const panelEls = useRef(new Map<string, HTMLElement>());
+  const stripEls = useRef(new Map<string, HTMLElement>());
 
   const [cursor, setCursor] = useState(() => {
     const resumed = initialReview.cursor ? flat.firstIndexByChunkId.get(initialReview.cursor) : undefined;
@@ -55,6 +58,10 @@ export function BookPage({
     return seeded;
   });
   const [overlayOpen, setOverlayOpen] = useState(false);
+  // Neighbor-strip navigation: the origins we can pop back to, and the chunk to briefly re-highlight
+  // after a jump (a re-encounter, never a re-audit — reviewed stays reviewed).
+  const [backStack, setBackStack] = useState<number[]>([]);
+  const [reencounter, setReencounter] = useState<{ chunkId: string; state: 'reviewed' | 'unreviewed'; seq: number } | null>(null);
   const [announce, setAnnounce] = useState({ msg: '', seq: 0 });
   const [toastVisible, setToastVisible] = useState(false);
   const [lastBatch, setLastBatch] = useState<{ sectionId: string; prior: { chunkId: string; state: ChunkReviewState }[] } | null>(null);
@@ -228,6 +235,51 @@ export function BookPage({
     setLastBatch(null);
   };
 
+  // Follow a neighbor edge to its chunk: push the origin, move the cursor, and re-highlight the
+  // target (reviewed = a free re-encounter glance — never a re-audit). The move is instant scroll,
+  // so prefers-reduced-motion is satisfied by construction.
+  const jumpToNeighbor = (targetChunkId: string) => {
+    const targetIndex = flat.firstIndexByChunkId.get(targetChunkId);
+    if (targetIndex === undefined) return;
+    const target = chunksById.get(targetChunkId);
+    const reviewed = review.stateOf(targetChunkId) === 'reviewed';
+    setBackStack((s) => [...s, cursor]);
+    setReencounter((r) => ({ chunkId: targetChunkId, state: reviewed ? 'reviewed' : 'unreviewed', seq: (r?.seq ?? 0) + 1 }));
+    moveCursor(targetIndex);
+    say(`Jumped to ${target ? chunkTitle(target) : targetChunkId}${target ? ` in ${target.file}` : ''} — ${reviewed ? 'reviewed' : 'unreviewed'}.`);
+  };
+
+  const goBack = () => {
+    if (backStack.length === 0) {
+      say('Nothing to go back to.');
+      return;
+    }
+    const origin = backStack[backStack.length - 1]!;
+    setBackStack(backStack.slice(0, -1));
+    const originChunk = chunkRowAt(origin)?.chunk;
+    moveCursor(origin);
+    say(`Back to ${originChunk ? chunkTitle(originChunk) : 'the previous chunk'}.`);
+  };
+
+  // `g` focuses the first chip of the focused chunk's strip (roving tabindex takes over from there).
+  const focusNeighborStrip = () => {
+    const id = chunkRowAt(cursor)?.chunk.id;
+    const first = id ? stripEls.current.get(id)?.querySelector<HTMLButtonElement>('button.neighbor-chip') : undefined;
+    if (first) first.focus();
+    else say('No related chunks for this one.');
+  };
+
+  const exitNeighborStrip = () => {
+    const rowIndex = flat.chunkRowIndexes[cursor];
+    if (rowIndex !== undefined) rowEls.current.get(rowIndex)?.focus({ preventScroll: true });
+  };
+
+  useEffect(() => {
+    if (!reencounter) return;
+    const t = window.setTimeout(() => setReencounter(null), 1600);
+    return () => window.clearTimeout(t);
+  }, [reencounter]);
+
   useBookKeymap({
     overlayOpen,
     setOverlayOpen,
@@ -241,6 +293,8 @@ export function BookPage({
     unmarkCurrent,
     toggleCollapseCurrent,
     toggleDefinitionsCurrent,
+    focusNeighborStrip,
+    goBack,
   });
 
   useSeenTracking({ scrollRef, virtualizer, flat, stateOf: review.stateOf, setSeen: review.setSeen });
@@ -267,6 +321,13 @@ export function BookPage({
 
   const cursorRowIndex = flat.chunkRowIndexes[cursor];
   const cursorRow = chunkRowAt(cursor);
+  const cursorChips = useMemo(() => {
+    const chunk = cursorRow?.chunk;
+    if (!chunk) return [];
+    return computeNeighborChips(bookData.chunkGraph ?? { edges: [] }, chunk.id, chunksById, review.stateOf, (id) =>
+      flat.firstIndexByChunkId.has(id),
+    );
+  }, [cursorRow, bookData, chunksById, review.states, flat]);
   const done = distinctChunks > 0 && reviewedCount === distinctChunks;
 
   return (
@@ -310,6 +371,11 @@ export function BookPage({
           )}
         </span>
         <span className="spacer" />
+        {backStack.length > 0 && (
+          <button className="bar-button back-button" title="Back to where you jumped from (b)" onClick={goBack}>
+            ← back
+          </button>
+        )}
         {lastBatch && (
           <button className="bar-button" onClick={undoBatch}>
             Undo batch ({lastBatch.prior.length})
@@ -429,6 +495,14 @@ export function BookPage({
                         if (el) panelEls.current.set(chunkId, el);
                         else panelEls.current.delete(chunkId);
                       }}
+                      neighborChips={item.index === cursorRowIndex ? cursorChips : undefined}
+                      onJumpToChunk={jumpToNeighbor}
+                      onExitStrip={exitNeighborStrip}
+                      registerStripEl={(chunkId, el) => {
+                        if (el) stripEls.current.set(chunkId, el);
+                        else stripEls.current.delete(chunkId);
+                      }}
+                      reencounter={row.kind === 'chunk' && reencounter?.chunkId === row.chunk.id ? reencounter.state : undefined}
                     />
                   </div>
                 );

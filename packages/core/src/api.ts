@@ -1,3 +1,4 @@
+import type { ChunkGraph } from './chunk-graph.js';
 import type { ContextPayload } from './context.js';
 import type { ImportGraph } from './import-graph.js';
 import type { Book, Chunk } from './model.js';
@@ -18,6 +19,11 @@ export interface BookResponse {
   diffs: Record<string, UnifiedLine[]>;
   /** Changed-files import graph — applyOrderOverlay needs it web-side (spec 02). */
   graph: ImportGraph;
+  /**
+   * The chunk relatedness graph (spec 05) — edges drive the neighbor strip. Empty `edges` in file
+   * mode or whenever the graph failed to build: the strip simply doesn't render (fail-open).
+   */
+  chunkGraph: ChunkGraph;
   /**
    * The chapter book recomposed with a fresh v2 order overlay applied (spec 05, #77). Set only in
    * chapter mode when the stored overlay is v2 and applies cleanly — the web can't recompose a

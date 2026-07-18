@@ -287,7 +287,7 @@ export function startServer(options: ServerOptions, requestedPort = 0): Promise<
     const diffs = Object.fromEntries(
       chunks.map((chunk) => [chunk.id, unifiedChunkLines(chunk, contents.get(chunk.file))]),
     );
-    const response: BookResponse = { ...options.range, book, chunks, diffs, graph };
+    const response: BookResponse = { ...options.range, book, chunks, diffs, graph, chunkGraph: built.chunkGraph ?? { edges: [] } };
     // Chapter mode: recompose per request (milliseconds) so the web gets the applied book — it
     // can't build a chapter book itself. Never cached across overlay writes.
     if (chapterMode && built.chapterInput) {

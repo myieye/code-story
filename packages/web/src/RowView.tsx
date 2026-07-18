@@ -3,6 +3,8 @@ import type { BookResponse } from './api.js';
 import { affordanceLabel, hasDefinitions, type PayloadState } from './context-panel-logic.js';
 import { DefinitionPanel } from './DefinitionPanel.js';
 import { DiffView } from './DiffView.js';
+import { NeighborStrip } from './NeighborStrip.js';
+import type { NeighborChip } from './neighbor-strip-logic.js';
 import { chunkSize, chunkTitle, type Row } from './rows.js';
 
 /** Section-header action: batch-mark the remaining stubs, or undo the batch just made. */
@@ -31,6 +33,11 @@ export function RowView({
   panelExpanded,
   onToggleDefinitions,
   registerPanelEl,
+  neighborChips,
+  onJumpToChunk,
+  onExitStrip,
+  registerStripEl,
+  reencounter,
 }: {
   row: Row;
   data: BookResponse;
@@ -59,6 +66,13 @@ export function RowView({
   panelExpanded: boolean;
   onToggleDefinitions: (chunk: Chunk) => void;
   registerPanelEl: (chunkId: string, el: HTMLElement | null) => void;
+  /** The focused chunk's graph neighbors (spec 05 slice 5); passed only for the cursor row. */
+  neighborChips?: NeighborChip[];
+  onJumpToChunk: (chunkId: string) => void;
+  onExitStrip: () => void;
+  registerStripEl: (chunkId: string, el: HTMLElement | null) => void;
+  /** A brief post-jump highlight distinct from the focus ring — reviewed = "still reviewed". */
+  reencounter?: 'reviewed' | 'unreviewed';
 }) {
   if (row.kind === 'section') {
     const stats = sectionStats.get(row.id);
@@ -128,6 +142,7 @@ export function RowView({
   const classes = ['chunk', `state-${state}`];
   if (isCursor) classes.push('cursor');
   if (collapsed) classes.push('collapsed');
+  if (reencounter) classes.push('reencounter', `reencounter-${reencounter}`);
   return (
     <article
       className={classes.join(' ')}
@@ -151,6 +166,14 @@ export function RowView({
               <span className="added">+{size.added}</span> <span className="removed">−{size.removed}</span>
             </span>
           </div>
+          {isCursor && neighborChips && neighborChips.length > 0 && (
+            <NeighborStrip
+              chips={neighborChips}
+              onJump={onJumpToChunk}
+              onExit={onExitStrip}
+              registerEl={(el) => registerStripEl(chunk.id, el)}
+            />
+          )}
           {chunkAiLine && (
             <div className="chunk-ai-line">
               <span className="badge ai-badge">AI</span> {chunkAiLine}

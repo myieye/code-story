@@ -9,6 +9,7 @@ import {
   edgesOfKinds,
   fileImportEdges,
   filterFreshGraph,
+  neighborsOf,
   sectionAnchors,
 } from './chunk-graph.js';
 import { testImplAnchors } from './book.js';
@@ -76,6 +77,39 @@ describe('assembleChunkGraph', () => {
 
   it('drops self-edges', () => {
     expect(assembleChunkGraph('H', [edge('a', 'a', 'calls')]).edges).toHaveLength(0);
+  });
+});
+
+describe('neighborsOf', () => {
+  const graph = assembleChunkGraph('H', [
+    edge('a', 'b', 'calls', 'references', [{ start: 10, end: 10 }]),
+    edge('a', 'c', 'file-imports', 'import-graph', []),
+    edge('t', 'a', 'exercises', 'references', [{ start: 4, end: 4 }]),
+    edge('z', 'a', 'calls', 'references', [{ start: 88, end: 88 }]),
+  ]);
+
+  it('returns direct neighbors with direction and outgoing provenance', () => {
+    const n = neighborsOf(graph, 'a');
+    expect(n).toEqual([
+      { chunkId: 'b', kind: 'calls', direction: 'out', fromLines: [{ start: 10, end: 10 }] },
+      { chunkId: 'c', kind: 'file-imports', direction: 'out', fromLines: [] },
+      { chunkId: 't', kind: 'exercises', direction: 'in', fromLines: [] },
+      { chunkId: 'z', kind: 'calls', direction: 'in', fromLines: [] },
+    ]);
+  });
+
+  it('drops the incoming edge\'s fromLines (they belong to the neighbor, not this chunk)', () => {
+    // z calls a at L88, but from a's side that line lives in z — not surfaced on a's incoming chip.
+    expect(neighborsOf(graph, 'a').find((x) => x.chunkId === 'z')?.fromLines).toEqual([]);
+  });
+
+  it('is empty for a chunk with no edges', () => {
+    expect(neighborsOf(graph, 'nobody')).toEqual([]);
+  });
+
+  it('reports outgoing provenance from the caller side only', () => {
+    // From b's view, the a→b calls edge is incoming: no lines.
+    expect(neighborsOf(graph, 'b')).toEqual([{ chunkId: 'a', kind: 'calls', direction: 'in', fromLines: [] }]);
   });
 });
 

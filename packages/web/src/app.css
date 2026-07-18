@@ -462,6 +462,93 @@ body {
   white-space: nowrap;
 }
 
+/* Neighbor strip (spec 05 slice 5): the focused chunk's direct graph neighbors, one row, scrolls. */
+.chunk-main > .neighbor-strip {
+  border-left: 1px solid #e5e2dc;
+  border-right: 1px solid #e5e2dc;
+}
+.chunk.cursor .chunk-main > .neighbor-strip {
+  border-color: #7d9bd1;
+}
+.neighbor-strip {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  padding: 6px 12px;
+  background: #f4f6fb;
+  overflow-x: auto;
+  overflow-y: hidden;
+  white-space: nowrap;
+  scrollbar-width: thin;
+}
+.neighbor-chip {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-family: Consolas, monospace;
+  font-size: 11.5px;
+  padding: 2px 9px;
+  border-radius: 12px;
+  border: 1px solid #c8cede;
+  background: #fff;
+  color: #24405f;
+  cursor: pointer;
+}
+.neighbor-chip:hover {
+  background: #eceff7;
+}
+.neighbor-chip:focus-visible {
+  outline: 2px solid #2f5aa8;
+  outline-offset: 1px;
+}
+/* Unreviewed = high salience; reviewed = muted re-encounter. Never colour alone — the ✓ glyph carries state. */
+.neighbor-chip.chip-unreviewed {
+  border-color: #2f5aa8;
+  font-weight: 600;
+}
+.neighbor-chip.chip-reviewed {
+  opacity: 0.62;
+  border-style: dashed;
+}
+.chip-check {
+  color: #3fa661;
+  font-weight: 700;
+}
+.chip-behind {
+  font-size: 10px;
+  font-weight: 700;
+  color: #7a4a12;
+  background: #f3e2c8;
+  border-radius: 8px;
+  padding: 0 5px;
+}
+.chip-file-level {
+  font-style: italic;
+}
+
+/* Brief post-jump re-encounter flash, distinct from the cursor focus ring; reviewed stays reviewed. */
+.chunk.reencounter .chunk-main > .chunk-header {
+  animation: reencounter-flash 1.4s ease;
+}
+.chunk.reencounter-reviewed .chunk-main > .chunk-header {
+  box-shadow: inset 3px 0 0 #3fa661;
+}
+.chunk.reencounter-unreviewed .chunk-main > .chunk-header {
+  box-shadow: inset 3px 0 0 #2f5aa8;
+}
+@keyframes reencounter-flash {
+  0%,
+  55% {
+    background: #fff6e2;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .chunk.reencounter .chunk-main > .chunk-header {
+    animation: none;
+  }
+}
+
 /* Quiet toggle under the diff; the panel below it is deliberately un-diff-like (R-006). */
 .definitions-affordance {
   padding: 5px 12px 0;

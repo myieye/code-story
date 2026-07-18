@@ -14,6 +14,10 @@ export interface BookKeymapOptions {
   unmarkCurrent: () => void;
   toggleCollapseCurrent: () => void;
   toggleDefinitionsCurrent: () => void;
+  /** Move focus into the focused chunk's neighbor strip (spec 05 slice 5). */
+  focusNeighborStrip: () => void;
+  /** Pop the neighbor-jump back-stack, restoring the origin chunk. */
+  goBack: () => void;
 }
 
 export function useBookKeymap({
@@ -29,6 +33,8 @@ export function useBookKeymap({
   unmarkCurrent,
   toggleCollapseCurrent,
   toggleDefinitionsCurrent,
+  focusNeighborStrip,
+  goBack,
 }: BookKeymapOptions): void {
   // No dep array: re-registers every render so the handler closes over fresh state (intentional).
   useEffect(() => {
@@ -70,6 +76,8 @@ export function useBookKeymap({
         if (!e.repeat) markCurrent();
       } else if (plain && e.key === 'u') unmarkCurrent();
       else if (plain && e.key === 'x') toggleCollapseCurrent();
+      else if (plain && e.key === 'g') focusNeighborStrip();
+      else if (plain && e.key === 'b') goBack();
       else if (plain && e.key === '?') setOverlayOpen(true);
       else if (e.ctrlKey && e.key === 'Home') moveCursor(0);
       else if (e.ctrlKey && e.key === 'End') moveCursor(totalOccurrences - 1);
