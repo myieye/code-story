@@ -82,6 +82,36 @@ export function edgesOfKinds(edges: readonly ChunkEdge[], kinds: ReadonlySet<Chu
   return edges.filter((e) => kinds.has(e.kind));
 }
 
+/** A chunk's direct graph neighbor (spec 05 slice 5 — the neighbor strip). */
+export interface ChunkNeighbor {
+  /** The neighbor chunk to navigate to. */
+  chunkId: string;
+  kind: ChunkEdgeKind;
+  /** `out`: this chunk is the edge's `from` (it calls / imports / exercises the neighbor). `in`: the reverse. */
+  direction: 'in' | 'out';
+  /**
+   * Call-site lines in THIS chunk responsible for the edge (R-048) — populated only for outgoing
+   * edges, where `fromLines` describe this chunk. Incoming edges leave it empty: their responsible
+   * lines live in the neighbor, so surfacing them here would misattribute them.
+   */
+  fromLines: LineRange[];
+}
+
+/**
+ * Direct neighbors of `chunkId`: one entry per touching edge, direction-tagged. A read-only
+ * derivation over existing edges (no chunking/ordering change — CORE_VERSION untouched). Sorted for
+ * determinism; self-edges are impossible (assembleChunkGraph drops them) but guarded anyway.
+ */
+export function neighborsOf(graph: ChunkGraph, chunkId: string): ChunkNeighbor[] {
+  const out: ChunkNeighbor[] = [];
+  for (const e of graph.edges) {
+    if (e.from === chunkId && e.to !== chunkId) out.push({ chunkId: e.to, kind: e.kind, direction: 'out', fromLines: [...e.fromLines] });
+    else if (e.to === chunkId && e.from !== chunkId) out.push({ chunkId: e.from, kind: e.kind, direction: 'in', fromLines: [] });
+  }
+  out.sort((a, b) => a.chunkId.localeCompare(b.chunkId) || a.kind.localeCompare(b.kind) || a.direction.localeCompare(b.direction));
+  return out;
+}
+
 /**
  * Section-anchor chunk per file: each Book section's first occurrence chunk (spec 05 — file-imports
  * and test-anchor edges connect these). The leftovers section has no anchor. Keyed by section id
