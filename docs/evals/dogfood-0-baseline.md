@@ -486,3 +486,56 @@ legitimately regroups sections.
 Repro: per subject, `code-story <range> --export t.md` (tier-0 chapter book) and
 `code-story <range> --ai-order --model opus --order ai --export ai.md` (opus chapter book) run in
 the lexbox clone, then `node tools/order-eval.mjs t.md ai.md --trials 3 --judge-model sonnet`.
+
+## Dogfood 6 — the M5 lawn-mower UI (2026-07-18, issue #80)
+
+Full M5 UI (neighbor strip #78 + frontier surfacing #79) driven in headless Chromium on real
+lexbox PRs. Primary **2379** (`8dd70ba~1..8dd70ba`, C#-only, 34 chunks), contrast **2309**
+(`c0448522..pr-2309`, Svelte/TS, 37 chunks). Chapter mode / consumer-first / tests-before,
+`--no-ai-order` for a stable deterministic book. Harness: `tools/dogfood-mow.mjs` (modes
+`e2e-mow` / `linear`). This records the **measurable half**; the **felt half** ("did criss-crossing
+beat the straight read?") is Tim's, prepared as a read (`docs/evals/m5-mow-read-2026-07-18/`) —
+same split-gate shape as #54/#74.
+
+**E2E: all pass (2379).** Strip renders on focused chunks with neighbors; click (primary) and
+`g`→arrows→Enter (keyboard) both jump to the neighbor's occurrence; `b` and the "← back" control
+restore the origin; the frontier indicator shows a live count; the done banner reads the honest
+line ("16 cross-chunk interactions were surfaced during review — none were individually verified").
+
+**The graph is sparse on real PRs — the mow guides only the connected core.** Marks-to-100% is 34
+either way (both must cover every chunk). Of the lawn-mower's 33 transitions only **8 were
+graph-guided; 25 fell back to the linear queue.** Grounded by connectivity: **18 of 34 chunks (53%)
+touch no `calls`/`exercises` edge** — graph-islands the mow can't reach, only the linear safety net
+can. 2309 is the near-null case: **3 interaction edges, 33 of 37 chunks (89%) islands.** This
+corroborates the Chapter-mode eval's "sparse call graph" finding (the #100 harvest) from a second
+angle: real changed-file graphs are mostly islands plus a dense cluster. **Where the graph is dense
+it genuinely helps** — the comprehension probe reconstructed the whole `EntryQueryHelpers`
+hub-and-spoke (kernel wiring → 6 helpers; tests exercise the helpers) from the strip alone. This
+matches research 06 (the filtered local neighborhood helps; more graph was the null) and the spec's
+honest framing: the strip is an aid for a change's connected core, never a whole-PR navigator.
+
+**Chunk-size premise (R-049) holds.** 2379: median 3.5 lines, ≤10 lines = 82%, >20 = 12% (4). 2309:
+median 3, ≤10 = 76%. Small chunks are real, not assumed.
+
+**Frontier is non-monotonic** (reaches 0 only at 100%). Marking a hub chunk *opens* split edges to
+its still-unreviewed neighbors faster than it closes them, so the count oscillates (e.g. 1→7→…→5→6→
+…→0). Behaviorally correct, but the "N still open" copy reads like a burn-down it isn't — a wording
+risk (harvested).
+
+**Headline friction (harvested):** Enter's mark-and-advance moves the cursor in **book order**, and
+the strip only renders for the cursor chunk — so after marking a chunk you can't follow *its* edges
+without refocusing it first. A pure graph-mow ("mark this, now follow its call") is not one gesture,
+and on a large diff the auto-advance would unmount the origin. This is a real design tension in the
+core review gesture, not a bug — it needs a design call (mark-in-place? Enter advances along the
+frontier/strip instead of book order?), so it's filed for Tim, not silently changed.
+
+**Verdict (measurable half): the M5 UI works and the graph-guided traversal earns its place on the
+connected core of a change — but it is a local aid layered on the linear safety net, not a
+replacement for it, because real changed-file graphs are island-dominated.** The R-048/R-049 bet's
+*felt* half — whether criss-crossing the connected core actually eases Tim's wall-of-diffs burden
+more than the straight read — is his to judge; materials prepared. Harvest: the mark-and-advance /
+mow-gesture tension, the frontier-wording risk, and opaque chip labels for symbol-less fragment
+chunks ("lines 1–6").
+
+Repro: `node tools/dogfood-mow.mjs e2e-mow` (and `linear`) with the daemon on the range; raw output
+under the session scratchpad `dogfood6/`.
