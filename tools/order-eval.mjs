@@ -67,19 +67,27 @@ function stripRationales(text) {
     .join('\n');
 }
 
-function headings(text) {
+// The "same book" guard, arrangement-agnostic. Both orderings must present the same chunks —
+// true in file mode and chapter mode alike. Section (chapter) titles and per-occurrence
+// "— from <file>" labels legitimately differ once the AI regroups chunks into new chapters, so
+// compare the multiset of per-chunk (`### `) headings with those labels stripped.
+function chunkKeys(text) {
   return text
     .split('\n')
-    .filter((line) => line.startsWith('## '))
-    .map((line) => line.trim());
+    .filter((line) => line.startsWith('### '))
+    .map((line) => line.replace(/ — from .*$/, '').trim())
+    .sort();
 }
 
-function headingDiff(a, b) {
-  const setA = new Set(a);
-  const setB = new Set(b);
-  const onlyInA = a.filter((h) => !setB.has(h));
-  const onlyInB = b.filter((h) => !setA.has(h));
-  return { onlyInA, onlyInB };
+function chunkKeyDiff(a, b) {
+  const remaining = [...b];
+  const onlyInA = [];
+  for (const key of a) {
+    const at = remaining.indexOf(key);
+    if (at === -1) onlyInA.push(key);
+    else remaining.splice(at, 1);
+  }
+  return { onlyInA, onlyInB: remaining };
 }
 
 function buildPrompt(textA, textB) {
@@ -144,9 +152,9 @@ async function main() {
   const textA = stripRationales(rawA);
   const textB = stripRationales(rawB);
 
-  const { onlyInA, onlyInB } = headingDiff(headings(textA), headings(textB));
+  const { onlyInA, onlyInB } = chunkKeyDiff(chunkKeys(textA), chunkKeys(textB));
   if (onlyInA.length > 0 || onlyInB.length > 0) {
-    console.error(`${pathA} and ${pathB} do not have the same section headings — not the same book.`);
+    console.error(`${pathA} and ${pathB} do not present the same chunks — not the same book.`);
     console.error(`only in ${pathA}:\n${onlyInA.map((h) => `  ${h}`).join('\n') || '  (none)'}`);
     console.error(`only in ${pathB}:\n${onlyInB.map((h) => `  ${h}`).join('\n') || '  (none)'}`);
     process.exit(2);
