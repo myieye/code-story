@@ -134,7 +134,10 @@ export function computeNeighborChips(
       direction: nb.direction,
       arrow,
       relation,
-      name: fileLevel ? basename(chunk.file) : chunkTitle(chunk),
+      // Symbol-less chunks (fragments) have no displayPath, so chunkTitle falls back to a bare
+      // "lines N–M" — an opaque chip label (#108). Use the file basename instead; the reviewer
+      // reads the actual chunk on click.
+      name: fileLevel || chunk.displayPath.length === 0 ? basename(chunk.file) : chunkTitle(chunk),
       file: chunk.file,
       fileLevel,
       ...(line !== undefined ? { line } : {}),
