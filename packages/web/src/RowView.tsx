@@ -16,6 +16,7 @@ export function RowView({
   totalOccurrences,
   distinctChunks,
   reviewedCount,
+  interactions,
   sectionStats,
   sectionAck,
   sectionAiLine,
@@ -46,6 +47,8 @@ export function RowView({
   /** Review-progress denominator — state lives on the chunk. */
   distinctChunks: number;
   reviewedCount: number;
+  /** Cross-chunk interactions (calls + exercises) surfaced across the book — honest done-banner figure (spec 05 gate 1). */
+  interactions: number;
   sectionStats: Map<string, { done: number; total: number }>;
   sectionAck: SectionAck | undefined;
   /** The section header's single AI line: narration intro, else the applied order rationale (spec 03). */
@@ -107,6 +110,12 @@ export function RowView({
         <div className="end-of-book done">
           <p className="done-headline">All {distinctChunks} chunks reviewed.</p>
           <p>Nothing was skipped — every chunk required your mark.</p>
+          {interactions > 0 && (
+            <p className="done-frontier">
+              {interactions} cross-chunk interaction{interactions === 1 ? '' : 's'} {interactions === 1 ? 'was' : 'were'} surfaced
+              during review — none {interactions === 1 ? 'was' : 'were'} individually verified.
+            </p>
+          )}
           <table className="done-table">
             <tbody>
               {data.book.sections.map((section) => {
