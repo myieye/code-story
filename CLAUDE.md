@@ -403,7 +403,12 @@ chunks touch no interaction edge), so the mow aids only a change's **connected c
 reconstructed the `EntryQueryHelpers` hub-and-spoke from the strip alone) — a local aid on the linear
 safety net, not a whole-PR navigator; chunk-size premise (R-049) holds. **#108** (PR #110): symbol-less
 chip labels use the file basename. No CORE_VERSION bump this window (read-only derivations / display /
-web only). Suite **381** (core 225 / server 97 / web 59).
+web only). Suite **381** (core 225 / server 97 / web 59). **M5 UI adversarially reviewed** —
+verdict **safe for Tim to drive, no bug-severity defects** (occurrence-vs-chunk nav = first
+occurrence is correct since review state is per-chunk; the j/k-into-strip leak is guarded by
+`closest('button')` — both confirmed clean). Fixed a roving-tabindex focus desync on strip re-entry
+(PR #111); harvested **#112** (back-stack/cursor indices go stale if the AI order applies
+mid-review — narrow, shared with pre-existing cursor behavior; proper fix = remap on `chunkId#ordinal`).
 Next (verify freshness on wake): **the specced roadmap M0–M5 is COMPLETE; the frontier is now
 Tim-gated — do NOT jump the gates, and do NOT spec M6 unprompted (Tim scopes milestones).** Tim's open
 reads/calls: **#109** (M5 lawn-mower felt read — did criss-crossing beat the straight read;
