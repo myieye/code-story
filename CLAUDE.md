@@ -359,12 +359,35 @@ graph edges 2357 38→36, the unjustified pair); context fill + GET now actually
 per chunk. #93 done (PR #96: `--dump-context --verbose` lists unresolved names). Suite
 **337** (core 210 / server 84 / web 43). Remote branch deletes 403 — stale merged claude/*
 branches on origin are cosmetic, ignore.
-Next (as of this writing — verify freshness on wake): **#77** (AI traversal augmentation:
-order prompt v2 against configured axioms, default flip to consumer-first/tests-before/chapter
-mode, judge eval re-run ~70k plan-tokens/subject — **the eval spend is the thing Tim was
-nervous about; confirm with him or let the nightly own it**), then #78–#80 (UI slices, GATED
-on Tim's #74 labels ≥0.90). Waiting on Tim: #74 blind labels, #54 narration read, #21/#27/#58/
-#86/#92 evidence-gated. Suite 335; main green.
+**Fourth window (2026-07-18, nightly): #77 DONE (PR #101, merged a8db0d8).** Default story order
+flipped to Tim's axioms (R-043–R-046): DEFAULT_STORY_CONFIG = consumer-first/tests-before/chapter
+mode; FILE_MODE_STORY_CONFIG keeps dependency-first/tests-after, still selectable via
+`--direction`/`--test-placement` or `.code-story.json` (the flip changes the default, removes
+nothing — R-025/"keep ordering options open"). Order overlay **v2** = a chapter COMPOSITION
+(partition of story chunk ids), not a section permutation; `AnyOrderOverlay = v1|v2`; chapter
+section ids `chapter:<anchorChunkId>`, cross-file occurrences carry `label` = the chunk's file.
+Chapter order prompt `order-chapter-1` shows ALIASED chunks (c1..cN, never raw ids — the #44
+truncation lesson); validator + checkOrder chunk-position pre-gate reject direction/test
+violations; fail-open to the deterministic chapter book. Daemon + CLI
+(`--ai-order`/`--order ai`/`--export`) + web all speak chapter mode. **CORE_VERSION → 0.0.5 —
+invalidates ALL persisted overlays; regenerate before any overlay-dependent demo.** order-eval
+same-book guard now keys on the chunk multiset (chapter mode regroups sections, so section-title
+equality was wrong). **Eval verdict: AI 9 / tier-0 0** (opus generator, sonnet judge, K=3 × 3
+subjects, zero invalid; reports `docs/evals/reports/eval-chapter-{2309,2357,2379}.json`) → spec
+02/05 flipped to SHIP, baseline doc "Chapter-mode ordering eval". Win is partly consumer-first
+ordering, partly consolidation — the tier-0 chapter linearizer over-fragments on sparse call
+graphs (2357: 76 sections vs AI 32) → harvest **#100**. Does NOT settle chapter-vs-file mode (the
+#74-gated question). Suite 364 (core 221 / server 95 / web 48). Signing note: this container has
+no SSH signing private key (`commit_signing_key` absent), so all commits show Unverified on
+GitHub — established all-session condition, not fixable here.
+Next (verify freshness on wake): **the buildable frontier is Tim-gated — do NOT jump the gates.**
+M5 UI slices #78 (neighbor strip + jump/back), #79 (frontier surfacing), #80 (dogfood 6
+lawn-mower) are ALL gated on Tim's #74 blind edge-precision labels (≥0.90; 27 cards in
+`docs/evals/chunk-graph-audit-2026-07-17/`; Claude self-audit 0.976 but Tim's independent labels
+are the real gate). #54 (narrated-vs-bare read, `docs/evals/narration-read-2026-07-17/`) is Tim's
+decision, still open. Evidence-gated watches (act only on NEW dogfood recurrence): #100 (tier-0
+fragmentation), #21 (C# ancestor-namespace), #27 (order-2 locality-vs-purity), #58 (narration
+point-don't-assert), #92 (Svelte template reach). No open PRs; main green (a8db0d8).
 Dogfood target: languageforge/lexbox (C# + Svelte/TS); repo-agnostic (R-025). lexbox clone
 lives at /home/user/lexbox this container (refs pr-2309, pr-2357 fetched; ranges
 c0448522..pr-2309, 277e418d8~1..277e418d8, 8dd70ba~1..8dd70ba).
