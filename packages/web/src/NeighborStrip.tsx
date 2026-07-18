@@ -58,6 +58,9 @@ export function NeighborStrip({
           tabIndex={i === active ? 0 : -1}
           title={chip.fileLevel ? chip.file : undefined}
           aria-label={chipAriaLabel(chip)}
+          // Reconcile the roving pointer with whatever actually took focus — the `g` accelerator,
+          // mouse, or Tab — so re-entering the strip doesn't leave `active` pointing at a stale chip.
+          onFocus={() => setActive(i)}
           onClick={(e) => {
             // Chips live inside <article onClick={onSelect}>; without this the bubbling click
             // re-selects the origin chunk and cancels the jump.
