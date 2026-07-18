@@ -79,6 +79,15 @@ describe('computeNeighborChips', () => {
     expect(chip(chips, 't')).toMatchObject({ relation: 'exercised by', direction: 'in' });
   });
 
+  it('uses the file basename, not a bare line range, for a symbol-less fragment chunk (#108)', () => {
+    const frag: Chunk = { id: 'frag', file: 'test/QueryHelpers.cs', symbolPath: [], displayPath: [], kind: 'other', changeTypes: [], hunks: [], headRange: { start: 1, end: 6 } };
+    const byId = new Map([...chunksById, ['frag', frag]]);
+    const g = assembleChunkGraph('H', [edge('a', 'frag', 'calls', 12)]);
+    const c = chip(computeNeighborChips(g, 'a', byId, stateOf, (id) => byId.has(id)), 'frag');
+    expect(c.name).toBe('QueryHelpers.cs');
+    expect(c.name).not.toMatch(/lines/);
+  });
+
   it('is empty for a chunk with no neighbors', () => {
     expect(computeNeighborChips(graph, 'd', chunksById, stateOf, inBook).map((c) => c.chunkId)).toEqual(['b']);
     expect(computeNeighborChips({ edges: [] }, 'a', chunksById, stateOf, inBook)).toEqual([]);
