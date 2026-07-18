@@ -387,6 +387,7 @@ function assembleSections(
   gitOrder: Chunk[],
   bucketOf: (chunk: Chunk) => 'story' | 'test' | 'low-signal' | 'leftover',
 ): Section[] {
+  const fileById = new Map(gitOrder.map((c) => [c.id, c.file]));
   const sections: Section[] = [];
   let i = 0;
   while (i < flat.length) {
@@ -395,7 +396,7 @@ function assembleSections(
     let j = i;
     for (; j < flat.length && flat[j]!.chapterId === chapterId; j++) {
       const slot = flat[j]!;
-      occurrences.push({ chunkId: slot.chunkId, ordinal: 0, role: 'primary', ...(slot.crossFile ? { label: gitOrder.find((c) => c.id === slot.chunkId)!.file } : {}) });
+      occurrences.push({ chunkId: slot.chunkId, ordinal: 0, role: 'primary', ...(slot.crossFile ? { label: fileById.get(slot.chunkId)! } : {}) });
     }
     sections.push({ id: chapterId, title: anchorFile, occurrences });
     i = j;

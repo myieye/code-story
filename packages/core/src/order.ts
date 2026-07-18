@@ -209,7 +209,6 @@ export interface ChunkOrderManifest {
   calls: { fromId: string; toId: string; fromLine: number }[];
   /** The deterministic tier-0 grouping — the model's starting point (= storyComposition). */
   tier0Chapters: string[][];
-  estimatedTokens: number;
 }
 
 /**
@@ -236,22 +235,21 @@ export function buildChunkOrderManifest(
     .filter((e) => storyIdSet.has(e.from) && storyIdSet.has(e.to) && e.from !== e.to)
     .map((e) => ({ fromId: e.from, toId: e.to, fromLine: e.fromLines[0]?.start ?? 0 }));
 
-  const draft = { bookFingerprint: bookFingerprint(book), chunks: manifestChunks, calls, tier0Chapters: storyComposition };
-  const estimatedTokens = Math.ceil(renderChunkOrderManifest(draft).length / 4);
-  return { ...draft, estimatedTokens };
+  return { bookFingerprint: bookFingerprint(book), chunks: manifestChunks, calls, tier0Chapters: storyComposition };
 }
 
 /**
  * Compact plain-text rendering of the chunk-order manifest for the model to read: one line per story
- * chunk, a `calls:` block, the tier-0 grouping as numbered chapters, and a note that the rest is
- * placed automatically. Plain text, not JSON — the model reads it as prose (mirrors `renderOrderManifest`).
+ * chunk, a `calls:` block, and the tier-0 grouping as numbered chapters. `labelOf` maps each chunk id
+ * to the text the model sees (the server passes short aliases; the identity default renders raw ids).
+ * Plain text, not JSON — the model reads it as prose (mirrors `renderOrderManifest`).
  */
-export function renderChunkOrderManifest(manifest: Omit<ChunkOrderManifest, 'estimatedTokens'>): string {
-  const chunkLines = manifest.chunks.map((c) => `${c.id} — ${c.title} (${c.kind}, ~${c.lines} lines) [${c.file}]`);
-  const callLines = manifest.calls.map((e) => `${e.fromId} -> ${e.toId} (line ${e.fromLine})`);
+export function renderChunkOrderManifest(manifest: ChunkOrderManifest, labelOf: (id: string) => string = (id) => id): string {
+  const chunkLines = manifest.chunks.map((c) => `${labelOf(c.id)} — ${c.title} (${c.kind}, ~${c.lines} lines) [${c.file}]`);
+  const callLines = manifest.calls.map((e) => `${labelOf(e.fromId)} -> ${labelOf(e.toId)} (line ${e.fromLine})`);
   const callsBlock = ['calls:', ...(callLines.length > 0 ? callLines : ['(none)'])].join('\n');
-  const chapterLines = manifest.tier0Chapters.map((ids, i) => `${i + 1}. ${ids.join(', ')}`);
-  const note = 'Tests, low-signal chunks, and leftovers are placed automatically — order only the chunks above.';
+  const chapterLines = manifest.tier0Chapters.map((ids, i) => `${i + 1}. ${ids.map((id) => labelOf(id)).join(', ')}`);
+  const note = 'The grouping above is a starting point; regroup and reorder the chunks into chapters.';
   return [chunkLines.join('\n'), callsBlock, chapterLines.join('\n'), note].join('\n\n');
 }
 
