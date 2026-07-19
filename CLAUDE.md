@@ -409,15 +409,28 @@ occurrence is correct since review state is per-chunk; the j/k-into-strip leak i
 `closest('button')` — both confirmed clean). Fixed a roving-tabindex focus desync on strip re-entry
 (PR #111); harvested **#112** (back-stack/cursor indices go stale if the AI order applies
 mid-review — narrow, shared with pre-existing cursor behavior; proper fix = remap on `chunkId#ordinal`).
-Next (verify freshness on wake): **the specced roadmap M0–M5 is COMPLETE; the frontier is now
-Tim-gated — do NOT jump the gates, and do NOT spec M6 unprompted (Tim scopes milestones).** Tim's open
-reads/calls: **#109** (M5 lawn-mower felt read — did criss-crossing beat the straight read;
-`docs/evals/m5-mow-read-2026-07-18/`), **#54** (narrated-vs-bare read,
-`docs/evals/narration-read-2026-07-17/`), **#106** (mow-gesture design — Enter mark-and-advance fights
-following the strip; waits on #109's verdict). Evidence-gated watches (act only on NEW dogfood
-recurrence): #100 (tier-0 fragmentation — now double-confirmed by dogfood 6's island rate), #21, #27,
-#58, #92, #107 (frontier wording). PR-versions (R-038–R-041) stay deferred by Tim's instruction —
-don't build. No open PRs; main green (c92329e).
+**Sixth window (2026-07-19, nightly → "have a real product for me to try tomorrow that I can ask
+for concrete changes on"): #106 done + the product made tryable.** Tim's steer: he'd rather DRIVE a
+running product and give concrete feedback than answer the abstract felt-reads here. **#106 shipped**
+(PR #113): `m` = mark-in-place (mark reviewed, cursor stays) makes the lawn-mower drivable by hand —
+land → read → `m` → `g`/click a chip to follow the strip → repeat; Enter unchanged (mark+advance), so
+options stay open. **README + `tools/demo.sh`** now make it a one-command launch (`tools/demo.sh [repo]
+[range]` → book UI at a printed URL; the daemon serves the built web via serveStatic, no Vite;
+`--ai-order --order ai --export book.md` for the no-browser read) — the stale "nothing built yet"
+status is fixed and the ordering-defaults section corrected (consumer-first/before/chapter is the
+default; file mode via flags). No CORE_VERSION bump (web + docs only). Suite **394** (core 225 /
+server 97 / web 72).
+Next (verify freshness on wake): **MODE SHIFT — the deliverable is a tryable product, and the next
+input is Tim's concrete feedback from driving it, not answers to abstract questions.** He launches
+via `tools/demo.sh`; when he comes back with concrete changes, implement them per-issue. The
+felt-reads (#109 mow, #54 narration) are now best answered by him *trying* the product — don't push
+them as questions. Standing guidance holds: keep options open (R-025); do NOT spec M6 unprompted
+(Tim scopes milestones); PR-versions (R-038–R-041) stay deferred. Evidence-gated watches (act only on
+NEW dogfood recurrence): #100 (tier-0 fragmentation, double-confirmed by dogfood 6 — but its fix
+trades file-locality vs call-path flow, needs Tim's nod, do NOT build unprompted), #21, #27, #58,
+#92, #107 (frontier wording), #112 (back-stack staleness, narrow). **If a nightly fires with no new
+Tim input: there is no unbuilt specced work left — do NOT manufacture speculative or design-laden
+changes; polish/verify the tryable product or hold.** No open PRs; main green (26a72a2).
 Dogfood target: languageforge/lexbox (C# + Svelte/TS); repo-agnostic (R-025). lexbox clone
 lives at /home/user/lexbox this container (refs pr-2309, pr-2357 fetched; ranges
 c0448522..pr-2309, 277e418d8~1..277e418d8, 8dd70ba~1..8dd70ba).
