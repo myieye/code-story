@@ -5,7 +5,7 @@ import type { BookResponse, NarrationResponse, OrderResponse } from './api.js';
 import { OutlineSidebar } from './OutlineSidebar.js';
 import { computeNeighborChips } from './neighbor-strip-logic.js';
 import { frontierCount, interactionCount } from './frontier-logic.js';
-import { batchableSections, findUnreviewed, pendingStubCount } from './review-logic.js';
+import { batchableSections, cursorAfterMark, findUnreviewed, pendingStubCount } from './review-logic.js';
 import { estimateRowHeight, RowView, type SectionAck } from './RowView.js';
 import { chunkTitle, flattenBook, occurrenceKey, type Row } from './rows.js';
 import { ShortcutOverlay } from './ShortcutOverlay.js';
@@ -164,13 +164,21 @@ export function BookPage({
     say(`Resumed — ${distinctChunks - reviewedCount} remaining.`);
   }, []);
 
-  const markCurrent = () => {
+  // The shared mark step behind Enter and `m`: mark the cursor chunk reviewed (once), returning the
+  // chunk and its prior state so the caller can decide whether to advance. Stubs are not expanded.
+  const markCursorReviewed = (): { chunk: Chunk; prior: ChunkReviewState } | undefined => {
     const row = chunkRowAt(cursor);
-    if (!row) return;
+    if (!row) return undefined;
     const prior = review.stateOf(row.chunk.id);
     if (prior !== 'reviewed') review.setState(row.chunk.id, 'reviewed', prior === 'unseen' || undefined);
-    const remaining = distinctChunks - reviewedCount - (prior !== 'reviewed' ? 1 : 0);
-    const next = findUnreviewed(flat, review.stateOf, cursor + 1, 1, row.chunk.id);
+    return { chunk: row.chunk, prior };
+  };
+
+  const markCurrent = () => {
+    const marked = markCursorReviewed();
+    if (!marked) return;
+    const remaining = distinctChunks - reviewedCount - (marked.prior !== 'reviewed' ? 1 : 0);
+    const next = cursorAfterMark(flat, review.stateOf, cursor, marked.chunk.id, true);
     if (next) {
       say(next.wrapped ? `Reviewed. ${remaining} remaining. Wrapped to start of book.` : `Reviewed. ${remaining} remaining.`);
       moveCursor(next.index);
@@ -178,6 +186,14 @@ export function BookPage({
       say('All chunks reviewed.');
       scrollToRow(flat.rows.length - 1);
     }
+  };
+
+  // Mark-in-place (m): same mark, cursor stays put so the reviewer can `g` into the chunk's strip.
+  const markInPlace = () => {
+    const marked = markCursorReviewed();
+    if (!marked) return;
+    const remaining = distinctChunks - reviewedCount - (marked.prior !== 'reviewed' ? 1 : 0);
+    say(remaining === 0 ? 'Reviewed. All chunks reviewed.' : `Reviewed — staying here. ${remaining} remaining.`);
   };
 
   const unmarkCurrent = () => {
@@ -291,6 +307,7 @@ export function BookPage({
     moveCursor,
     jumpUnreviewed,
     markCurrent,
+    markInPlace,
     unmarkCurrent,
     toggleCollapseCurrent,
     toggleDefinitionsCurrent,

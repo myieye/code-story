@@ -3,6 +3,7 @@ export function ShortcutOverlay({ onClose }: { onClose: () => void }) {
     ['j / k', 'next / previous chunk'],
     ['n / Shift+N', 'next / previous unreviewed chunk'],
     ['Enter', 'mark reviewed, go to next unreviewed'],
+    ['m', 'mark reviewed, stay here (to follow its links)'],
     ['u', 'unmark'],
     ['x', 'collapse / expand chunk'],
     ['d', 'show / hide definitions for the chunk'],
