@@ -28,14 +28,52 @@ traceable list):
 
 ## Status
 
-Problem-space research complete; architecture ratified; nothing built yet.
-Headline findings: **no existing tool occupies this quadrant** (narrative ordering is becoming
-table stakes at CodeRabbit/Devin/cubic, but nobody does coverage-guaranteed queues + local
-BYO-agent verifiable-patch threads); the accepted shape is a **local daemon + browser "book" UI**
-with a hybrid ACP-client / MCP-server / headless-CLI agent layer. See
-[docs/research/00-synthesis.md](docs/research/00-synthesis.md) and
-[ADR 0001](docs/decisions/0001-architecture.md) (accepted 2026-07-16). Next:
-grill→spec→issues per [docs/process/build-process.md](docs/process/build-process.md).
+**Runnable — milestones M0–M5 are built.** A local daemon + browser "book" UI: tree-sitter
+sub-file chunking with a 100%-diff-coverage guarantee, deterministic **and** AI chapter ordering
+(consumer-first, tests-before by default), a keyboard/mouse review loop with sub-file progress
+tracking, opt-in AI narration, called-code context payloads, and a chunk-graph "neighbor strip"
+for following how changed chunks call and exercise each other. See **[Try it](#try-it)** below;
+`CLAUDE.md` carries the full build history, and
+[docs/research/00-synthesis.md](docs/research/00-synthesis.md) +
+[ADR 0001](docs/decisions/0001-architecture.md) explain why this shape.
+
+Deliberately **not built yet**: the local BYO-agent verifiable-patch threads and PR versions
+(R-038–R-041) are designed, not implemented.
+
+## Try it
+
+Build once, then point code-story at any local git repo + range; it serves a browser "book" of the
+change at a printed `http://127.0.0.1:PORT`.
+
+```bash
+pnpm install && pnpm build
+
+tools/demo.sh                              # defaults to lexbox PR 2379 (a change with a real call graph)
+tools/demo.sh /path/to/your/repo "main~5..main"   # …or any repo + range
+```
+
+Open the printed URL and walk the change. What to look for:
+
+- **Chapters, not files.** The change is grouped into call-path chapters and AI-ordered a few
+  seconds after load (the deterministic order shows first; an "AI reading order" badge + one-line
+  rationales appear when it applies). 100% of the diff is covered — nothing is skippable.
+- **The review loop.** `j`/`k` move, `Enter` marks a chunk reviewed and advances, `?` shows the
+  full keymap.
+- **The neighbor strip (M5).** On a focused chunk, a strip of its direct graph neighbors (what it
+  calls / is called by / tests that exercise it) sits in the header. **Click a chip to jump** there
+  (or `g` then arrows/Enter); `b` jumps back. To follow the graph without losing your place, `m`
+  marks a chunk reviewed **and stays there** so you can follow its links — the "lawn-mower."
+- **Honest frontier.** A live "N cross-chunk interactions still open" count and a done banner that
+  says interactions were *surfaced, not verified* — the tool never claims it checked how the pieces
+  compose.
+
+Prefer to read, no browser? Export the AI-ordered book as markdown:
+
+```bash
+cd /path/to/your/repo
+node /path/to/code-story/packages/server/dist/cli.js "main~5..main" --ai-order --order ai --export book.md
+# add --narrate for AI narration (opt-in; faithfulness still under evaluation)
+```
 
 ## Repository layout
 
@@ -43,7 +81,7 @@ grill→spec→issues per [docs/process/build-process.md](docs/process/build-pro
 - `docs/vision/` — the vision: [original prompt](docs/vision/original-prompt.md) and
   [addendum](docs/vision/addendum-2026-07-16.md) persisted verbatim for traceability passes,
   plus the [distillation](docs/vision/vision.md).
-- `docs/requirements/` — numbered requirements inventory (R-001…R-037) extracted from the vision.
+- `docs/requirements/` — numbered requirements inventory (R-001…R-049) extracted from the vision.
 - `docs/research/` — [synthesis](docs/research/00-synthesis.md), landscape (+4 appendices), agent protocols, platform, review science.
 - `docs/design/` — design sketches (core primitives: chunks, occurrences, book, patch ledger).
 - `docs/decisions/` — ADRs.
@@ -72,16 +110,15 @@ Two ordering axes (spec 05) are configurable, via CLI flags or a per-repo `.code
   chunks it calls (flow down each call path); `dependency-first` reads callees first.
 - `--test-placement before|after|end` — where a test reads relative to the impl it exercises.
 
-Anything other than the defaults (`dependency-first`, `after`) switches on the **chapter
+The **defaults are `consumer-first` + tests-`before`** (R-043–R-046), which run the **chapter
 linearizer**: call-path chapters whose occurrences may span files (cross-file chunks are labelled
-`from <file>` in the export). A diff with no resolvable call edges degrades to file-grouped git
-order. `.code-story.json` example:
+`from <file>` in the export and the UI). A diff with no resolvable call edges degrades to
+file-grouped git order. Honoured everywhere — the daemon/web, `--export`, and `--check-order`.
+
+Selecting `--direction dependency-first --test-placement after` (or the equivalent
+`.code-story.json`) switches to the older **file-section** order (one section per file, dependencies
+first). The flip changes the default; it removes nothing (R-025).
 
 ```json
 { "ordering": { "direction": "consumer-first", "testPlacement": "before" } }
 ```
-
-The defaults stay today's file-mode behaviour on purpose: `consumer-first` + tests-`before` are
-the *intended* defaults (Tim's preferences) but the flip waits on the AI-ordering slice so the
-shipped order prompt keeps passing its `--check-order` pre-gate. `--direction` / `--test-placement`
-are currently honoured by `--export` and `--check-order`; the daemon/web still serve file mode.
