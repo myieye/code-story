@@ -6,12 +6,15 @@ import type {
   OrderResponse,
   ReviewFile,
   ReviewPatch,
+  StoryConfig,
 } from '@code-story/core';
+import { bookQuery } from './order-options-logic.js';
 
 export type { BookResponse, ContextResponse, NarrationResponse, OrderResponse };
 
-export async function fetchBook(): Promise<BookResponse> {
-  const response = await fetch('/api/book');
+/** With a config, requests the book under that reading order (#114); without, the launch config. */
+export async function fetchBook(config?: StoryConfig): Promise<BookResponse> {
+  const response = await fetch(`/api/book${config ? bookQuery(config) : ''}`);
   if (!response.ok) throw new Error(`GET /api/book failed: ${response.status}`);
   return response.json() as Promise<BookResponse>;
 }

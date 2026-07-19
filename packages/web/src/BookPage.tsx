@@ -1,7 +1,9 @@
-import { type Chunk, type ChunkReviewState, isLowSignal, type ReviewFile } from '@code-story/core';
+import { type Chunk, type ChunkReviewState, isLowSignal, type ReviewFile, type StoryConfig, storyConfigKey } from '@code-story/core';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { BookResponse, NarrationResponse, OrderResponse } from './api.js';
+import { type BookResponse, fetchBook, type NarrationResponse, type OrderResponse } from './api.js';
+import { configSummary } from './order-options-logic.js';
+import { OrderOptionsControl } from './OrderOptionsControl.js';
 import { OutlineSidebar } from './OutlineSidebar.js';
 import { computeNeighborChips } from './neighbor-strip-logic.js';
 import { frontierCount, interactionCount } from './frontier-logic.js';
@@ -29,7 +31,12 @@ export function BookPage({
   initialNarration: NarrationResponse;
 }) {
   const review = useReview(initialReview);
-  const order = useOrderOverlay(data, initialOrder, review.states);
+  // The book currently displayed (config-swappable, #114). Starts at the launch-config response the
+  // App fetched; changing the reading order re-fetches /api/book with the new axes and swaps it in.
+  const [bookResponse, setBookResponse] = useState(data);
+  const [reordering, setReordering] = useState(false);
+  const pendingReorder = useRef(false);
+  const order = useOrderOverlay(bookResponse, initialOrder, review.states);
   const { bookData, orderApplied } = order;
   const narration = useNarration(bookData, initialNarration, order.rationales);
   const hasSectionLine = useCallback((id: string) => narration.sectionLine(id) !== undefined, [narration]);
@@ -297,6 +304,31 @@ export function BookPage({
     return () => window.clearTimeout(t);
   }, [reencounter]);
 
+  // Live reorder (#114): re-fetch the book under the chosen axes. Review marks are per-chunk (server
+  // state) so they carry over untouched; only the order changes.
+  const changeConfig = (config: StoryConfig) => {
+    if (reordering || storyConfigKey(config) === storyConfigKey(bookResponse.config)) return;
+    setReordering(true);
+    fetchBook(config)
+      .then((next) => {
+        pendingReorder.current = true;
+        setBookResponse(next);
+      })
+      .catch(() => say('Could not change the reading order.'))
+      .finally(() => setReordering(false));
+  };
+
+  // After a reorder lands, the cursor's index and the neighbor back-stack are order-specific: reset
+  // the cursor to the first unreviewed chunk in the new order and drop the stale back-stack.
+  useEffect(() => {
+    if (!pendingReorder.current) return;
+    pendingReorder.current = false;
+    setBackStack([]);
+    const first = findUnreviewed(flat, review.stateOf, 0, 1);
+    moveCursor(first ? first.index : 0);
+    say(`Reading order: ${configSummary(bookResponse.config)}.`);
+  }, [bookResponse]);
+
   useBookKeymap({
     overlayOpen,
     setOverlayOpen,
@@ -444,6 +476,12 @@ export function BookPage({
           />
           Hide reviewed
         </label>
+        <OrderOptionsControl
+          config={bookResponse.config}
+          orderApplied={orderApplied}
+          busy={reordering}
+          onChange={changeConfig}
+        />
         <a className="export" href="/api/export.md" target="_blank" rel="noreferrer">
           Export
         </a>
