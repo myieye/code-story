@@ -420,6 +420,23 @@ options stay open. **README + `tools/demo.sh`** now make it a one-command launch
 status is fixed and the ordering-defaults section corrected (consumer-first/before/chapter is the
 default; file mode via flags). No CORE_VERSION bump (web + docs only). Suite **394** (core 225 /
 server 97 / web 72).
+**Seventh window (2026-07-19, same session — Tim steered live):** two asks landed. (1) **Prepared
+review files** for real sillsdev PRs (`docs/evals/prepared-reviews-2026-07-19/`): 6 AI-ordered (+
+narrated file-mode) code-story books for 4 lexbox branches (duplicate-entry-detection-sync,
+possible-duplicates, writing-system-collation, variants-backend) so Tim reads/iterates with tokens
+pre-spent. **Access limits — record for next time: the proxy GATES the sillsdev GitHub API (no PR
+metadata) and blocks cross-owner `add_repo`, so `harmony` was unreachable and PRs were picked by a
+git size/recency heuristic, NOT review-state.** Findings filed: **#115** (narration embeds in file
+mode only → invisible in the default chapter mode; a naive `--narrate` silently wastes tokens),
+**#116** (AI ordering refused on the 87-file variants PR at ~20k>8k-token manifest → tier-0; the
+guard may be too conservative), #100 re-confirmed (variants tier-0 = 577 sections/726 chunks). (2)
+**#114 live ordering-options UI DONE** (PR #117): a top-bar popover flips reading order
+(consumer/dependency-first, tests before/after/end) live — `/api/book?direction=&testPlacement=`
+recompiles per-config (config-independent `Base` cache + per-config `Map`; launch path
+byte-identical; AI overlay only for the launch config, others honest tier-0); review marks survive
+the reorder; also tidied the server config-coupling the M4/M5 review flagged. **#106** mark-in-place
+(PR #113) shipped earlier this session. Suite **400** (core 225 / server 99 / web 76). No
+CORE_VERSION bump.
 Next (verify freshness on wake): **MODE SHIFT — the deliverable is a tryable product, and the next
 input is Tim's concrete feedback from driving it, not answers to abstract questions.** He launches
 via `tools/demo.sh`; when he comes back with concrete changes, implement them per-issue. The
@@ -428,9 +445,12 @@ them as questions. Standing guidance holds: keep options open (R-025); do NOT sp
 (Tim scopes milestones); PR-versions (R-038–R-041) stay deferred. Evidence-gated watches (act only on
 NEW dogfood recurrence): #100 (tier-0 fragmentation, double-confirmed by dogfood 6 — but its fix
 trades file-locality vs call-path flow, needs Tim's nod, do NOT build unprompted), #21, #27, #58,
-#92, #107 (frontier wording), #112 (back-stack staleness, narrow). **If a nightly fires with no new
-Tim input: there is no unbuilt specced work left — do NOT manufacture speculative or design-laden
-changes; polish/verify the tryable product or hold.** No open PRs; main green (26a72a2).
+#92, #107 (frontier wording), #112 (back-stack staleness), #115 (narration file-mode-only),
+#116 (AI-order size ceiling). **If a nightly fires with no new Tim input: there is no unbuilt
+specced work left — do NOT manufacture speculative or design-laden changes; polish/verify the
+tryable product or hold.** Tim can now DRIVE real reviews: `docs/evals/prepared-reviews-2026-07-19/`
+(6 books for 4 lexbox PRs) + the live order-options control in the UI (#114). No open PRs; main green
+(ad92382).
 Dogfood target: languageforge/lexbox (C# + Svelte/TS); repo-agnostic (R-025). lexbox clone
 lives at /home/user/lexbox this container (refs pr-2309, pr-2357 fetched; ranges
 c0448522..pr-2309, 277e418d8~1..277e418d8, 8dd70ba~1..8dd70ba).
