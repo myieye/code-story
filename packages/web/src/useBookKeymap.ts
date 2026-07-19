@@ -11,6 +11,8 @@ export interface BookKeymapOptions {
   moveCursor: (next: number) => void;
   jumpUnreviewed: (dir: 1 | -1) => void;
   markCurrent: () => void;
+  /** Mark the current chunk reviewed without advancing, so the reviewer can follow its strip. */
+  markInPlace: () => void;
   unmarkCurrent: () => void;
   toggleCollapseCurrent: () => void;
   toggleDefinitionsCurrent: () => void;
@@ -30,6 +32,7 @@ export function useBookKeymap({
   moveCursor,
   jumpUnreviewed,
   markCurrent,
+  markInPlace,
   unmarkCurrent,
   toggleCollapseCurrent,
   toggleDefinitionsCurrent,
@@ -74,6 +77,8 @@ export function useBookKeymap({
       else if (plain && e.key === 'Enter') {
         // Key-repeat never marks: each mark requires a fresh keydown (R-026).
         if (!e.repeat) markCurrent();
+      } else if (plain && e.key === 'm') {
+        if (!e.repeat) markInPlace();
       } else if (plain && e.key === 'u') unmarkCurrent();
       else if (plain && e.key === 'x') toggleCollapseCurrent();
       else if (plain && e.key === 'g') focusNeighborStrip();

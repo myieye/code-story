@@ -28,6 +28,23 @@ export function findUnreviewed(
   return undefined;
 }
 
+/**
+ * Where the cursor lands after marking the current chunk reviewed. Mark-and-advance (Enter) moves to
+ * the next unreviewed occurrence in book order; mark-in-place (m) stays put so the reviewer can follow
+ * the chunk's neighbor strip. Returns `undefined` when advancing past the last unreviewed chunk (same
+ * signal as `findUnreviewed`).
+ */
+export function cursorAfterMark(
+  flat: FlatBook,
+  stateOf: StateOf,
+  cursor: number,
+  markedChunkId: string,
+  advance: boolean,
+): { index: number; wrapped: boolean } | undefined {
+  if (!advance) return { index: cursor, wrapped: false };
+  return findUnreviewed(flat, stateOf, cursor + 1, 1, markedChunkId);
+}
+
 export interface SectionBatch {
   ids: string[];
   /** Unique stub reasons, e.g. "lockfile" — enumerated on the button (spec 00a). */

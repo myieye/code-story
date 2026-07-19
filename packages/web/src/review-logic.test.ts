@@ -1,6 +1,6 @@
 import type { Book, Chunk, ChunkReviewState } from '@code-story/core';
 import { describe, expect, it } from 'vitest';
-import { batchableSections, findUnreviewed, pendingStubCount } from './review-logic.js';
+import { batchableSections, cursorAfterMark, findUnreviewed, pendingStubCount } from './review-logic.js';
 import { flattenBook } from './rows.js';
 
 function chunk(id: string, generatedReason?: string): Chunk {
@@ -57,6 +57,22 @@ describe('findUnreviewed', () => {
 
   it('searches backwards with wrap', () => {
     expect(findUnreviewed(flat, states({ a: 'reviewed' }), 0, -1)).toEqual({ index: 2, wrapped: true });
+  });
+});
+
+describe('cursorAfterMark', () => {
+  const { flat } = book({ s1: [chunk('a'), chunk('b'), chunk('c')] });
+
+  it('mark-in-place keeps the cursor put while Enter advances to the next unreviewed chunk', () => {
+    const stateOf = states({ a: 'reviewed' });
+    expect(cursorAfterMark(flat, stateOf, 0, 'a', false)).toEqual({ index: 0, wrapped: false });
+    expect(cursorAfterMark(flat, stateOf, 0, 'a', true)).toEqual({ index: 1, wrapped: false });
+  });
+
+  it('advancing past the last unreviewed chunk returns undefined; in-place still stays', () => {
+    const stateOf = states({ a: 'reviewed', b: 'reviewed' });
+    expect(cursorAfterMark(flat, stateOf, 2, 'c', true)).toBeUndefined();
+    expect(cursorAfterMark(flat, stateOf, 2, 'c', false)).toEqual({ index: 2, wrapped: false });
   });
 });
 
