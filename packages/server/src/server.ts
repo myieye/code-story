@@ -35,7 +35,9 @@ import {
   type OrderResponse,
   type ReviewFile,
   type ReviewPatch,
+  resolveStoryConfig,
   type StoryConfig,
+  storyConfigKey,
   unifiedChunkLines,
 } from '@code-story/core';
 import { Hono } from 'hono';
@@ -148,18 +150,33 @@ export function startServer(options: ServerOptions, requestedPort = 0): Promise<
   const chapterMode = !isFileModeConfig(storyConfig);
 
   let diffCache: Promise<FileDiff[]> | undefined;
-  let bookCache:
-    | Promise<{
-        book: Book;
-        chunks: Chunk[];
-        contents: Map<string, FileContents>;
-        graph: ImportGraph;
-        /** Chapter mode only: the recompose inputs the order job and `applyChapterOverlay` need. */
-        chunkGraph?: ChunkGraph;
-        storyComposition?: string[][];
-        chapterInput?: CompileChapterBookInput;
-      }>
-    | undefined;
+
+  interface Built {
+    book: Book;
+    chunks: Chunk[];
+    contents: Map<string, FileContents>;
+    graph: ImportGraph;
+    /** Chapter mode only: the recompose inputs the order job and `applyChapterOverlay` need. */
+    chunkGraph?: ChunkGraph;
+    storyComposition?: string[][];
+    chapterInput?: CompileChapterBookInput;
+  }
+
+  // Config-independent inputs: the diff, chunks, contents, import graph, and the file-mode compile.
+  // Every config's book derives from this — only section order/grouping differs (#114), so it is
+  // computed once and shared across configs.
+  interface Base {
+    files: FileDiff[];
+    chunks: Chunk[];
+    contents: Map<string, FileContents>;
+    graph: ImportGraph;
+    fileCompiled: { book: Book; chunks: Chunk[] };
+  }
+  let baseCache: Promise<Base> | undefined;
+  let chunkGraphCache: Promise<ChunkGraph> | undefined;
+  // One entry per StoryConfig requested via /api/book. The launch config is just its own key here,
+  // so the pre-#114 single-config fast path is preserved (getBook = getBookForConfig(launch)).
+  const bookCacheByConfig = new Map<string, Promise<Built>>();
 
   // A rejected promise must not stay cached, or one transient git failure bricks the daemon.
   const uncacheOnError = <T>(promise: Promise<T>, clear: () => void): Promise<T> =>
@@ -170,49 +187,77 @@ export function startServer(options: ServerOptions, requestedPort = 0): Promise<
 
   const getDiff = () =>
     (diffCache ??= uncacheOnError(diffRange(options.repo, options.range), () => (diffCache = undefined)));
-  const getBook = () =>
-    (bookCache ??= uncacheOnError(
+
+  const getBase = () =>
+    (baseCache ??= uncacheOnError(
       (async () => {
         const files = await getDiff();
         const { chunks, contents, graph } = await computeChunks(options.repo, options.range, files);
         const fileCompiled = compileBook({ files, chunks, graph, headSha: options.range.head });
-        if (!chapterMode) return { ...fileCompiled, contents, graph };
-
-        const chunkGraph = await resolveChunkGraph(files, contents, graph, fileCompiled);
-        const chapterInput: CompileChapterBookInput = { files, chunks, graph, chunkGraph, headSha: options.range.head };
-        const chapter = compileChapterBook(chapterInput, storyConfig);
-        return {
-          book: chapter.book,
-          chunks: chapter.chunks,
-          contents,
-          graph,
-          chunkGraph,
-          storyComposition: chapter.storyComposition,
-          chapterInput,
-        };
+        return { files, chunks, contents, graph, fileCompiled };
       })(),
-      () => (bookCache = undefined),
+      () => (baseCache = undefined),
     ));
+
+  const getChunkGraph = () =>
+    (chunkGraphCache ??= uncacheOnError(
+      getBase().then((base) => resolveChunkGraph(base)),
+      () => (chunkGraphCache = undefined),
+    ));
+
+  const getBookForConfig = (config: StoryConfig): Promise<Built> => {
+    const key = storyConfigKey(config);
+    let cached = bookCacheByConfig.get(key);
+    if (!cached) {
+      cached = uncacheOnError(
+        (async () => {
+          const base = await getBase();
+          if (isFileModeConfig(config)) {
+            return { book: base.fileCompiled.book, chunks: base.fileCompiled.chunks, contents: base.contents, graph: base.graph };
+          }
+          const chunkGraph = await getChunkGraph();
+          const chapterInput: CompileChapterBookInput = {
+            files: base.files,
+            chunks: base.chunks,
+            graph: base.graph,
+            chunkGraph,
+            headSha: options.range.head,
+          };
+          const chapter = compileChapterBook(chapterInput, config);
+          return {
+            book: chapter.book,
+            chunks: chapter.chunks,
+            contents: base.contents,
+            graph: base.graph,
+            chunkGraph,
+            storyComposition: chapter.storyComposition,
+            chapterInput,
+          };
+        })(),
+        () => bookCacheByConfig.delete(key),
+      );
+      bookCacheByConfig.set(key, cached);
+    }
+    return cached;
+  };
+
+  // The launch config's book — what the order/context/narration/export endpoints all read.
+  const getBook = () => getBookForConfig(storyConfig);
 
   // Chapter-graph reuse: load the persisted graph if fingerprint-fresh, else build (from already
   // fetched content — no git) and persist. Fail-open to an empty graph so a tree-sitter hiccup
   // degenerates the chapter book to git order rather than bricking the daemon.
-  async function resolveChunkGraph(
-    files: FileDiff[],
-    contents: Map<string, FileContents>,
-    graph: ImportGraph,
-    fileCompiled: { book: Book; chunks: Chunk[] },
-  ): Promise<ChunkGraph> {
+  async function resolveChunkGraph(base: Base): Promise<ChunkGraph> {
     const { graphFile } = await getStore();
     const fresh = filterFreshGraph(options.range.head, await loadChunkGraph(graphFile));
     if (fresh) return fresh;
     try {
       const built = await buildChunkGraph({
-        chunks: fileCompiled.chunks,
-        contents,
-        graph,
-        book: fileCompiled.book,
-        files,
+        chunks: base.fileCompiled.chunks,
+        contents: base.contents,
+        graph: base.graph,
+        book: base.fileCompiled.book,
+        files: base.files,
         headSha: options.range.head,
       });
       await saveJson(graphFile, built);
@@ -282,15 +327,33 @@ export function startServer(options: ServerOptions, requestedPort = 0): Promise<
   });
 
   app.get('/api/book', async (c) => {
-    const built = await getBook();
+    // Optional `direction`/`testPlacement` override the launch config for this request (#114); an
+    // unknown value is ignored (resolveStoryConfig), absent params ⇒ the launch config unchanged.
+    const requestConfig = resolveStoryConfig(storyConfig, {
+      direction: c.req.query('direction'),
+      testPlacement: c.req.query('testPlacement'),
+    });
+    const built = await getBookForConfig(requestConfig);
     const { book, chunks, contents, graph } = built;
     const diffs = Object.fromEntries(
       chunks.map((chunk) => [chunk.id, unifiedChunkLines(chunk, contents.get(chunk.file))]),
     );
-    const response: BookResponse = { ...options.range, book, chunks, diffs, graph, chunkGraph: built.chunkGraph ?? { edges: [] } };
-    // Chapter mode: recompose per request (milliseconds) so the web gets the applied book — it
-    // can't build a chapter book itself. Never cached across overlay writes.
-    if (chapterMode && built.chapterInput) {
+    const response: BookResponse = {
+      ...options.range,
+      book,
+      chunks,
+      diffs,
+      graph,
+      chunkGraph: built.chunkGraph ?? { edges: [] },
+      config: requestConfig,
+    };
+    // The AI order overlay was generated under the launch config, so its fingerprint matches only
+    // the launch chapter book — apply it only for that config (recomposed per request in ms; the
+    // web can't build a chapter book itself). Other configs serve the deterministic tier-0 book and
+    // the web reads the absent `aiBook` as "deterministic order".
+    // Ambitious path (deferred, #114): per-config AI order jobs so every config's order is AI-augmented.
+    const isLaunchConfig = storyConfigKey(requestConfig) === storyConfigKey(storyConfig);
+    if (isLaunchConfig && chapterMode && built.chapterInput) {
       const overlay = await loadOverlay((await getStore()).orderFile);
       if (overlay?.version === 2) {
         const aiBook = applyChapterOverlay(built.chapterInput, storyConfig, overlay);

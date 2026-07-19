@@ -5,6 +5,7 @@ import type { Book, Chunk } from './model.js';
 import type { NarrationOverlay } from './narration.js';
 import type { AnyOrderOverlay } from './order.js';
 import type { UnifiedLine } from './render.js';
+import type { StoryConfig } from './story-config.js';
 
 /**
  * The daemon↔web contract for `GET /api/book`. Both sides compile against this one type so the
@@ -15,6 +16,13 @@ export interface BookResponse {
   head: string;
   book: Book;
   chunks: Chunk[];
+  /**
+   * The story config this `book` was compiled under (#114). `GET /api/book` reads optional
+   * `direction`/`testPlacement` query params and echoes the resolved config here so the web knows
+   * the active order (and the launch config on first load) without a second endpoint. Only `book`
+   * (and `aiBook`) depend on it — `chunks`/`diffs`/`graph`/`chunkGraph` are config-independent.
+   */
+  config: StoryConfig;
   /** Chunk id → its render-ready unified diff rows. */
   diffs: Record<string, UnifiedLine[]>;
   /** Changed-files import graph — applyOrderOverlay needs it web-side (spec 02). */

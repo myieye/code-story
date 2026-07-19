@@ -25,6 +25,11 @@ export function isFileModeConfig(config: StoryConfig): boolean {
   return config.direction === 'dependency-first' && config.testPlacement === 'after';
 }
 
+/** A stable value-based key for a config — the map key for per-config book caching (#114). */
+export function storyConfigKey(config: StoryConfig): string {
+  return `${config.direction}/${config.testPlacement}`;
+}
+
 const DIRECTIONS = new Set<StoryConfig['direction']>(['consumer-first', 'dependency-first']);
 const TEST_PLACEMENTS = new Set<StoryConfig['testPlacement']>(['before', 'after', 'end']);
 
