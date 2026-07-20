@@ -91,10 +91,10 @@ describe('neighborsOf', () => {
   it('returns direct neighbors with direction and outgoing provenance', () => {
     const n = neighborsOf(graph, 'a');
     expect(n).toEqual([
-      { chunkId: 'b', kind: 'calls', direction: 'out', fromLines: [{ start: 10, end: 10 }] },
-      { chunkId: 'c', kind: 'file-imports', direction: 'out', fromLines: [] },
-      { chunkId: 't', kind: 'exercises', direction: 'in', fromLines: [] },
-      { chunkId: 'z', kind: 'calls', direction: 'in', fromLines: [] },
+      { chunkId: 'b', kind: 'calls', source: 'references', direction: 'out', fromLines: [{ start: 10, end: 10 }] },
+      { chunkId: 'c', kind: 'file-imports', source: 'import-graph', direction: 'out', fromLines: [] },
+      { chunkId: 't', kind: 'exercises', source: 'references', direction: 'in', fromLines: [] },
+      { chunkId: 'z', kind: 'calls', source: 'references', direction: 'in', fromLines: [] },
     ]);
   });
 
@@ -109,7 +109,7 @@ describe('neighborsOf', () => {
 
   it('reports outgoing provenance from the caller side only', () => {
     // From b's view, the a→b calls edge is incoming: no lines.
-    expect(neighborsOf(graph, 'b')).toEqual([{ chunkId: 'a', kind: 'calls', direction: 'in', fromLines: [] }]);
+    expect(neighborsOf(graph, 'b')).toEqual([{ chunkId: 'a', kind: 'calls', source: 'references', direction: 'in', fromLines: [] }]);
   });
 });
 

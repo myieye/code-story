@@ -18,6 +18,13 @@ export interface NeighborChip {
   chunkId: string;
   kind: ChunkEdgeKind;
   direction: 'in' | 'out';
+  /**
+   * What following the chip does. `jump` moves the cursor to the neighbor chunk. `reveal` opens the
+   * focused chunk's definition panel instead — used for the file-level `exercises` (test-anchor) chip,
+   * whose real target (the exercised impl method) is often off-diff or ambiguous, so it has no chunk
+   * to jump to but its body can still be shown inline.
+   */
+  action: 'jump' | 'reveal';
   /** Leading glyph — → outgoing, ← incoming — so direction reads without colour (WCAG 1.4.1). */
   arrow: string;
   /** Relationship verb: "calls", "called by", "exercised by", "imports from", … */
@@ -125,13 +132,18 @@ export function computeNeighborChips(
     const chunk = chunksById.get(nb.chunkId);
     if (!chunk) continue;
     const { arrow, relation } = relationOf(nb.kind, nb.direction);
-    const fileLevel = nb.kind === 'file-imports';
+    // A file-level exercises edge (test→impl anchor) carries no method/line: its `to` is just the
+    // impl file's section anchor (often a top-of-file fragment), so jumping there is misleading.
+    // Treat it as a reveal — click shows the exercised impl bodies in the definition panel instead.
+    const reveal = nb.kind === 'exercises' && nb.source === 'test-anchor';
+    const fileLevel = nb.kind === 'file-imports' || reveal;
     const line = nb.direction === 'out' ? nb.fromLines[0]?.start : undefined;
     const neighborReviewed = stateOf(nb.chunkId) === 'reviewed';
     chips.push({
       chunkId: nb.chunkId,
       kind: nb.kind,
       direction: nb.direction,
+      action: reveal ? 'reveal' : 'jump',
       arrow,
       relation,
       // Symbol-less chunks (fragments) have no displayPath, so chunkTitle falls back to a bare
@@ -142,8 +154,10 @@ export function computeNeighborChips(
       fileLevel,
       ...(line !== undefined ? { line } : {}),
       state: neighborReviewed ? 'reviewed' : 'unreviewed',
-      behind: reachableUnreviewed(graph.edges, nb.chunkId, nb.kind, nb.direction, focusedChunkId, stateOf),
-      frontier: INTERACTION_KINDS.has(nb.kind) && neighborReviewed !== focusedReviewed,
+      // `behind`/`frontier` describe navigable chunks reachable along the edge; a reveal chip goes to
+      // a panel, not a chunk, so neither applies.
+      behind: reveal ? 0 : reachableUnreviewed(graph.edges, nb.chunkId, nb.kind, nb.direction, focusedChunkId, stateOf),
+      frontier: !reveal && INTERACTION_KINDS.has(nb.kind) && neighborReviewed !== focusedReviewed,
     });
   }
   chips.sort(
@@ -165,6 +179,12 @@ export function chipAriaLabel(chip: NeighborChip): string {
   const parts = [`${chip.relation} ${chip.name}`];
   if (chip.fileLevel) parts.push('(file-level)');
   if (chip.line !== undefined) parts.push(`at line ${chip.line}`);
+  // A reveal chip opens a panel rather than navigating, so the target chunk's review state is not
+  // meaningful; say what it does instead.
+  if (chip.action === 'reveal') {
+    parts.push('shows the exercised code');
+    return parts.join(', ');
+  }
   parts.push(chip.state);
   if (chip.frontier) parts.push('review boundary');
   if (chip.behind > 0) parts.push(`${chip.behind} more unreviewed behind`);

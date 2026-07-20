@@ -36,6 +36,7 @@ export function RowView({
   registerPanelEl,
   neighborChips,
   onJumpToChunk,
+  onRevealDefinitions,
   onExitStrip,
   registerStripEl,
   reencounter,
@@ -72,6 +73,8 @@ export function RowView({
   /** The focused chunk's graph neighbors (spec 05 slice 5); passed only for the cursor row. */
   neighborChips?: NeighborChip[];
   onJumpToChunk: (chunkId: string) => void;
+  /** Follow a `reveal` chip: reveal this (focused) chunk's exercised-code definition panel. */
+  onRevealDefinitions: (chunk: Chunk) => void;
   onExitStrip: () => void;
   registerStripEl: (chunkId: string, el: HTMLElement | null) => void;
   /** A brief post-jump highlight distinct from the focus ring — reviewed = "still reviewed". */
@@ -179,6 +182,7 @@ export function RowView({
             <NeighborStrip
               chips={neighborChips}
               onJump={onJumpToChunk}
+              onReveal={() => onRevealDefinitions(chunk)}
               onExit={onExitStrip}
               registerEl={(el) => registerStripEl(chunk.id, el)}
             />

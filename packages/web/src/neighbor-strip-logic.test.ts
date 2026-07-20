@@ -107,6 +107,28 @@ describe('chip text + aria', () => {
   });
 });
 
+describe('file-level exercises (test-anchor) chip', () => {
+  // A test→impl anchor edge: no method/line, its `to` is just the impl file's anchor chunk. Following
+  // it should reveal the exercised code inline, not jump to that anchor.
+  const g = assembleChunkGraph('H', [{ from: 't', to: 'a', kind: 'exercises', source: 'test-anchor', fromLines: [] }]);
+  const c = chip(computeNeighborChips(g, 't', chunksById, stateOf, inBook), 'a');
+
+  it('is a reveal chip, file-level, with no behind/frontier hints', () => {
+    expect(c.action).toBe('reveal');
+    expect(c.fileLevel).toBe(true);
+    expect(c.behind).toBe(0);
+    expect(c.frontier).toBe(false);
+  });
+
+  it('accessible name says what it does, not a (meaningless) target review state', () => {
+    expect(chipAriaLabel(c)).toBe('exercises a.ts, (file-level), shows the exercised code');
+  });
+
+  it('leaves a references-sourced exercises edge a jump chip', () => {
+    expect(chip(computeNeighborChips(graph, 'a', chunksById, stateOf, inBook), 't').action).toBe('jump');
+  });
+});
+
 describe('frontier chips', () => {
   const chips = computeNeighborChips(graph, 'a', chunksById, stateOf, inBook);
 

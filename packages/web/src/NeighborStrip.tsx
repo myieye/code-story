@@ -10,11 +10,14 @@ import { chipAriaLabel, chipText, type NeighborChip } from './neighbor-strip-log
 export function NeighborStrip({
   chips,
   onJump,
+  onReveal,
   onExit,
   registerEl,
 }: {
   chips: NeighborChip[];
   onJump: (chunkId: string) => void;
+  /** Follow a `reveal` chip: show the exercised impl code in the focused chunk's definition panel. */
+  onReveal: () => void;
   onExit: () => void;
   registerEl: (el: HTMLElement | null) => void;
 }) {
@@ -65,7 +68,8 @@ export function NeighborStrip({
             // Chips live inside <article onClick={onSelect}>; without this the bubbling click
             // re-selects the origin chunk and cancels the jump.
             e.stopPropagation();
-            onJump(chip.chunkId);
+            if (chip.action === 'reveal') onReveal();
+            else onJump(chip.chunkId);
           }}
         >
           {chip.state === 'reviewed' && (
