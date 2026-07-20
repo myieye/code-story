@@ -70,18 +70,52 @@ body {
   font-weight: 600;
 }
 
-.progress-bar {
-  width: 140px;
-  height: 4px;
-  border-radius: 2px;
-  background: #e5e2dc;
+/* Chapter-segmented progress bar (spec 06 slice 4a): one segment per section, flex-widthed by chunk
+   count, tri-state and readable without colour. 1px gaps; a min width keeps sliver chapters visible. */
+.progress-bar.segmented {
+  display: flex;
+  align-items: stretch;
+  gap: 1px;
+  width: 180px;
+  height: 8px;
+}
+
+.seg {
+  position: relative;
+  min-width: 3px;
+  border-radius: 1px;
+  background: #e5e2dc; /* untouched track */
   overflow: hidden;
 }
 
-.progress-fill {
-  display: block;
-  height: 100%;
+.seg-fill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
   background: #3fa661;
+  transition: width 180ms ease; /* only the active (partial) segment's fill ever changes */
+}
+
+.seg-complete {
+  background: #3fa661;
+}
+
+/* Complete "lock" tick — a shape cue so a full segment reads distinct from a near-full partial one. */
+.seg-complete::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: rgb(0 0 0 / 22%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .seg-fill {
+    transition: none;
+  }
 }
 
 .bar-button {
@@ -1076,4 +1110,89 @@ button.piece-indicator[aria-expanded='true'] {
   font-size: 12px;
   color: #1c3a6e;
   white-space: nowrap;
+}
+
+/* Per-mark micro-feedback (spec 06 slice 4a): a one-shot top→bottom wipe on the rail when a chunk
+   flips to reviewed. transform-only, non-looping; the advancing bar is the primary reward. */
+.chunk.just-reviewed .state-rail {
+  position: relative;
+  overflow: hidden;
+}
+
+.chunk.just-reviewed .state-rail::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: #3fa661;
+  transform-origin: top;
+  animation: rail-wipe 220ms ease-out;
+}
+
+@keyframes rail-wipe {
+  from {
+    transform: scaleY(0);
+  }
+  to {
+    transform: scaleY(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chunk.just-reviewed .state-rail::after {
+    animation: none;
+  }
+}
+
+/* Two-word AI chunk badge (spec 06 slice 5): a small neutral chip, calmer than the kind badges. */
+.badge-chip {
+  flex: none;
+  font-style: normal;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: #eef1f5;
+  color: #4a5568;
+}
+
+/* Anchored, non-modal popover in a document-level portal (spec 06 slice 4c/4d): why-this-order, the
+   AI ▾ collapse, and the ⋯ overflow all share this shell so nothing is ever clipped by the feed. */
+.anchored-popover {
+  position: fixed;
+  z-index: 40;
+  min-width: 220px;
+  max-width: 340px;
+  padding: 12px 14px;
+  background: #fff;
+  border: 1px solid #d8d4cc;
+  border-radius: 8px;
+  box-shadow: 0 8px 28px #2b2a2833;
+  font-size: 12.5px;
+  color: #4a463f;
+  outline: none;
+}
+
+.why-popover-head {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.why-popover-text {
+  margin: 0;
+  line-height: 1.5;
+}
+
+.overflow-popover,
+.ai-popover {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.ai-popover-line {
+  color: #4a463f;
 }

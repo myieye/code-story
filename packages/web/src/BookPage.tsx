@@ -22,7 +22,17 @@ import { fileOrderIndex, pieceMenuModel, stepPieceTarget } from './piece-nav-log
 import { frontierCount, interactionCount } from './frontier-logic.js';
 import { batchableSections, cursorAfterMark, findUnreviewed, pendingStubCount } from './review-logic.js';
 import { estimateRowHeight, RowView, type SectionAck } from './RowView.js';
-import { chunkTitle, flattenBook, type Row } from './rows.js';
+import { AnchoredPopover } from './AnchoredPopover.js';
+import { whyThisOrderCopy } from './order-explain-logic.js';
+import {
+  chaptersRemaining,
+  completionToastCopy,
+  newlyCompleted,
+  resumeCopy,
+  sectionLabel,
+  segmentModel,
+} from './progress-logic.js';
+import { chunkSize, chunkTitle, flattenBook, type Row } from './rows.js';
 import { ShortcutOverlay } from './ShortcutOverlay.js';
 import { affordanceLabel, hasDefinitions, type PayloadState } from './context-panel-logic.js';
 import { useBookKeymap } from './useBookKeymap.js';
@@ -32,6 +42,9 @@ import { useOrderOverlay } from './useOrderOverlay.js';
 import { useReadTracking } from './useReadTracking.js';
 import { useReview } from './useReview.js';
 import { useSeenTracking } from './useSeenTracking.js';
+
+/** Top-bar width below which the right controls + AI cluster items collapse into overflow popovers. */
+const COMPACT_WIDTH = 1080;
 
 export function BookPage({
   data,
@@ -97,6 +110,16 @@ export function BookPage({
   const [pieceMenu, setPieceMenu] = useState<{ chunkId: string; anchorEl: HTMLElement } | null>(null);
   // A pending "jump to this chunk after the next reorder lands" (Open in Files view crosses a re-fetch).
   const pendingJumpChunk = useRef<string | undefined>(undefined);
+  // The one-shot rail wipe target (spec 06 slice 4): the chunk that just flipped to reviewed.
+  const [justReviewed, setJustReviewed] = useState<{ chunkId: string; seq: number } | null>(null);
+  // Top-bar overflow (spec 06 slice 4d): below a width threshold the right controls + AI cluster
+  // items collapse into portal popovers so the bar never wraps or crowds.
+  const headerRef = useRef<HTMLElement>(null);
+  const [compact, setCompact] = useState(false);
+  const [whyAnchor, setWhyAnchor] = useState<HTMLElement | null>(null);
+  const [overflowAnchor, setOverflowAnchor] = useState<HTMLElement | null>(null);
+  const [aiAnchor, setAiAnchor] = useState<HTMLElement | null>(null);
+  const [aiWhyExpanded, setAiWhyExpanded] = useState(false);
 
   // Two sizes: occurrences are walk stops (cursor space); distinct chunks carry review state.
   const { totalOccurrences, distinctChunks } = flat;
@@ -110,6 +133,7 @@ export function BookPage({
     () => [...flat.firstIndexByChunkId.keys()].reduce((n, id) => n + (review.stateOf(id) === 'reviewed' ? 1 : 0), 0),
     [flat, review.states],
   );
+  const done = distinctChunks > 0 && reviewedCount === distinctChunks;
 
   const sectionStats = useMemo(() => {
     const stats = new Map<string, { done: number; total: number; counted: Set<string> }>();
@@ -125,6 +149,24 @@ export function BookPage({
     }
     return stats;
   }, [flat, review.states]);
+
+  const segments = useMemo(() => segmentModel(bookData.book.sections, sectionStats), [bookData, sectionStats]);
+  const chapterCount = segments.length;
+  const linesRead = useMemo(
+    () =>
+      bookData.chunks.reduce(
+        (acc, c) => {
+          const s = chunkSize(c);
+          return { added: acc.added + s.added, removed: acc.removed + s.removed };
+        },
+        { added: 0, removed: 0 },
+      ),
+    [bookData],
+  );
+  const bulkLowSignalCount = useMemo(
+    () => bookData.chunks.filter((c) => isLowSignal(c) && review.stateOf(c.id) === 'reviewed').length,
+    [bookData, review.states],
+  );
 
   const batches = useMemo(() => batchableSections(flat, review.reviewOf), [flat, review.states]);
   const pendingStubs = useMemo(() => pendingStubCount(flat, review.stateOf), [flat, review.states]);
@@ -168,6 +210,10 @@ export function BookPage({
 
   const say = (msg: string) => setAnnounce((a) => ({ msg, seq: a.seq + 1 }));
 
+  // One-shot rail-wipe target (spec 06 slice 4), set only on the interactive single-chunk marks;
+  // batch marks rely on the advancing bar instead.
+  const flashReviewed = (chunkId: string) => setJustReviewed((r) => ({ chunkId, seq: (r?.seq ?? 0) + 1 }));
+
   // Focus + announce the definition panel. Shared by the immediate expand and the deferred one (the
   // payload arriving after `d`) so keyboard/SR users get the same signal whether or not the fetch was warm.
   const focusAndAnnouncePanel = (chunkId: string, payload: PayloadState) => {
@@ -207,7 +253,9 @@ export function BookPage({
   useEffect(() => {
     if (!initialReview.cursor || cursor === 0) return;
     scrollToRow(flat.chunkRowIndexes[cursor]!);
-    say(`Resumed — ${distinctChunks - reviewedCount} remaining.`);
+    const percent = distinctChunks > 0 ? Math.round((reviewedCount / distinctChunks) * 100) : 0;
+    const nextUp = segments.find((s) => s.state !== 'complete');
+    say(resumeCopy(percent, chaptersRemaining(sectionStats), nextUp ? sectionLabel(nextUp.title) : undefined));
   }, []);
 
   // The shared mark step behind Enter and `m`: mark the cursor chunk reviewed (once), returning the
@@ -216,7 +264,10 @@ export function BookPage({
     const row = chunkRowAt(cursor);
     if (!row) return undefined;
     const prior = review.stateOf(row.chunk.id);
-    if (prior !== 'reviewed') review.setState(row.chunk.id, 'reviewed', prior === 'unseen' || undefined);
+    if (prior !== 'reviewed') {
+      review.setState(row.chunk.id, 'reviewed', prior === 'unseen' || undefined);
+      flashReviewed(row.chunk.id);
+    }
     return { chunk: row.chunk, prior };
   };
 
@@ -263,6 +314,7 @@ export function BookPage({
     // re-inspected now); any other mark is an explicit act.
     const via = isAutoReadReview(prior) ? 'auto' : 'explicit';
     review.setState(chunk.id, 'reviewed', prior.state === 'unseen' || undefined, via);
+    flashReviewed(chunk.id);
     const remaining = distinctChunks - reviewedCount - 1;
     say(remaining <= 0 ? 'Reviewed. All chunks reviewed.' : `Reviewed. ${remaining} remaining.`);
   };
@@ -448,6 +500,37 @@ export function BookPage({
     return () => window.clearTimeout(t);
   }, [reencounter]);
 
+  useEffect(() => {
+    if (!justReviewed) return;
+    const t = window.setTimeout(() => setJustReviewed(null), 240);
+    return () => window.clearTimeout(t);
+  }, [justReviewed]);
+
+  // Track the top-bar width; below the threshold the right controls + AI cluster items collapse (4d).
+  useEffect(() => {
+    const el = headerRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver((entries) => setCompact((entries[0]?.contentRect.width ?? Infinity) < COMPACT_WIDTH));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  // Chapter-completion beat (spec 06 slice 4b): one summarizing toast on the incomplete→complete edge,
+  // guarded against unmark→remark churn by diffing against the prior snapshot. The baseline (mount /
+  // resume) seeds silently — already-complete chapters never announce.
+  const prevStatsRef = useRef<Map<string, { done: number; total: number }> | null>(null);
+  useEffect(() => {
+    const prev = prevStatsRef.current;
+    prevStatsRef.current = sectionStats;
+    if (prev === null || done) return;
+    const completed = newlyCompleted(prev, sectionStats);
+    if (completed.length === 0) return;
+    const byId = new Map(bookData.book.sections.map((s) => [s.id, s.title]));
+    const titles = completed.map((id) => sectionLabel(byId.get(id) ?? id));
+    const copy = completionToastCopy(titles, chaptersRemaining(sectionStats));
+    if (copy) say(copy);
+  }, [sectionStats]);
+
   // Grouping (View: Story vs Files) is derived from the config — file mode is the dependency-first +
   // tests-after combination (isFileModeConfig). The last chapter-mode config is remembered so toggling
   // back to Story restores the reviewer's prior ordering axes rather than a default.
@@ -494,6 +577,22 @@ export function BookPage({
   const setView = (view: 'story' | 'files') => {
     changeConfig(view === 'files' ? FILE_MODE_STORY_CONFIG : lastStoryConfig.current);
     say(view === 'files' ? 'View: all changes grouped by file.' : 'View: story.');
+  };
+
+  // Hide-reviewed toggle, shared by the inline top-bar control and the overflow popover.
+  const toggleHideReviewed = (checked: boolean, el?: HTMLElement) => {
+    setHideReviewed(checked);
+    // Reset overrides, but keep stub expansions — they are persisted review state.
+    setCollapsedOverride((prev) => {
+      const kept = new Map<string, boolean>();
+      for (const [id, collapsed] of prev) {
+        const index = flat.firstIndexByChunkId.get(id);
+        const chunk = index === undefined ? undefined : chunkRowAt(index)?.chunk;
+        if (chunk && isLowSignal(chunk) && !collapsed) kept.set(id, collapsed);
+      }
+      return kept;
+    });
+    el?.blur();
   };
 
   // Draggable outline width. Tracks the pointer on window (so a fast drag off the 6px handle keeps
@@ -600,7 +699,6 @@ export function BookPage({
       flat.firstIndexByChunkId.has(id),
     );
   }, [cursorRow, bookData, chunksById, review.states, flat]);
-  const done = distinctChunks > 0 && reviewedCount === distinctChunks;
 
   // Frontier surfacing (spec 05 gate 1) — display-only, gates nothing. The graph carries edges into
   // out-of-book chunks; only in-book endpoints count (same predicate the strip uses).
@@ -609,9 +707,47 @@ export function BookPage({
   const frontier = useMemo(() => frontierCount(graph, review.stateOf, inBook), [graph, review.states, inBook]);
   const interactions = useMemo(() => interactionCount(graph, inBook), [graph, inBook]);
 
+  // "Why this order?" copy, templated from the live config so it stays true after a runtime flip (#114).
+  const whyCopy = whyThisOrderCopy(bookResponse.config, orderApplied, grouping === 'files');
+
+  // Progress-cluster items 5–6 (spec 06): frontier + the AI indicators. Inline when there's room,
+  // collapsed behind `AI ▾` when the bar is narrow (4d). Built once, rendered either way.
+  const aiItems: { key: string; className: string; label: string; title: string }[] = [];
+  if (!done && frontier > 0) {
+    aiItems.push({
+      key: 'frontier',
+      className: 'frontier-indicator',
+      label: `${frontier} cross-chunk interaction${frontier === 1 ? '' : 's'} still open`,
+      title: 'Edges linking a reviewed chunk to an unreviewed one. Surfacing only — nothing is blocked, and no interaction is verified.',
+    });
+  }
+  if (orderApplied) {
+    aiItems.push({ key: 'order', className: 'ai-order-indicator', label: 'AI reading order', title: 'The section order was proposed by AI' });
+  }
+  if (narration.indicator?.kind === 'partial') {
+    aiItems.push({
+      key: 'narration',
+      className: 'ai-narration-indicator',
+      label: `AI narration: ${narration.indicator.narrated} of ${narration.indicator.narratable} sections`,
+      title: 'Some sections carry an AI-written note; bare sections are not yet narrated',
+    });
+  } else if (narration.indicator?.kind === 'complete') {
+    aiItems.push({ key: 'narration', className: 'ai-narration-indicator', label: 'AI narration', title: 'These sections carry an AI-written note' });
+  }
+  if (narration.chunkIndicator?.kind === 'partial') {
+    aiItems.push({
+      key: 'notes',
+      className: 'ai-narration-indicator',
+      label: `AI notes: ${narration.chunkIndicator.narrated} of ${narration.chunkIndicator.narratable} chunks`,
+      title: 'Some chunks carry an AI-written note; the rest are not yet narrated',
+    });
+  } else if (narration.chunkIndicator?.kind === 'complete') {
+    aiItems.push({ key: 'notes', className: 'ai-narration-indicator', label: 'AI notes', title: 'These chunks carry an AI-written note' });
+  }
+
   return (
     <div className="app">
-      <header className="top-bar">
+      <header className="top-bar" ref={headerRef}>
         <h1>code-story</h1>
         <span className="range" title={`${data.base}..${data.head}`}>
           {data.base.slice(0, 8)}..{data.head.slice(0, 8)}
@@ -627,8 +763,15 @@ export function BookPage({
               </>
             )}
           </span>
-          <span className="progress-bar">
-            <span className="progress-fill" style={{ width: `${distinctChunks ? (reviewedCount / distinctChunks) * 100 : 0}%` }} />
+          <span className="progress-bar segmented" role="img" aria-label={`${reviewedCount} of ${distinctChunks} chunks reviewed`}>
+            {segments.map((seg) => {
+              const label = `${sectionLabel(seg.title)} — ${seg.done} of ${seg.total} reviewed`;
+              return (
+                <span key={seg.sectionId} className={`seg seg-${seg.state}`} style={{ flexGrow: seg.total }} title={label} aria-label={label}>
+                  {seg.state === 'partial' && <span className="seg-fill" style={{ width: `${(seg.done / seg.total) * 100}%` }} />}
+                </span>
+              );
+            })}
           </span>
           {!done && autoReadIds.length > 0 && (
             <span className="autoread-cluster">
@@ -638,31 +781,27 @@ export function BookPage({
               </button>
             </span>
           )}
-          {!done && frontier > 0 && (
-            <span
-              className="frontier-indicator"
-              title="Edges linking a reviewed chunk to an unreviewed one. Surfacing only — nothing is blocked, and no interaction is verified."
+          {compact ? (
+            <button
+              className="bar-button ai-collapse"
+              aria-haspopup="dialog"
+              aria-expanded={aiAnchor !== null}
+              title="AI reading order, notes, and open interactions"
+              onClick={(e) => setAiAnchor((a) => (a ? null : e.currentTarget))}
             >
-              {frontier} cross-chunk interaction{frontier === 1 ? '' : 's'} still open
-            </span>
-          )}
-          {orderApplied && (
-            <span className="ai-order-indicator" title="The section order was proposed by AI">
-              AI reading order
-            </span>
-          )}
-          {narration.indicator?.kind === 'partial' && (
-            <span
-              className="ai-narration-indicator"
-              title="Some sections carry an AI-written note; bare sections are not yet narrated"
-            >
-              AI narration: {narration.indicator.narrated} of {narration.indicator.narratable} sections
-            </span>
-          )}
-          {narration.indicator?.kind === 'complete' && (
-            <span className="ai-narration-indicator" title="These sections carry an AI-written note">
-              AI narration
-            </span>
+              AI ▾{aiItems.length > 0 ? ` ${aiItems.length}` : ''}
+            </button>
+          ) : (
+            <>
+              {aiItems.map((it) => (
+                <span key={it.key} className={it.className} title={it.title}>
+                  {it.label}
+                </span>
+              ))}
+              <button className="bar-button why-order" title="What decided this reading order?" onClick={(e) => setWhyAnchor(e.currentTarget)}>
+                Why this order?
+              </button>
+            </>
           )}
         </span>
         <span className="spacer" />
@@ -685,27 +824,6 @@ export function BookPage({
             Next unreviewed
           </button>
         )}
-        <label className="bar-toggle">
-          <input
-            type="checkbox"
-            checked={hideReviewed}
-            onChange={(e) => {
-              setHideReviewed(e.currentTarget.checked);
-              // Reset overrides, but keep stub expansions — they are persisted review state.
-              setCollapsedOverride((prev) => {
-                const kept = new Map<string, boolean>();
-                for (const [id, collapsed] of prev) {
-                  const index = flat.firstIndexByChunkId.get(id);
-                  const chunk = index === undefined ? undefined : chunkRowAt(index)?.chunk;
-                  if (chunk && isLowSignal(chunk) && !collapsed) kept.set(id, collapsed);
-                }
-                return kept;
-              });
-              e.currentTarget.blur();
-            }}
-          />
-          Hide reviewed
-        </label>
         <div className="view-toggle" role="group" aria-label="View">
           <button
             type="button"
@@ -728,16 +846,34 @@ export function BookPage({
             Files
           </button>
         </div>
-        <OrderOptionsControl
-          config={bookResponse.config}
-          orderApplied={orderApplied}
-          busy={reordering}
-          fileView={grouping === 'files'}
-          onChange={changeConfig}
-        />
-        <a className="export" href="/api/export.md" target="_blank" rel="noreferrer">
-          Export
-        </a>
+        {compact ? (
+          <button
+            className="bar-button overflow-toggle"
+            aria-haspopup="dialog"
+            aria-expanded={overflowAnchor !== null}
+            title="More controls"
+            onClick={(e) => setOverflowAnchor((a) => (a ? null : e.currentTarget))}
+          >
+            ⋯
+          </button>
+        ) : (
+          <>
+            <label className="bar-toggle">
+              <input type="checkbox" checked={hideReviewed} onChange={(e) => toggleHideReviewed(e.currentTarget.checked, e.currentTarget)} />
+              Hide reviewed
+            </label>
+            <OrderOptionsControl
+              config={bookResponse.config}
+              orderApplied={orderApplied}
+              busy={reordering}
+              fileView={grouping === 'files'}
+              onChange={changeConfig}
+            />
+            <a className="export" href="/api/export.md" target="_blank" rel="noreferrer">
+              Export
+            </a>
+          </>
+        )}
         <button className="bar-button help" title="Keyboard shortcuts (?)" onClick={() => setOverlayOpen(true)}>
           ?
         </button>
@@ -810,11 +946,16 @@ export function BookPage({
                       sectionAck={row.kind === 'section' ? sectionAckFor(row.id) : undefined}
                       sectionAiLine={row.kind === 'section' ? narration.sectionLine(row.id)?.text : undefined}
                       chunkAiLine={row.kind === 'chunk' ? narration.chunkLine(row.sectionId, row.chunk.id) : undefined}
+                      chunkBadge={row.kind === 'chunk' ? narration.chunkBadge(row.chunk.id) : undefined}
                       onMarkSection={markSection}
                       onUndoBatch={undoBatch}
                       state={row.kind === 'chunk' ? review.stateOf(row.chunk.id) : 'unseen'}
                       autoRead={row.kind === 'chunk' && isAutoReadReview(review.reviewOf(row.chunk.id))}
+                      justReviewed={row.kind === 'chunk' && justReviewed?.chunkId === row.chunk.id}
                       collapsed={row.kind === 'chunk' && isCollapsed(row.chunk)}
+                      chapterCount={chapterCount}
+                      linesRead={linesRead}
+                      bulkLowSignalCount={bulkLowSignalCount}
                       isCursor={item.index === cursorRowIndex}
                       registerEl={(el) => {
                         if (el) rowEls.current.set(item.index, el);
@@ -876,6 +1017,49 @@ export function BookPage({
             />
           );
         })()}
+      {whyAnchor && (
+        <AnchoredPopover anchorEl={whyAnchor} ariaLabel="Why this order?" className="why-popover" onClose={() => setWhyAnchor(null)}>
+          <div className="why-popover-head">
+            {whyCopy.aiBadged && <span className="badge ai-badge">AI</span>} Why this order?
+          </div>
+          <p className="why-popover-text">{whyCopy.text}</p>
+        </AnchoredPopover>
+      )}
+      {overflowAnchor && (
+        <AnchoredPopover anchorEl={overflowAnchor} ariaLabel="More controls" className="overflow-popover" onClose={() => setOverflowAnchor(null)}>
+          <label className="bar-toggle">
+            <input type="checkbox" checked={hideReviewed} onChange={(e) => toggleHideReviewed(e.currentTarget.checked)} />
+            Hide reviewed
+          </label>
+          <OrderOptionsControl
+            config={bookResponse.config}
+            orderApplied={orderApplied}
+            busy={reordering}
+            fileView={grouping === 'files'}
+            onChange={changeConfig}
+          />
+          <a className="export" href="/api/export.md" target="_blank" rel="noreferrer">
+            Export
+          </a>
+        </AnchoredPopover>
+      )}
+      {aiAnchor && (
+        <AnchoredPopover anchorEl={aiAnchor} ariaLabel="AI reading order and notes" className="ai-popover" onClose={() => setAiAnchor(null)}>
+          {aiItems.map((it) => (
+            <div key={it.key} className="ai-popover-line" title={it.title}>
+              {it.label}
+            </div>
+          ))}
+          <button className="link-button why-order" onClick={() => setAiWhyExpanded((v) => !v)}>
+            {aiWhyExpanded ? 'Hide' : 'Why this order?'}
+          </button>
+          {aiWhyExpanded && (
+            <p className="why-popover-text">
+              {whyCopy.aiBadged && <span className="badge ai-badge">AI</span>} {whyCopy.text}
+            </p>
+          )}
+        </AnchoredPopover>
+      )}
     </div>
   );
 }

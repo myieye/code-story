@@ -37,11 +37,16 @@ export function RowView({
   sectionAck,
   sectionAiLine,
   chunkAiLine,
+  chunkBadge,
   onMarkSection,
   onUndoBatch,
   state,
   autoRead,
+  justReviewed,
   collapsed,
+  chapterCount,
+  linesRead,
+  bulkLowSignalCount,
   isCursor,
   registerEl,
   onSelect,
@@ -81,14 +86,22 @@ export function RowView({
   sectionAck: SectionAck | undefined;
   /** The section header's single AI line: narration intro, else the applied order rationale (spec 03). */
   sectionAiLine: string | undefined;
-  /** This chunk's one-line AI orientation, rendered above the diff (spec 03). */
+  /** This chunk's one-line AI orientation, rendered above the diff (spec 03/06 slice 5). */
   chunkAiLine: string | undefined;
+  /** This chunk's 2–4-word AI badge (spec 06 slice 5); undefined for none and for low-signal stubs. */
+  chunkBadge: string | undefined;
   onMarkSection: (sectionId: string) => void;
   onUndoBatch: () => void;
   state: ChunkReviewState;
   /** This chunk is seen at reading pace but not yet confirmed (spec 06 slice 3) — dashed rail, ◑ affordance. */
   autoRead: boolean;
+  /** Just flipped to reviewed — the one-shot rail wipe (spec 06 slice 4); reduced-motion → instant. */
+  justReviewed: boolean;
   collapsed: boolean;
+  /** Done-banner figures (spec 06 slice 4b), only meaningful on the end row. */
+  chapterCount: number;
+  linesRead: { added: number; removed: number };
+  bulkLowSignalCount: number;
   isCursor: boolean;
   registerEl: (el: HTMLElement | null) => void;
   onSelect: () => void;
@@ -144,8 +157,17 @@ export function RowView({
     if (reviewedCount === distinctChunks) {
       return (
         <div className="end-of-book done">
-          <p className="done-headline">All {distinctChunks} chunks reviewed.</p>
-          <p>Nothing was skipped — every chunk required your mark.</p>
+          <p className="done-headline">
+            Review complete — all {distinctChunks} chunks, {chapterCount} chapter{chapterCount === 1 ? '' : 's'}.
+          </p>
+          <p>
+            +{linesRead.added} −{linesRead.removed} lines read. Nothing was skipped — every chunk required your mark.
+          </p>
+          {bulkLowSignalCount > 0 && (
+            <p className="done-provenance">
+              {bulkLowSignalCount} {bulkLowSignalCount === 1 ? 'was' : 'were'} marked in bulk as low-signal.
+            </p>
+          )}
           {autoConfirmedCount > 0 && (
             <p className="done-provenance">
               {autoConfirmedCount} of {distinctChunks} confirmed from auto-read (seen at reading pace, then confirmed in bulk).
@@ -199,6 +221,7 @@ export function RowView({
   const lowSignal = isLowSignal(chunk);
   const classes = ['chunk', `state-${state}`];
   if (autoRead) classes.push('autoread');
+  if (justReviewed) classes.push('just-reviewed');
   if (isCursor) classes.push('cursor');
   if (collapsed) classes.push('collapsed');
   if (reencounter) classes.push('reencounter', `reencounter-${reencounter}`);
@@ -216,6 +239,13 @@ export function RowView({
         <div className="chunk-main">
           <div className="chunk-header">
             <span className="chunk-title">{chunkTitle(chunk)}</span>
+            {/* Two-word AI summary chip (spec 06 slice 5). Never on a low-signal stub — it carries its
+                own reason badge, and an "AI note" on a lockfile is noise. */}
+            {chunkBadge && !lowSignal && (
+              <span className="badge badge-chip" title="AI: summarizes this chunk">
+                {chunkBadge}
+              </span>
+            )}
             {/* Cross-file provenance for a chapter occurrence whose chunk lives outside the anchor file. */}
             {row.occurrence.label && <span className="chunk-from">from {row.occurrence.label}</span>}
             {piece &&
