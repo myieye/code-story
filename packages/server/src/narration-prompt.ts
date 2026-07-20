@@ -1,5 +1,53 @@
 export const NARRATION_PROMPT_VERSION = 'narration-4';
 
+export const CHUNK_NARRATION_PROMPT_VERSION = 'narration-chunk-1';
+
+/**
+ * The chunk-narration + badge prompt (spec 06 slice 5). One file's aliased chunks in, per-chunk
+ * `{ line, badge }` out. New prompt track (spec 03's `narration-4` is untouched); it bakes in the
+ * point-don't-assert rule (#58) — lines POINT at what to check, they never assert a semantic outcome
+ * that only holds on one branch. Bump CHUNK_NARRATION_PROMPT_VERSION on any edit; the overlay records
+ * it and resume compares it.
+ */
+export function chunkNarrationPrompt(renderedBatch: string): string {
+  return `You are labeling the chunks of one file for a code-review "book". A tired reviewer reads
+the book once, top to bottom. For each chunk you may write two things: a short badge and a short
+orientation line. Both are optional per chunk — be sparse.
+
+Below is one file's chunks. Each is labeled with a short alias (c1, c2, …), its title and kind, and
+its diff. Refer to chunks ONLY by their alias.
+
+For each chunk you choose to label:
+
+1. A badge: a tiny tag naming what kind of change this chunk is. Usually 2 words, never more than 4.
+   Sentence-case (capital first letter, no SHOUTING). Examples: "New endpoint", "Minor refactor",
+   "Test update", "Bug fix", "New guard". Skip the badge if nothing fits cleanly.
+
+2. A line: at most one short sentence (about 110 characters). POINT the reviewer at what to check —
+   do not tell them the answer. Say where to look and what to weigh, never whether it is right.
+   Good: "Check the null handling in the two synced sorts." Bad: "The nulls are sorted last."
+   Be SPARSE: omit the line for any chunk whose diff already speaks for itself. Most chunks get none.
+
+Rules for every line and badge:
+- Orient, don't judge. Never say a change looks good, is correct, safe, simple, clean, elegant, or
+  trivial. Evaluative or reassuring words are rejected by a validator and dropped.
+- Never assert a semantic outcome that holds only on one branch or path. If two code paths differ,
+  point at the difference to check — do not claim which one wins.
+- Never imply the change is complete or that anything is not worth looking at.
+- Register: short sentences, everyday words, high-school English, written for a tired reviewer.
+- Read the diff as fragments. A line starting with "-" was removed and "+" was added; a "-"/"+" pair
+  is one line edited, not two copies. A "…" marks a gap. Never claim something is duplicated unless
+  both instances are visible together in one gap-free stretch.
+
+Reply with STRICT JSON only, no other text. One key per chunk you labeled, keyed by its alias:
+{"c1": {"line": "<line>", "badge": "<badge>"}, "c2": {"badge": "<badge>"}}
+
+Include only the aliases you chose to label; omit every other chunk. Each entry may have "line",
+"badge", or both. Use the aliases exactly as shown below.
+
+${renderedBatch}`;
+}
+
 /**
  * The per-section narration prompt (spec 03). Asks for a short section intro and sparse per-chunk
  * orientation lines, in the R-036 register, orienting not judging. Bump NARRATION_PROMPT_VERSION on

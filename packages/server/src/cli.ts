@@ -44,6 +44,7 @@ import {
   loadContextStore,
   persistContextPayload,
 } from './context-store.js';
+import { CHUNK_NARRATION_KIND, createChunkNarrationTask } from './chunk-narration-task.js';
 import { diffRange, fileAt, listTree, originUrl, resolveRange, type ResolvedRange, rootCommit } from './git.js';
 import { createGlueInvoker } from './glue/invoker.js';
 import { GlueLedger, glueLedgerFilePath } from './glue/ledger.js';
@@ -52,8 +53,10 @@ import { GlueScheduler } from './glue/scheduler.js';
 import { runNarrationJob } from './narration-job.js';
 import { NARRATION_PROMPT_VERSION } from './narration-prompt.js';
 import {
+  loadChunkNarrationOverlay,
   loadNarrationOverlay,
   type NarrationJobRecord,
+  narrationChunksFilePath,
   narrationFilePath,
   narrationJobFilePath,
 } from './narration-store.js';
@@ -134,6 +137,8 @@ const dumpGlue = args.includes('--dump-glue');
 const aiOrder = args.includes('--ai-order');
 const noAiOrder = args.includes('--no-ai-order') || Boolean(process.env.CODE_STORY_NO_AI_ORDER);
 const narrate = args.includes('--narrate');
+const narrateChunks = args.includes('--narrate-chunks');
+const noAiNarration = args.includes('--no-ai-narration') || Boolean(process.env.CODE_STORY_NO_AI_NARRATION);
 const narration = args.includes('--narration');
 const contextFlag = args.includes('--context');
 const dumpContext = args.includes('--dump-context');
@@ -205,7 +210,7 @@ if (
   (testPlacementArg !== undefined && !['before', 'after', 'end'].includes(testPlacementArg))
 ) {
   console.error(
-    'Usage: code-story <base>..<head> [--export book.md] [--narration] [--order tier0|ai] [--ai-order] [--no-ai-order] [--narrate] [--context] [--dump-context [--verbose]] [--model <id>] [--port <n>] [--direction consumer-first|dependency-first] [--test-placement before|after|end] [--dump-diff] [--dump-chunks] [--dump-graph] [--dump-chunk-graph] [--check-order] [--dump-manifest] [--dump-glue] [--no-open]\n' +
+    'Usage: code-story <base>..<head> [--export book.md] [--narration] [--order tier0|ai] [--ai-order] [--no-ai-order] [--narrate] [--narrate-chunks] [--no-ai-narration] [--context] [--dump-context [--verbose]] [--model <id>] [--port <n>] [--direction consumer-first|dependency-first] [--test-placement before|after|end] [--dump-diff] [--dump-chunks] [--dump-graph] [--dump-chunk-graph] [--check-order] [--dump-manifest] [--dump-glue] [--no-open]\n' +
       '\n' +
       'AI reading order is the default: the daemon runs the ordering job in the background on\n' +
       'compile and applies it on the next book load. --no-ai-order (or CODE_STORY_NO_AI_ORDER)\n' +
@@ -328,6 +333,42 @@ if (dumpGlue) {
   const invoker = createGlueInvoker({ policy, ledger, cwd: dataHome });
   const scheduler = new GlueScheduler({ invoker, ledger, policy, enabled: !noAiOrder });
   console.log(JSON.stringify(await scheduler.status(), null, 2));
+  process.exit(0);
+}
+
+// Run the chunk-narration glue task once (manual/CI). Kicks the scheduler, polls status until the
+// task drains, then reports the overlay size. Narration v2 is order-independent, so file-mode chunks
+// are the right input regardless of the reading order the daemon serves.
+if (narrateChunks) {
+  const { contents, compiled } = await withCompiled(resolved);
+  const dataHome = defaultDataHome();
+  const repoId = repoIdFrom(repo, await rootCommit(repo), await originUrl(repo));
+  const policy = createModelPolicy({ top: model });
+  const ledger = new GlueLedger(glueLedgerFilePath(dataHome, repoId, resolved));
+  const invoker = createGlueInvoker({ policy, ledger, cwd: dataHome });
+  const scheduler = new GlueScheduler({ invoker, ledger, policy, enabled: true });
+  const overlayFile = narrationChunksFilePath(dataHome, repoId, resolved);
+  scheduler.register(
+    createChunkNarrationTask({
+      headSha: resolved.head,
+      tier: 'top',
+      model: policy.resolve('top'),
+      overlayFile,
+      getInputs: async () => ({ chunks: compiled, contents }),
+    }),
+  );
+
+  console.log(`code-story: narrating chunks (${model})…`);
+  await scheduler.kick(CHUNK_NARRATION_KIND, { force: true });
+  for (;;) {
+    const task = (await scheduler.status()).tasks.find((t) => t.kind === CHUNK_NARRATION_KIND);
+    if (!task || (task.queued === 0 && task.running === 0)) break;
+    await new Promise((r) => setTimeout(r, 200));
+  }
+  await scheduler.shutdown();
+
+  const overlay = await loadChunkNarrationOverlay(overlayFile);
+  console.log(`code-story: chunk narration saved (${overlay ? Object.keys(overlay.chunks).length : 0} chunks)`);
   process.exit(0);
 }
 
@@ -585,7 +626,14 @@ if (aiOrder || narrate || exportPath) {
 }
 
 const { url } = await startServer(
-  { repo, range: resolved, autoOrder: !noAiOrder, orderModel: model, storyConfig: await effectiveStoryConfig() },
+  {
+    repo,
+    range: resolved,
+    autoOrder: !noAiOrder,
+    autoNarration: !noAiNarration,
+    orderModel: model,
+    storyConfig: await effectiveStoryConfig(),
+  },
   port,
 );
 
