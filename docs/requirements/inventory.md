@@ -5,7 +5,8 @@ addenda ([2026-07-16](../vision/addendum-2026-07-16.md),
 [PR versions](../vision/addendum-2026-07-16-pr-versions.md),
 [editor features](../vision/addendum-2026-07-16-editor-features.md),
 [ordering preferences](../vision/addendum-2026-07-17-ordering-preferences.md),
-[review-UX feedback](../vision/addendum-2026-07-20-review-ux-feedback.md)), numbered for traceability. Future passes over the
+[review-UX feedback](../vision/addendum-2026-07-20-review-ux-feedback.md),
+[AI pipeline](../vision/addendum-2026-07-20-ai-pipeline.md)), numbered for traceability. Future passes over the
 prompts should check each tidbit against this list and against the implementation. Each entry: the requirement, its source in the prompt (paraphrased quote), and
 open questions to resolve during spec work.
 
@@ -479,3 +480,16 @@ also happen inline.
 > comment for myself and sometimes with a promt for AI that runs in the background and is then
 > ready for me when I get to the end. (deferring in that case should probably be the default,
 > but not required i.e. it can also just happen inline)"
+
+## N. AI pipeline, 2026-07-20 ([verbatim source](../vision/addendum-2026-07-20-ai-pipeline.md))
+
+### R-060 — The AI glue pipeline (critical architecture)
+All AI "glue" (annotations, narration, ordering, badges, deferral answers, …) flows through
+one pipeline that optimizes which agent gets called when, with what context, for what task.
+Built with the best initial pieces for the final goals, but modular, so pieces can be tweaked
+and moved as the tool improves. Critical architecture — build carefully.
+> "a good pipeline that optimizes what agents gets called when with what context for what
+> task is probably something that would be really valuable. that's something you should
+> build. it should be built with the best initial pieces you can think of for our final
+> goals, but be modular so that we can tweak and move pieces around later as we learn and
+> improve the tool. that's a critical piece of architecture. build it carefully."
