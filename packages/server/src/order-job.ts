@@ -1,4 +1,3 @@
-import { mkdir } from 'node:fs/promises';
 import {
   applyOrderOverlay,
   type Book,
@@ -19,12 +18,10 @@ import {
   validateChapterComposition,
   validatePermutation,
 } from '@code-story/core';
-import { extractJsonBlock, invokeClaudeJson } from './claude-cli.js';
+import { extractJsonBlock } from './claude-cli.js';
 import { CHAPTER_ORDER_PROMPT_VERSION, chapterOrderPrompt, ORDER_PROMPT_VERSION, orderPrompt } from './order-prompt.js';
 
 const MANIFEST_TOKEN_LIMIT = 8000;
-const JOB_TIMEOUT_MS = 10 * 60 * 1000;
-const TRANSIENT_BACKOFF_MS = [2000, 4000];
 
 export type OrderJobFailure =
   /** Size guard or other precondition — retrying cannot help. */
@@ -48,11 +45,12 @@ export interface OrderJobInput {
   graph: ImportGraph;
   chunks: Chunk[];
   model: string;
-  /** Where the subprocess runs: the data home. Never the reviewed repo — the job has no
-   * business reading it, and must not become an unreviewed side channel into it. */
-  cwd: string;
-  /** Test seam: replaces the claude subprocess. */
-  invoke?: (prompt: string, model: string, cwd: string) => Promise<string>;
+  /**
+   * One model call. A throw is classified `transient`. The caller owns the spawn (cwd, timeout,
+   * ledger) and the retry loop — the order task hands the glue invoker through here; the scheduler
+   * re-invokes the whole job on a retryable failure.
+   */
+  invoke: (prompt: string) => Promise<string>;
 }
 
 /**
@@ -68,8 +66,9 @@ export interface ChapterOrderJobInput extends OrderJobInput {
 }
 
 /**
- * Runs the tier-1 ordering job: manifest → claude -p → validated overlay. Throws OrderJobError;
- * never returns a partial result. The caller persists the overlay.
+ * One tier-1 ordering attempt: manifest → claude -p → validated overlay. Throws OrderJobError
+ * (`refused` size guard / `invalid-output` bad reply / `transient` spawn throw); never returns a
+ * partial result. The caller (the order glue task) persists the overlay and owns the retry loop.
  */
 export async function runOrderJob(input: OrderJobInput): Promise<OrderOverlay> {
   const manifest = buildOrderManifest(input.book, input.graph, input.chunks);
@@ -84,13 +83,13 @@ export async function runOrderJob(input: OrderJobInput): Promise<OrderOverlay> {
   }
 
   const prompt = orderPrompt(renderOrderManifest(manifest));
-  return invokeUntilValid(input, prompt, (raw) => tryBuildOverlay(input, manifest, raw));
+  return attempt(input, prompt, (raw) => tryBuildOverlay(input, manifest, raw));
 }
 
 /**
- * Runs the chapter-mode ordering job (spec 05, #77): chunk manifest → aliased prompt → validated v2
- * overlay. Same size guards and retry discipline as `runOrderJob`; the model regroups story chunks
- * into chapters rather than permuting sections.
+ * One chapter-mode ordering attempt (spec 05, #77): chunk manifest → aliased prompt → validated v2
+ * overlay. Same size guards as `runOrderJob`; the model regroups story chunks into chapters rather
+ * than permuting sections.
  */
 export async function runChapterOrderJob(input: ChapterOrderJobInput): Promise<OrderOverlayV2> {
   const manifest = buildChunkOrderManifest(input.book, input.chunks, input.chunkGraph, input.storyComposition);
@@ -120,36 +119,24 @@ export async function runChapterOrderJob(input: ChapterOrderJobInput): Promise<O
   }
 
   const prompt = chapterOrderPrompt(rendered, input.config.direction);
-  return invokeUntilValid(input, prompt, (raw) => tryBuildChapterOverlay(input, manifest, idOf, raw));
+  return attempt(input, prompt, (raw) => tryBuildChapterOverlay(input, manifest, idOf, raw));
 }
 
-/** Shared invoke → validate loop: transient errors back off, one bad-output retry, then throws. */
-async function invokeUntilValid<T>(
+/** One invoke → validate. A spawn throw is `transient`; a rejected reply is `invalid-output`. */
+async function attempt<T>(
   input: OrderJobInput,
   prompt: string,
   build: (raw: string) => { overlay: T } | { error: string },
 ): Promise<T> {
-  const invoke = input.invoke ?? ((p, m, cwd) => invokeClaudeJson(p, m, cwd, JOB_TIMEOUT_MS));
-  // A fresh install has no data home yet; spawn with a missing cwd dies instantly (ENOENT).
-  await mkdir(input.cwd, { recursive: true });
-
-  let transientLeft = TRANSIENT_BACKOFF_MS.length;
-  let invalidLeft = 1;
-  for (;;) {
-    let raw: string;
-    try {
-      raw = await invoke(prompt, input.model, input.cwd);
-    } catch (e) {
-      if (transientLeft === 0) throw new OrderJobError('transient', `claude invocation failed: ${(e as Error).message}`);
-      await sleep(TRANSIENT_BACKOFF_MS[TRANSIENT_BACKOFF_MS.length - transientLeft--]!);
-      continue;
-    }
-
-    const parsed = build(raw);
-    if ('overlay' in parsed) return parsed.overlay;
-    if (invalidLeft === 0) throw new OrderJobError('invalid-output', parsed.error);
-    invalidLeft--;
+  let raw: string;
+  try {
+    raw = await input.invoke(prompt);
+  } catch (e) {
+    throw new OrderJobError('transient', `claude invocation failed: ${(e as Error).message}`);
   }
+  const parsed = build(raw);
+  if ('overlay' in parsed) return parsed.overlay;
+  throw new OrderJobError('invalid-output', parsed.error);
 }
 
 /** Parse + validate one model response: strict permutation, then the checkOrder pre-gate. */
@@ -268,10 +255,6 @@ function tryBuildChapterOverlay(
     };
   }
   return { overlay };
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((r) => setTimeout(r, ms));
 }
 
 export interface AutoOrderDecision {

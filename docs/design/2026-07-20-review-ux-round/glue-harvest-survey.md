@@ -81,3 +81,46 @@ Changing any of these invalidates persisted overlays/evals or breaks the web/eva
 - **Job observability API.** Status surfaces are per-job GETs returning only status/counts/error (server.ts:76-117). No aggregate "all jobs" endpoint, no history (each run overwrites its record file), no timing/throughput metrics.
 - **Cancellation.** No cancel path. `JobRuntime.run` (job-runtime.ts:49) has no abort handle; the spawned child is only killed by its own `timeout` (claude-cli.ts:12). A running job cannot be stopped; a duplicate POST is refused, not preempted.
 - **Model/tier selection policy.** No per-unit model choice, escalation, or fallback (§4) — one model id for the whole run.
+## 7 — Closeout, post-G4/G5
+
+G1–G3 landed the module + the two native tasks (chunk-narration, deferral). G4 adapted order and
+G5 adapted context, both contract-stable. Walking §2's duplication inventory:
+
+1. **Near-identical retry loop.** *Order side gone.* `order-job.ts`'s `invokeUntilValid` +
+   `TRANSIENT_BACKOFF_MS` + `JOB_TIMEOUT_MS` + `sleep` are **deleted**; `runOrderJob`/
+   `runChapterOrderJob` are now single-attempt (build → one invoke → validate → throw
+   `OrderJobError`), and the retry state machine lives once in the scheduler (`scheduler.ts`
+   `runUnit`). `narration-job.ts`'s `generate` loop **deliberately stays** — that is the spec-03 **v1
+   section-narration** path (`POST /api/narration-job`, `narrationRuntime`), not retired this round;
+   chunk-narration **v2** already runs on the scheduler (G2). It retires when the v1 path does.
+2. **Identical `invoke` default + cwd ENOENT guard.** *Order side gone.* The order job no longer
+   defaults an invoke or `mkdir`s a cwd — the glue invoker owns the cwd `mkdir` once
+   (`invoker.ts` `defaultSpawn`) and the order task hands the invoker through. The narration **v1**
+   copy stays with its path.
+3. **Triplicated store module shape.** *Job-record loaders unified.* The three byte-identical
+   `load{,Narration,Context}JobRecord` bodies now delegate to one `loadJobRecordFile<Rec>(file, what)`
+   in `job-runtime.ts` (exported names unchanged, so no import churn). The `<x>FilePath`/
+   `<x>JobFilePath` builders and the per-store `JobRecord` interfaces **stay per-store deliberately**:
+   they are the store's path/shape contract (byte-stable this round), differ only by suffix/extra
+   fields, and folding them would trade a real seam for a speculative one.
+4. **Triplicated CLI + server job-record scaffold.** *Order + context server scaffold gone.* The
+   server's `kickOrderJob`/`orderRuntime` and `contextRuntime` `JobRuntime` wiring are **deleted**;
+   the order task and context task own their `.order-job.json` / `.context-job.json` lifecycles
+   (running → done/failed), and GET orphan resolution moved to the shared `resolveJobRecord` free
+   function keyed on `scheduler.activity(kind)`. The CLI's **`--ai-order`** manual scaffold is
+   **deleted** — it drives the order task through a throwaway scheduler (same shape as
+   `--narrate-chunks`). The CLI **`--context`** branch still calls `runContextJob` directly (its
+   own in-memory-store mirror): untested path, no model, low duplication value — left as-is. The
+   narration **v1** scaffold (CLI `--narrate` + server `narrationRuntime`) stays with its path.
+5. **Triplicated job-summary functions.** *Unified.* `jobSummary`/`narrationJobSummary`/
+   `contextJobSummary` now share one `jobSummaryBase(record)` envelope (status/startedAt/
+   finishedAt/error) and add only their extra fields. **Response shapes are byte-identical** — the
+   extra fields are still present per job.
+
+**Genuinely task-specific (the 20%)** — validators, manifest builders, alias assignment, the
+per-section salvage logic, the context byte-cap stop — untouched, as the survey predicted.
+
+Net: the retry/store-lifecycle/summary scaffolding is measurably gone (`order-job.ts` −~50 lines,
+`server.ts` net −~90 lines) while every persisted file, route, and status code holds. What remains
+duplicated (narration v1, the per-store path/shape builders, the CLI `--context` fill) is
+deliberate and noted above.
