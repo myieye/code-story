@@ -45,6 +45,10 @@ import {
   persistContextPayload,
 } from './context-store.js';
 import { diffRange, fileAt, listTree, originUrl, resolveRange, type ResolvedRange, rootCommit } from './git.js';
+import { createGlueInvoker } from './glue/invoker.js';
+import { GlueLedger, glueLedgerFilePath } from './glue/ledger.js';
+import { createModelPolicy } from './glue/model-policy.js';
+import { GlueScheduler } from './glue/scheduler.js';
 import { runNarrationJob } from './narration-job.js';
 import { NARRATION_PROMPT_VERSION } from './narration-prompt.js';
 import {
@@ -126,6 +130,7 @@ const dumpGraph = args.includes('--dump-graph');
 const dumpChunkGraph = args.includes('--dump-chunk-graph');
 const checkOrderFlag = args.includes('--check-order');
 const dumpManifest = args.includes('--dump-manifest');
+const dumpGlue = args.includes('--dump-glue');
 const aiOrder = args.includes('--ai-order');
 const noAiOrder = args.includes('--no-ai-order') || Boolean(process.env.CODE_STORY_NO_AI_ORDER);
 const narrate = args.includes('--narrate');
@@ -200,7 +205,7 @@ if (
   (testPlacementArg !== undefined && !['before', 'after', 'end'].includes(testPlacementArg))
 ) {
   console.error(
-    'Usage: code-story <base>..<head> [--export book.md] [--narration] [--order tier0|ai] [--ai-order] [--no-ai-order] [--narrate] [--context] [--dump-context [--verbose]] [--model <id>] [--port <n>] [--direction consumer-first|dependency-first] [--test-placement before|after|end] [--dump-diff] [--dump-chunks] [--dump-graph] [--dump-chunk-graph] [--check-order] [--dump-manifest] [--no-open]\n' +
+    'Usage: code-story <base>..<head> [--export book.md] [--narration] [--order tier0|ai] [--ai-order] [--no-ai-order] [--narrate] [--context] [--dump-context [--verbose]] [--model <id>] [--port <n>] [--direction consumer-first|dependency-first] [--test-placement before|after|end] [--dump-diff] [--dump-chunks] [--dump-graph] [--dump-chunk-graph] [--check-order] [--dump-manifest] [--dump-glue] [--no-open]\n' +
       '\n' +
       'AI reading order is the default: the daemon runs the ordering job in the background on\n' +
       'compile and applies it on the next book load. --no-ai-order (or CODE_STORY_NO_AI_ORDER)\n' +
@@ -312,6 +317,17 @@ if (dumpManifest) {
   console.log(
     `\nmanifest: ${manifest.sections.length} story sections, ${manifest.pinnedTail.length} pinned, ~${manifest.estimatedTokens} tokens`,
   );
+  process.exit(0);
+}
+
+if (dumpGlue) {
+  const dataHome = defaultDataHome();
+  const repoId = repoIdFrom(repo, await rootCommit(repo), await originUrl(repo));
+  const policy = createModelPolicy();
+  const ledger = new GlueLedger(glueLedgerFilePath(dataHome, repoId, resolved));
+  const invoker = createGlueInvoker({ policy, ledger, cwd: dataHome });
+  const scheduler = new GlueScheduler({ invoker, ledger, policy, enabled: !noAiOrder });
+  console.log(JSON.stringify(await scheduler.status(), null, 2));
   process.exit(0);
 }
 
