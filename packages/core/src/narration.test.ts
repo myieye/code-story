@@ -235,3 +235,13 @@ describe('filterFreshNarration fail-open direction', () => {
     expect(filtered.opener.text).toBe('');
   });
 });
+
+describe('checkBadgeText placeholders', () => {
+  it('rejects placeholder badges', () => {
+    expect(checkBadgeText('None')).toEqual(['badge "None" is a placeholder']);
+    expect(checkBadgeText('n/a').length).toBe(1);
+  });
+  it('accepts real badges', () => {
+    expect(checkBadgeText('Minor refactor')).toEqual([]);
+  });
+});

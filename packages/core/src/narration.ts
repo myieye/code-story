@@ -405,6 +405,8 @@ export function filterFreshNarrationV2(headSha: string, overlay: NarrationOverla
 
 export const BADGE_MAX_WORDS = 4;
 export const BADGE_MAX_CHARS = 30;
+// Models answer "no badge fits" with a placeholder word instead of omitting the field.
+const BADGE_PLACEHOLDERS = new Set(['none', 'n/a', 'na', 'no change', 'nothing', 'misc', 'other']);
 
 /**
  * All-caps word the badge gate rejects as shouting. Code-ish tokens (any non-letter char — digits,
@@ -424,6 +426,7 @@ export function checkBadgeText(text: string): string[] {
   const trimmed = text.trim();
   const failures: string[] = [];
   if (trimmed.length === 0) return ['badge is empty'];
+  if (BADGE_PLACEHOLDERS.has(trimmed.toLowerCase())) return [`badge "${trimmed}" is a placeholder`];
   if (trimmed.length > BADGE_MAX_CHARS) failures.push(`badge is ${trimmed.length} chars (max ${BADGE_MAX_CHARS})`);
 
   const words = trimmed.split(/\s+/);
