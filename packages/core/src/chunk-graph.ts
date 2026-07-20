@@ -87,6 +87,8 @@ export interface ChunkNeighbor {
   /** The neighbor chunk to navigate to. */
   chunkId: string;
   kind: ChunkEdgeKind;
+  /** How the edge was derived — the UI treats file-level sources (`test-anchor`, `import-graph`) differently. */
+  source: ChunkEdgeSource;
   /** `out`: this chunk is the edge's `from` (it calls / imports / exercises the neighbor). `in`: the reverse. */
   direction: 'in' | 'out';
   /**
@@ -105,8 +107,8 @@ export interface ChunkNeighbor {
 export function neighborsOf(graph: ChunkGraph, chunkId: string): ChunkNeighbor[] {
   const out: ChunkNeighbor[] = [];
   for (const e of graph.edges) {
-    if (e.from === chunkId && e.to !== chunkId) out.push({ chunkId: e.to, kind: e.kind, direction: 'out', fromLines: [...e.fromLines] });
-    else if (e.to === chunkId && e.from !== chunkId) out.push({ chunkId: e.from, kind: e.kind, direction: 'in', fromLines: [] });
+    if (e.from === chunkId && e.to !== chunkId) out.push({ chunkId: e.to, kind: e.kind, source: e.source, direction: 'out', fromLines: [...e.fromLines] });
+    else if (e.to === chunkId && e.from !== chunkId) out.push({ chunkId: e.from, kind: e.kind, source: e.source, direction: 'in', fromLines: [] });
   }
   out.sort((a, b) => a.chunkId.localeCompare(b.chunkId) || a.kind.localeCompare(b.kind) || a.direction.localeCompare(b.direction));
   return out;

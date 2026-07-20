@@ -195,6 +195,70 @@ public class Svc { public void Run() { Helper.Go(); } }
     expect(payload.facts.definitions).toHaveLength(0);
   });
 
+  it('scans a test chunk\'s enclosing method so an exercised call on an unchanged setup line resolves (R-008/R-009)', async () => {
+    const test = `namespace App;
+public class FooTests {
+  [Fact]
+  public void Bar() {
+    var svc = new Svc();
+    var x = svc.Setup();
+    svc.Run(x).Should().Be(1);
+  }
+}
+`;
+    const svc = `namespace App;
+public class Svc {
+  public int Setup() { return 0; }
+  public int Run(int x) { return x; }
+}
+`;
+    const resolver = resolverOver({
+      'App.Tests/FooTests.cs': { head: test, base: 'namespace App; public class FooTests {}\n' },
+      'App/Svc.cs': { head: svc, base: svc },
+    });
+    const changed: ChangedFile[] = [
+      { path: 'App.Tests/FooTests.cs', status: 'modified' },
+      { path: 'App/Svc.cs', status: 'modified' },
+    ];
+    const graph: ImportGraph = { edges: [{ from: 'App.Tests/FooTests.cs', to: 'App/Svc.cs' }], unresolved: 0 };
+    // The chunk owns only the Run(...) line (7); Setup() on line 6 is unchanged context in the same method.
+    const payload = await resolver.resolve(chunk('c1', 'App.Tests/FooTests.cs', 7, 7), changed, graph);
+    const symbols = payload.facts.definitions.map((d) => d.symbol);
+    expect(symbols).toContain('Setup'); // only reachable via the enclosing-method widening
+    expect(symbols).toContain('Run');
+  });
+
+  it('does not widen the scan for a non-test chunk (spec 04 changed-lines-only)', async () => {
+    const impl = `namespace App;
+public class Consumer {
+  public void Go() {
+    var x = Svc.Setup();
+    Svc.Run(x);
+  }
+}
+`;
+    const svc = `namespace App;
+public class Svc {
+  public static int Setup() { return 0; }
+  public static int Run(int x) { return x; }
+}
+`;
+    const resolver = resolverOver({
+      'App/Consumer.cs': { head: impl, base: 'namespace App; public class Consumer {}\n' },
+      'App/Svc.cs': { head: svc, base: svc },
+    });
+    const changed: ChangedFile[] = [
+      { path: 'App/Consumer.cs', status: 'modified' },
+      { path: 'App/Svc.cs', status: 'modified' },
+    ];
+    const graph: ImportGraph = { edges: [{ from: 'App/Consumer.cs', to: 'App/Svc.cs' }], unresolved: 0 };
+    // Chunk owns only the Run(...) line (5); Setup() on line 4 stays out of scope for a non-test chunk.
+    const payload = await resolver.resolve(chunk('c1', 'App/Consumer.cs', 5, 5), changed, graph);
+    const symbols = payload.facts.definitions.map((d) => d.symbol);
+    expect(symbols).toContain('Run');
+    expect(symbols).not.toContain('Setup');
+  });
+
   it('caps an over-long definition body', async () => {
     const longUtil = `export function big() {\n${Array.from({ length: 100 }, (_, i) => `  const x${i} = ${i};`).join('\n')}\n}\n`;
     const consumer = `import { big } from './big';

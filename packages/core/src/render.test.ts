@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { chunkFile } from './chunker.js';
 import { type FileDiff } from './diff.js';
+import { type Chunk } from './model.js';
 import { unifiedChunkLines } from './render.js';
 
 const head = Array.from({ length: 30 }, (_, i) => `head ${i + 1}`);
@@ -41,6 +42,25 @@ describe('unifiedChunkLines', () => {
     expect(lines.map((l) => `${l.type}:${l.base}`)).toEqual([
       'del:1', 'del:2',
       'context:3', 'context:4', 'context:5',
+    ]);
+  });
+
+  it('does not duplicate lines across a hole between adjacent hunks', () => {
+    // A nested symbol carved into its own chunk leaves this chunk with a one-line hole at line 7.
+    // The first hunk's trailing context must stop before line 8, which the second hunk adds.
+    const chunk = {
+      hunks: [
+        { baseStart: 0, baseCount: 0, headStart: 1, headCount: 6 },
+        { baseStart: 8, baseCount: 0, headStart: 8, headCount: 3 },
+      ],
+    } as Chunk;
+    const lines = unifiedChunkLines(chunk, { head, base });
+
+    expect(lines.map((l) => `${l.type}:${l.head ?? l.base ?? ''}`)).toEqual([
+      'add:1', 'add:2', 'add:3', 'add:4', 'add:5', 'add:6',
+      'context:7',
+      'add:8', 'add:9', 'add:10',
+      'context:11', 'context:12', 'context:13',
     ]);
   });
 

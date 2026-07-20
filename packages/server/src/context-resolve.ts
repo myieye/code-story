@@ -9,6 +9,7 @@ import {
   type FileStatus,
   type Hunk,
   type ImportGraph,
+  isTestPath,
   type LineRange,
   resolveTsSpecifier,
   type SymbolSpan,
@@ -85,7 +86,17 @@ export function createContextResolver(deps: ContextResolveDeps) {
     const content = await readContent(chunkSha, chunk.file);
     if (content === undefined) return payload;
 
-    const refs = await extractReferences(chunk.file, content, ranges);
+    // A test chunk's one changed line often calls into impl on adjacent *unchanged* setup lines
+    // (R-008/R-009: "a lone test without its setup isn't enough"). Widen the reference scan to the
+    // enclosing test-method body so those exercised calls resolve; non-test chunks keep spec 04's
+    // changed-lines-only scoping (facts about *these* changes).
+    let scanRanges = ranges;
+    if (isTestPath(chunk.file)) {
+      const symbols = await symbolsAt(chunkSha, chunk.file);
+      scanRanges = ranges.map((r) => innermostEnclosing(symbols, r) ?? r);
+    }
+
+    const refs = await extractReferences(chunk.file, content, scanRanges);
     if (refs.length === 0) return payload;
 
     const imported = new Set(graph.edges.filter((e) => e.from === chunk.file).map((e) => e.to));
@@ -183,6 +194,24 @@ function unchangedImportTargets(
 
 function overlaps(span: SymbolSpan, ranges: LineRange[]): boolean {
   return ranges.some((r) => span.startLine <= r.end && span.endLine >= r.start);
+}
+
+/** The smallest symbol span (at any nesting) that fully contains `range`, or undefined if none does. */
+function innermostEnclosing(symbols: SymbolSpan[] | undefined, range: LineRange): LineRange | undefined {
+  let best: SymbolSpan | undefined;
+  for (const s of walkSpans(symbols)) {
+    if (s.startLine <= range.start && s.endLine >= range.end) {
+      if (!best || s.endLine - s.startLine < best.endLine - best.startLine) best = s;
+    }
+  }
+  return best ? { start: best.startLine, end: best.endLine } : undefined;
+}
+
+function* walkSpans(symbols: SymbolSpan[] | undefined): Generator<SymbolSpan> {
+  for (const s of symbols ?? []) {
+    yield s;
+    yield* walkSpans(s.children);
+  }
 }
 
 function hunkRanges(hunks: Hunk[], side: 'head' | 'base'): LineRange[] {

@@ -11,7 +11,7 @@ import { batchableSections, cursorAfterMark, findUnreviewed, pendingStubCount } 
 import { estimateRowHeight, RowView, type SectionAck } from './RowView.js';
 import { chunkTitle, flattenBook, occurrenceKey, type Row } from './rows.js';
 import { ShortcutOverlay } from './ShortcutOverlay.js';
-import { affordanceLabel, type PayloadState } from './context-panel-logic.js';
+import { affordanceLabel, hasDefinitions, type PayloadState } from './context-panel-logic.js';
 import { useBookKeymap } from './useBookKeymap.js';
 import { useContextPanels } from './useContextPanels.js';
 import { useNarration } from './useNarration.js';
@@ -235,6 +235,26 @@ export function BookPage({
   const toggleDefinitionsCurrent = () => {
     const row = chunkRowAt(cursor);
     if (row) toggleDefinitionsFor(row.chunk);
+  };
+
+  // Follow a `reveal` chip (the file-level "exercises" edge): show the exercised impl code in this
+  // chunk's definition panel rather than jumping to a meaningless file anchor. Expands (never toggles
+  // shut) so a click always reveals; if nothing resolved, say so honestly instead of opening an empty
+  // panel — the exercised method may be off-diff-and-unreadable or an ambiguous overload.
+  const revealDefinitionsFor = (chunk: Chunk) => {
+    const payload = context.payloadFor(chunk.id);
+    if (payload === undefined) {
+      // Unfetched (rare — the cursor effect prefetches): toggle records intent and the deferred
+      // arrival focuses + announces if anything resolved.
+      context.toggle(chunk.id);
+      return;
+    }
+    if (!hasDefinitions(payload)) {
+      say('No exercised definition we could pin down — it may be defined outside the files we can read, or an ambiguous overload.');
+      return;
+    }
+    if (!context.isExpanded(chunk.id)) context.toggle(chunk.id);
+    focusAndAnnouncePanel(chunk.id, payload);
   };
 
   const markSection = (sectionId: string) => {
@@ -569,6 +589,7 @@ export function BookPage({
                       }}
                       neighborChips={item.index === cursorRowIndex ? cursorChips : undefined}
                       onJumpToChunk={jumpToNeighbor}
+                      onRevealDefinitions={revealDefinitionsFor}
                       onExitStrip={exitNeighborStrip}
                       registerStripEl={(chunkId, el) => {
                         if (el) stripEls.current.set(chunkId, el);
