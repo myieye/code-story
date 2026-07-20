@@ -27,6 +27,7 @@ import {
   filterFreshGraph,
   type ImportGraph,
   filterFreshNarration,
+  filterFreshNarrationV2,
   isFileModeConfig,
   isOverlayFresh,
   type NarrationResponse,
@@ -61,12 +62,15 @@ import { createModelPolicy } from './glue/model-policy.js';
 import { GlueScheduler } from './glue/scheduler.js';
 import { JobRuntime } from './job-runtime.js';
 import { diffRange, fileAt, listTree, originUrl, type ResolvedRange, rootCommit } from './git.js';
+import { CHUNK_NARRATION_KIND, createChunkNarrationTask } from './chunk-narration-task.js';
 import { runNarrationJob } from './narration-job.js';
 import { NARRATION_PROMPT_VERSION } from './narration-prompt.js';
 import {
+  loadChunkNarrationOverlay,
   loadNarrationJobRecord,
   loadNarrationOverlay,
   type NarrationJobRecord,
+  narrationChunksFilePath,
   narrationFilePath,
   narrationJobFilePath,
 } from './narration-store.js';
@@ -138,6 +142,12 @@ export interface ServerOptions {
    * with zero edits. No glue task auto-kicks yet (G2/G3), so this is wiring only in G1.
    */
   glue?: boolean;
+  /**
+   * Auto-kick the chunk-narration glue task on compile (default true; spec 06 slice 5). Narration-
+   * only opt-out (`--no-ai-narration` / `CODE_STORY_NO_AI_NARRATION`); the master `glue`/`autoOrder`
+   * switch gates it too, so an existing test passing `autoOrder:false` never spawns for narration.
+   */
+  autoNarration?: boolean;
   /** Model for the auto-kicked ordering job and the default for POST /api/order-job. */
   orderModel?: string;
   /** Test seam: replaces the claude subprocess the order job spawns. */
@@ -288,6 +298,7 @@ export function startServer(options: ServerOptions, requestedPort = 0): Promise<
         graphFile: string;
         narrationFile: string;
         narrationJobFile: string;
+        narrationChunksFile: string;
         contextFile: string;
         contextJobFile: string;
         glueLedgerFile: string;
@@ -306,6 +317,7 @@ export function startServer(options: ServerOptions, requestedPort = 0): Promise<
           graphFile: chunkGraphFilePath(dataHome, repoId, options.range),
           narrationFile: narrationFilePath(dataHome, repoId, options.range),
           narrationJobFile: narrationJobFilePath(dataHome, repoId, options.range),
+          narrationChunksFile: narrationChunksFilePath(dataHome, repoId, options.range),
           contextFile: contextFilePath(dataHome, repoId, options.range),
           contextJobFile: contextJobFilePath(dataHome, repoId, options.range),
           glueLedgerFile: glueLedgerFilePath(dataHome, repoId, options.range),
@@ -335,9 +347,10 @@ export function startServer(options: ServerOptions, requestedPort = 0): Promise<
   let saveChain = Promise.resolve();
 
   // The AI glue pipeline (spec 07). `autoOrder:false` aliases to `glue:false` so the existing test
-  // corpus disables all glue auto-kicks unchanged. No tasks register in G1 — the scheduler exists
-  // for `/api/glue` (status + ledger spend); the first native tasks land in G2/G3.
+  // corpus disables all glue auto-kicks unchanged. The chunk-narration task (G2) registers here; its
+  // auto-kick is gated on `glueEnabled`, so an `autoOrder:false` server spawns zero `claude` children.
   const glueEnabled = options.glue ?? options.autoOrder ?? true;
+  const autoNarration = options.autoNarration ?? true;
   let glueCache: Promise<{ scheduler: GlueScheduler; ledger: GlueLedger }> | undefined;
   const getGlue = () =>
     (glueCache ??= uncacheOnError(
@@ -347,10 +360,36 @@ export function startServer(options: ServerOptions, requestedPort = 0): Promise<
         const ledger = new GlueLedger(store.glueLedgerFile);
         const invoker = createGlueInvoker({ policy, ledger, cwd: store.dataHome, spawn: options.glueInvoke });
         const scheduler = new GlueScheduler({ invoker, ledger, policy, enabled: glueEnabled });
+        scheduler.register(
+          createChunkNarrationTask({
+            headSha: options.range.head,
+            tier: 'top',
+            model: policy.resolve('top'),
+            overlayFile: store.narrationChunksFile,
+            getInputs: async () => {
+              const built = await getBook();
+              return { chunks: built.chunks, contents: built.contents };
+            },
+          }),
+        );
         return { scheduler, ledger };
       })(),
       () => (glueCache = undefined),
     ));
+
+  // Auto-kick the chunk-narration task on compile, in the scheduler's background lane (serial after
+  // order). Double-gated: `glueEnabled` (the master switch the test corpus disables) AND the
+  // narration-only `autoNarration` opt-out. Fail-open — a store/scheduler hiccup just means no auto
+  // narration this compile.
+  async function maybeAutoKickChunkNarration(): Promise<void> {
+    if (!glueEnabled || !autoNarration) return;
+    try {
+      const { scheduler } = await getGlue();
+      await scheduler.kick(CHUNK_NARRATION_KIND);
+    } catch {
+      // no auto narration this compile
+    }
+  }
 
   app.get('/api/health', (c) => c.json({ ok: true, name: 'code-story', core: CORE_VERSION }));
 
@@ -524,15 +563,30 @@ export function startServer(options: ServerOptions, requestedPort = 0): Promise<
   const narrationRuntime = new JobRuntime<NarrationJobRecord>();
 
   app.get('/api/narration', async (c) => {
-    const { narrationFile, narrationJobFile } = await getStore();
-    const [overlay, stored, { book }] = await Promise.all([
+    const { narrationFile, narrationJobFile, narrationChunksFile } = await getStore();
+    const [overlay, stored, { book }, chunkOverlay] = await Promise.all([
       loadNarrationOverlay(narrationFile),
       loadNarrationJobRecord(narrationJobFile),
       getBook(),
+      loadChunkNarrationOverlay(narrationChunksFile),
     ]);
     const filtered = overlay !== null ? filterFreshNarration(book, options.range.head, overlay) : null;
     const job = await narrationRuntime.resolve(stored, () => loadNarrationJobRecord(narrationJobFile));
-    const response: NarrationResponse = { overlay: filtered, job: job && narrationJobSummary(job) };
+    // Chunk narration v2 (spec 06 slice 5): fresh-filter the separate overlay and project it to
+    // line/badge; the v1 fields above are unchanged.
+    const chunkEntries = chunkOverlay
+      ? Object.fromEntries(
+          Object.entries(filterFreshNarrationV2(options.range.head, chunkOverlay).chunks).map(([id, e]) => [
+            id,
+            { ...(e.line !== undefined ? { line: e.line } : {}), ...(e.badge !== undefined ? { badge: e.badge } : {}) },
+          ]),
+        )
+      : undefined;
+    const response: NarrationResponse = {
+      overlay: filtered,
+      ...(chunkEntries ? { chunkEntries } : {}),
+      job: job && narrationJobSummary(job),
+    };
     return c.json(response);
   });
 
@@ -735,6 +789,7 @@ export function startServer(options: ServerOptions, requestedPort = 0): Promise<
     const server = serve({ fetch: app.fetch, port: requestedPort, hostname: '127.0.0.1' }, (info) => {
       const url = `http://127.0.0.1:${info.port}`;
       void maybeAutoKickOrder();
+      void maybeAutoKickChunkNarration();
       resolve({ port: info.port, url, close: () => server.close() });
     });
   });

@@ -25,12 +25,15 @@ git('commit', '-qam', 'head');
 const range: ResolvedRange = { base: git('rev-parse', 'HEAD~1'), head: git('rev-parse', 'HEAD') };
 
 describe('GET /api/glue (#124)', () => {
-  test('returns an empty task list and zero spend before any task runs', async () => {
+  test('lists the registered tasks with zero counts and zero spend before any run', async () => {
     // autoOrder:false aliases to glue:false — no glue task auto-kicks, so no claude spawns.
     const server = await startServer({ repo, range, dataHome, autoOrder: false }, 0);
     try {
       const status = (await (await fetch(`${server.url}/api/glue`)).json()) as GlueStatus;
-      expect(status.tasks).toEqual([]);
+      // The chunk-narration task (G2) registers on the background lane; it has not run.
+      expect(status.tasks).toEqual([
+        { kind: 'chunk-narration', lane: 'background', queued: 0, running: 0, done: 0, failed: 0, model: 'opus' },
+      ]);
       expect(status.spend).toEqual({ calls: 0, inputTokens: 0, outputTokens: 0 });
     } finally {
       server.close();
