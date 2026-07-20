@@ -108,6 +108,32 @@ body {
   font-family: Consolas, monospace;
 }
 
+/* Segmented Story / Files view toggle: two bar-buttons fused, the active one filled (aria-pressed). */
+.view-toggle {
+  display: flex;
+}
+
+.view-toggle .bar-button {
+  border-radius: 0;
+  margin-left: -1px;
+}
+
+.view-toggle .bar-button:first-child {
+  border-radius: 5px 0 0 5px;
+  margin-left: 0;
+}
+
+.view-toggle .bar-button:last-child {
+  border-radius: 0 5px 5px 0;
+}
+
+.view-toggle .bar-button[aria-pressed='true'] {
+  background: #1c3a6e;
+  border-color: #1c3a6e;
+  color: #fff;
+  z-index: 1;
+}
+
 .bar-toggle {
   display: flex;
   align-items: center;
@@ -231,6 +257,27 @@ body {
   padding: 6px 0;
 }
 
+/* Draggable divider between the outline and the feed. */
+.outline-resizer {
+  flex: none;
+  width: 6px;
+  margin-left: -3px;
+  margin-right: -3px;
+  z-index: 2;
+  cursor: col-resize;
+  background: transparent;
+}
+
+.outline-resizer:hover {
+  background: #cdd7ec;
+}
+
+/* While dragging, kill selection everywhere and keep the resize cursor over the whole window. */
+body.resizing-outline {
+  cursor: col-resize;
+  user-select: none;
+}
+
 .outline-item {
   display: flex;
   align-items: stretch;
@@ -302,20 +349,23 @@ body {
   color: #1c3a6e;
 }
 
+/* Shape-coded state glyph (○ unseen / • seen / ✓ reviewed) — distinguishable without colour. */
 .state-dot {
   flex: none;
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: #d8d4cc;
+  width: 12px;
+  text-align: center;
+  font-size: 11px;
+  line-height: 1;
+  color: #b7b2a8;
 }
 
 .state-dot.seen {
-  background: #9db4dd;
+  color: #6f8fca;
 }
 
 .state-dot.reviewed {
-  background: #3fa661;
+  color: #3fa661;
+  font-weight: 700;
 }
 
 .outline-path {
@@ -443,8 +493,8 @@ body {
 
 .state-rail {
   flex: none;
-  width: 4px;
-  border-radius: 2px;
+  width: 6px;
+  border-radius: 3px;
   background: #d8d4cc;
 }
 
@@ -478,14 +528,37 @@ body {
   border-bottom: 0 !important;
 }
 
-/* Reviewed dims header only — code contrast stays untouched (spec 00a). */
+/* Reviewed tints the header green — a positive at-a-glance cue that (unlike the old opacity dim)
+   leaves the title fully legible and never touches the diff text. */
 .chunk.state-reviewed .chunk-header {
-  opacity: 0.72;
+  background: #eef6f0;
 }
 
-.chunk-header .check {
-  color: #3fa661;
-  font-weight: 700;
+/* Per-chunk mouse mark + the loudest reviewed cue (GitHub "Viewed" semantics). Outline when not
+   reviewed, solid green when reviewed — state reads by fill + label + glyph, never colour alone. */
+.review-toggle {
+  flex: none;
+  margin-left: 2px;
+  padding: 2px 9px;
+  border: 1px solid #cfcabf;
+  border-radius: 999px;
+  background: #fff;
+  color: #5c584f;
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.review-toggle:hover {
+  border-color: #3fa661;
+  color: #2f7d49;
+}
+
+.review-toggle[aria-pressed='true'] {
+  border-color: #3fa661;
+  background: #3fa661;
+  color: #fff;
 }
 
 .chunk.cursor .chunk-header {

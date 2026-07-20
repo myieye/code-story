@@ -1,4 +1,14 @@
-import { type Chunk, type ChunkReviewState, isLowSignal, type ReviewFile, type StoryConfig, storyConfigKey } from '@code-story/core';
+import {
+  type Chunk,
+  type ChunkReviewState,
+  DEFAULT_STORY_CONFIG,
+  FILE_MODE_STORY_CONFIG,
+  isFileModeConfig,
+  isLowSignal,
+  type ReviewFile,
+  type StoryConfig,
+  storyConfigKey,
+} from '@code-story/core';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { type BookResponse, fetchBook, type NarrationResponse, type OrderResponse } from './api.js';
@@ -57,6 +67,10 @@ export function BookPage({
     return resumed ?? 0;
   });
   const [hideReviewed, setHideReviewed] = useState(false);
+  const [outlineWidth, setOutlineWidth] = useState<number>(() => {
+    const saved = Number(localStorage.getItem('code-story:outline-width'));
+    return Number.isFinite(saved) && saved >= 180 && saved <= 560 ? saved : 280;
+  });
   // Persisted stub expansions (review.expanded) seed the overrides so reloads keep them open.
   const [collapsedOverride, setCollapsedOverride] = useState<ReadonlyMap<string, boolean>>(() => {
     const seeded = new Map<string, boolean>();
@@ -210,6 +224,20 @@ export function BookPage({
     say('Unmarked.');
   };
 
+  // Mouse mark toggle (the per-chunk "Reviewed" button): marks an arbitrary chunk in place — not the
+  // cursor — so it can't reuse markCursorReviewed. Marks reviewed, or unmarks (→ seen) if already so.
+  const toggleChunkReviewed = (chunk: Chunk) => {
+    const prior = review.stateOf(chunk.id);
+    if (prior === 'reviewed') {
+      review.setState(chunk.id, 'seen');
+      say('Unmarked.');
+      return;
+    }
+    review.setState(chunk.id, 'reviewed', prior === 'unseen' || undefined);
+    const remaining = distinctChunks - reviewedCount - 1;
+    say(remaining <= 0 ? 'Reviewed. All chunks reviewed.' : `Reviewed. ${remaining} remaining.`);
+  };
+
   const jumpUnreviewed = (dir: 1 | -1) => {
     const found = findUnreviewed(flat, review.stateOf, cursor + dir, dir);
     if (!found) {
@@ -324,6 +352,15 @@ export function BookPage({
     return () => window.clearTimeout(t);
   }, [reencounter]);
 
+  // Grouping (View: Story vs Files) is derived from the config — file mode is the dependency-first +
+  // tests-after combination (isFileModeConfig). The last chapter-mode config is remembered so toggling
+  // back to Story restores the reviewer's prior ordering axes rather than a default.
+  const grouping: 'story' | 'files' = isFileModeConfig(bookResponse.config) ? 'files' : 'story';
+  const lastStoryConfig = useRef<StoryConfig>(isFileModeConfig(data.config) ? DEFAULT_STORY_CONFIG : data.config);
+  useEffect(() => {
+    if (!isFileModeConfig(bookResponse.config)) lastStoryConfig.current = bookResponse.config;
+  }, [bookResponse.config]);
+
   // Live reorder (#114): re-fetch the book under the chosen axes. Review marks are per-chunk (server
   // state) so they carry over untouched; only the order changes.
   const changeConfig = (config: StoryConfig) => {
@@ -348,6 +385,39 @@ export function BookPage({
     moveCursor(first ? first.index : 0);
     say(`Reading order: ${configSummary(bookResponse.config)}.`);
   }, [bookResponse]);
+
+  // View toggle: Files → the file-mode config (all a file's changes grouped); Story → the remembered
+  // chapter config. A no-op if already there (changeConfig guards on config equality).
+  const setView = (view: 'story' | 'files') => {
+    changeConfig(view === 'files' ? FILE_MODE_STORY_CONFIG : lastStoryConfig.current);
+    say(view === 'files' ? 'View: all changes grouped by file.' : 'View: story.');
+  };
+
+  // Draggable outline width. Tracks the pointer on window (so a fast drag off the 6px handle keeps
+  // working) and persists the final width; a body class kills text-selection + sets the resize cursor.
+  const startResize = (e: React.PointerEvent) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startW = outlineWidth;
+    let latest = startW;
+    const onMove = (ev: PointerEvent) => {
+      latest = Math.max(180, Math.min(560, startW + (ev.clientX - startX)));
+      setOutlineWidth(latest);
+    };
+    const onUp = () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      document.body.classList.remove('resizing-outline');
+      try {
+        localStorage.setItem('code-story:outline-width', String(latest));
+      } catch {
+        // Private-mode storage rejection — width just isn't remembered; not fatal.
+      }
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    document.body.classList.add('resizing-outline');
+  };
 
   useBookKeymap({
     overlayOpen,
@@ -496,10 +566,33 @@ export function BookPage({
           />
           Hide reviewed
         </label>
+        <div className="view-toggle" role="group" aria-label="View">
+          <button
+            type="button"
+            className="bar-button"
+            aria-pressed={grouping === 'story'}
+            disabled={reordering}
+            title="Read the story: chunks grouped into call-path chapters"
+            onClick={() => setView('story')}
+          >
+            Story
+          </button>
+          <button
+            type="button"
+            className="bar-button"
+            aria-pressed={grouping === 'files'}
+            disabled={reordering}
+            title="Group every file's changes together"
+            onClick={() => setView('files')}
+          >
+            Files
+          </button>
+        </div>
         <OrderOptionsControl
           config={bookResponse.config}
           orderApplied={orderApplied}
           busy={reordering}
+          fileView={grouping === 'files'}
           onChange={changeConfig}
         />
         <a className="export" href="/api/export.md" target="_blank" rel="noreferrer">
@@ -530,11 +623,19 @@ export function BookPage({
         <OutlineSidebar
           data={bookData}
           flat={flat}
+          width={outlineWidth}
           stateOf={review.stateOf}
           sectionStats={sectionStats}
           currentSection={currentSection}
           cursorOccurrence={cursorRow ? occurrenceKey(cursorRow.occurrence) : undefined}
           onJump={moveCursor}
+        />
+        <div
+          className="outline-resizer"
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize sidebar"
+          onPointerDown={startResize}
         />
         <div className="feed-wrap">
           {currentSection && <div className="current-file">{currentSection}</div>}
@@ -580,6 +681,7 @@ export function BookPage({
                       }}
                       onJumpNext={() => jumpUnreviewed(1)}
                       onExpand={(chunk) => setCollapsed(chunk, false)}
+                      onToggleReviewed={toggleChunkReviewed}
                       contextPayload={row.kind === 'chunk' ? context.payloadFor(row.chunk.id) : undefined}
                       panelExpanded={row.kind === 'chunk' && context.isExpanded(row.chunk.id)}
                       onToggleDefinitions={toggleDefinitionsFor}
