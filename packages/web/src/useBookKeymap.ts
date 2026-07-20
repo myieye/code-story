@@ -20,6 +20,8 @@ export interface BookKeymapOptions {
   focusNeighborStrip: () => void;
   /** Pop the neighbor-jump back-stack, restoring the origin chunk. */
   goBack: () => void;
+  /** Step to the previous/next piece of the current chunk's file (spec 06 slice 2 accelerator). */
+  stepPiece: (dir: 1 | -1) => void;
 }
 
 export function useBookKeymap({
@@ -38,6 +40,7 @@ export function useBookKeymap({
   toggleDefinitionsCurrent,
   focusNeighborStrip,
   goBack,
+  stepPiece,
 }: BookKeymapOptions): void {
   // No dep array: re-registers every render so the handler closes over fresh state (intentional).
   useEffect(() => {
@@ -83,6 +86,8 @@ export function useBookKeymap({
       else if (plain && e.key === 'x') toggleCollapseCurrent();
       else if (plain && e.key === 'g') focusNeighborStrip();
       else if (plain && e.key === 'b') goBack();
+      else if (plain && e.key === '[') stepPiece(-1);
+      else if (plain && e.key === ']') stepPiece(1);
       else if (plain && e.key === '?') setOverlayOpen(true);
       else if (e.ctrlKey && e.key === 'Home') moveCursor(0);
       else if (e.ctrlKey && e.key === 'End') moveCursor(totalOccurrences - 1);

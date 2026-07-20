@@ -1,5 +1,6 @@
 import {
   type Chunk,
+  type ChunkReview,
   type ChunkReviewState,
   DEFAULT_STORY_CONFIG,
   FILE_MODE_STORY_CONFIG,
@@ -16,6 +17,8 @@ import { configSummary } from './order-options-logic.js';
 import { OrderOptionsControl } from './OrderOptionsControl.js';
 import { OutlineSidebar } from './OutlineSidebar.js';
 import { computeNeighborChips } from './neighbor-strip-logic.js';
+import { FilePiecesMenu } from './FilePiecesMenu.js';
+import { fileOrderIndex, pieceMenuModel, stepPieceTarget } from './piece-nav-logic.js';
 import { frontierCount, interactionCount } from './frontier-logic.js';
 import { batchableSections, cursorAfterMark, findUnreviewed, pendingStubCount } from './review-logic.js';
 import { estimateRowHeight, RowView, type SectionAck } from './RowView.js';
@@ -57,6 +60,7 @@ export function BookPage({
 
   const flat = useMemo(() => flattenBook(bookData.book, bookData.chunks), [bookData]);
   const chunksById = useMemo(() => new Map(bookData.chunks.map((c) => [c.id, c])), [bookData]);
+  const fileOrder = useMemo(() => fileOrderIndex(bookData.chunks), [bookData]);
   const scrollRef = useRef<HTMLDivElement>(null);
   const rowEls = useRef(new Map<number, HTMLElement>());
   const panelEls = useRef(new Map<string, HTMLElement>());
@@ -86,7 +90,12 @@ export function BookPage({
   const [reencounter, setReencounter] = useState<{ chunkId: string; state: 'reviewed' | 'unreviewed'; seq: number } | null>(null);
   const [announce, setAnnounce] = useState({ msg: '', seq: 0 });
   const [toastVisible, setToastVisible] = useState(false);
-  const [lastBatch, setLastBatch] = useState<{ sectionId: string; prior: { chunkId: string; state: ChunkReviewState }[] } | null>(null);
+  // `prior` snapshots the full ChunkReview (not just the enum) so undo restores exact values. A file
+  // "mark all pieces" batch has no owning section, so `sectionId` is optional.
+  const [lastBatch, setLastBatch] = useState<{ sectionId?: string; prior: { chunkId: string; review: ChunkReview }[] } | null>(null);
+  const [pieceMenu, setPieceMenu] = useState<{ chunkId: string; anchorEl: HTMLElement } | null>(null);
+  // A pending "jump to this chunk after the next reorder lands" (Open in Files view crosses a re-fetch).
+  const pendingJumpChunk = useRef<string | undefined>(undefined);
 
   // Two sizes: occurrences are walk stops (cursor space); distinct chunks carry review state.
   const { totalOccurrences, distinctChunks } = flat;
@@ -288,7 +297,7 @@ export function BookPage({
   const markSection = (sectionId: string) => {
     const batch = batches.get(sectionId);
     if (!batch) return;
-    setLastBatch({ sectionId, prior: batch.ids.map((id) => ({ chunkId: id, state: review.stateOf(id) })) });
+    setLastBatch({ sectionId, prior: batch.ids.map((id) => ({ chunkId: id, review: review.reviewOf(id) })) });
     review.setMany(
       batch.ids.map((id) => ({
         chunkId: id,
@@ -302,15 +311,16 @@ export function BookPage({
 
   const undoBatch = () => {
     if (!lastBatch) return;
-    review.setMany(lastBatch.prior);
-    say(`Batch undone. ${distinctChunks - reviewedCount + lastBatch.prior.length} remaining.`);
+    review.restoreMany(lastBatch.prior);
+    const restoredReviewed = lastBatch.prior.filter((p) => p.review.state === 'reviewed').length;
+    say(`Batch undone. ${distinctChunks - reviewedCount + lastBatch.prior.length - restoredReviewed} remaining.`);
     setLastBatch(null);
   };
 
   // Follow a neighbor edge to its chunk: push the origin, move the cursor, and re-highlight the
   // target (reviewed = a free re-encounter glance — never a re-audit). The move is instant scroll,
   // so prefers-reduced-motion is satisfied by construction.
-  const jumpToNeighbor = (targetChunkId: string) => {
+  const jumpToNeighbor = (targetChunkId: string, announceOverride?: string) => {
     const targetIndex = flat.firstIndexByChunkId.get(targetChunkId);
     if (targetIndex === undefined) return;
     const target = chunksById.get(targetChunkId);
@@ -318,7 +328,10 @@ export function BookPage({
     setBackStack((s) => [...s, cursor]);
     setReencounter((r) => ({ chunkId: targetChunkId, state: reviewed ? 'reviewed' : 'unreviewed', seq: (r?.seq ?? 0) + 1 }));
     moveCursor(targetIndex);
-    say(`Jumped to ${target ? chunkTitle(target) : targetChunkId}${target ? ` in ${target.file}` : ''} — ${reviewed ? 'reviewed' : 'unreviewed'}.`);
+    say(
+      announceOverride ??
+        `Jumped to ${target ? chunkTitle(target) : targetChunkId}${target ? ` in ${target.file}` : ''} — ${reviewed ? 'reviewed' : 'unreviewed'}.`,
+    );
   };
 
   const goBack = () => {
@@ -331,6 +344,53 @@ export function BookPage({
     const originChunk = chunkRowAt(origin)?.chunk;
     moveCursor(origin);
     say(`Back to ${originChunk ? chunkTitle(originChunk) : 'the previous chunk'}.`);
+  };
+
+  // Step to a file piece (menu click, `[`/`]`): the existing neighbor jump — the back-stack is the
+  // return path — with an announce that names the file-position instead of the graph relation.
+  const jumpToPiece = (targetChunkId: string) => {
+    const target = chunksById.get(targetChunkId);
+    const piece = fileOrder.get(targetChunkId);
+    const reviewed = review.stateOf(targetChunkId) === 'reviewed';
+    const where = piece && target ? `piece ${piece.n} of ${target.file}` : (target?.file ?? targetChunkId);
+    setPieceMenu(null);
+    jumpToNeighbor(targetChunkId, `${where} — ${reviewed ? 'reviewed' : 'unreviewed'}.`);
+  };
+
+  const stepPiece = (dir: 1 | -1) => {
+    const chunk = chunkRowAt(cursor)?.chunk;
+    if (!chunk) return;
+    const target = stepPieceTarget(fileOrder.get(chunk.id), chunk.id, dir);
+    if (target) jumpToPiece(target);
+  };
+
+  // Open in Files view: switch to the file-mode grouping, then land on the file's first piece. When
+  // already in Files view it's a plain jump; otherwise the target is deferred to the reorder effect
+  // (the config re-fetch is async and resets the cursor).
+  const openInFilesView = (fileFirstChunkId: string) => {
+    setPieceMenu(null);
+    if (grouping === 'files') {
+      jumpToNeighbor(fileFirstChunkId);
+    } else {
+      pendingJumpChunk.current = fileFirstChunkId;
+      setView('files');
+    }
+  };
+
+  const markAllPieces = (file: string, fileChunkIds: string[]) => {
+    setPieceMenu(null);
+    setLastBatch({ prior: fileChunkIds.map((id) => ({ chunkId: id, review: review.reviewOf(id) })) });
+    review.setMany(
+      fileChunkIds.map((id) => ({
+        chunkId: id,
+        state: 'reviewed' as const,
+        ...(review.stateOf(id) === 'unseen' ? { markedUnseen: true } : {}),
+      })),
+    );
+    const newly = fileChunkIds.filter((id) => review.stateOf(id) !== 'reviewed').length;
+    const remaining = distinctChunks - reviewedCount - newly;
+    const label = `${fileChunkIds.length} piece${fileChunkIds.length === 1 ? '' : 's'} of ${file}`;
+    say(remaining === 0 ? `${label} marked reviewed. All chunks reviewed.` : `${label} marked reviewed. ${remaining} remaining.`);
   };
 
   // `g` focuses the first chip of the focused chunk's strip (roving tabindex takes over from there).
@@ -381,8 +441,15 @@ export function BookPage({
     if (!pendingReorder.current) return;
     pendingReorder.current = false;
     setBackStack([]);
-    const first = findUnreviewed(flat, review.stateOf, 0, 1);
-    moveCursor(first ? first.index : 0);
+    const jumpTarget = pendingJumpChunk.current;
+    pendingJumpChunk.current = undefined;
+    const jumpIndex = jumpTarget ? flat.firstIndexByChunkId.get(jumpTarget) : undefined;
+    if (jumpIndex !== undefined) {
+      moveCursor(jumpIndex);
+    } else {
+      const first = findUnreviewed(flat, review.stateOf, 0, 1);
+      moveCursor(first ? first.index : 0);
+    }
     say(`Reading order: ${configSummary(bookResponse.config)}.`);
   }, [bookResponse]);
 
@@ -435,6 +502,7 @@ export function BookPage({
     toggleDefinitionsCurrent,
     focusNeighborStrip,
     goBack,
+    stepPiece,
   });
 
   useSeenTracking({ scrollRef, virtualizer, flat, stateOf: review.stateOf, setSeen: review.setSeen });
@@ -714,6 +782,9 @@ export function BookPage({
                         else stripEls.current.delete(chunkId);
                       }}
                       reencounter={row.kind === 'chunk' && reencounter?.chunkId === row.chunk.id ? reencounter.state : undefined}
+                      piece={row.kind === 'chunk' ? fileOrder.get(row.chunk.id) : undefined}
+                      pieceMenuOpen={row.kind === 'chunk' && pieceMenu?.chunkId === row.chunk.id}
+                      onOpenPieceMenu={(chunkId, anchorEl) => setPieceMenu({ chunkId, anchorEl })}
                     />
                   </div>
                 );
@@ -727,6 +798,23 @@ export function BookPage({
       </div>
       {toastVisible && announce.msg && <div className="toast">{announce.msg}</div>}
       {overlayOpen && <ShortcutOverlay onClose={() => setOverlayOpen(false)} />}
+      {pieceMenu &&
+        (() => {
+          const piece = fileOrder.get(pieceMenu.chunkId);
+          const chunk = chunksById.get(pieceMenu.chunkId);
+          if (!piece || !chunk) return null;
+          const model = pieceMenuModel(chunk.file, piece, chunksById, review.stateOf, pieceMenu.chunkId);
+          return (
+            <FilePiecesMenu
+              model={model}
+              anchorEl={pieceMenu.anchorEl}
+              onJump={jumpToPiece}
+              onOpenFiles={() => openInFilesView(piece.fileChunkIdsInOrder[0]!)}
+              onMarkAll={() => markAllPieces(chunk.file, piece.fileChunkIdsInOrder)}
+              onClose={() => setPieceMenu(null)}
+            />
+          );
+        })()}
     </div>
   );
 }

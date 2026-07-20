@@ -5,6 +5,7 @@ import { DefinitionPanel } from './DefinitionPanel.js';
 import { DiffView } from './DiffView.js';
 import { NeighborStrip } from './NeighborStrip.js';
 import type { NeighborChip } from './neighbor-strip-logic.js';
+import type { FilePiece } from './piece-nav-logic.js';
 import { chunkSize, chunkTitle, type Row } from './rows.js';
 
 /** Section-header action: batch-mark the remaining stubs, or undo the batch just made. */
@@ -41,6 +42,9 @@ export function RowView({
   onExitStrip,
   registerStripEl,
   reencounter,
+  piece,
+  pieceMenuOpen,
+  onOpenPieceMenu,
 }: {
   row: Row;
   data: BookResponse;
@@ -82,6 +86,10 @@ export function RowView({
   registerStripEl: (chunkId: string, el: HTMLElement | null) => void;
   /** A brief post-jump highlight distinct from the focus ring — reviewed = "still reviewed". */
   reencounter?: 'reviewed' | 'unreviewed';
+  /** This chunk's position among its file's pieces (spec 06 slice 2); undefined for non-chunk rows. */
+  piece?: FilePiece;
+  pieceMenuOpen?: boolean;
+  onOpenPieceMenu?: (chunkId: string, anchorEl: HTMLElement) => void;
 }) {
   if (row.kind === 'section') {
     const stats = sectionStats.get(row.id);
@@ -174,6 +182,24 @@ export function RowView({
             <span className="chunk-title">{chunkTitle(chunk)}</span>
             {/* Cross-file provenance for a chapter occurrence whose chunk lives outside the anchor file. */}
             {row.occurrence.label && <span className="chunk-from">from {row.occurrence.label}</span>}
+            {piece &&
+              (piece.total > 1 ? (
+                <button
+                  type="button"
+                  className="piece-indicator"
+                  aria-haspopup="menu"
+                  aria-expanded={pieceMenuOpen ?? false}
+                  title={`Piece ${piece.n} of ${piece.total} in this file — open the pieces menu`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onOpenPieceMenu?.(chunk.id, e.currentTarget);
+                  }}
+                >
+                  piece {piece.n} / {piece.total}
+                </button>
+              ) : (
+                <span className="piece-indicator only-piece">only piece</span>
+              ))}
             <span className={`badge kind-${chunk.kind}`}>{chunk.kind}</span>
             {lowSignal && <span className="badge generated">{lowSignalReason(chunk)}</span>}
             <span className="chunk-size">

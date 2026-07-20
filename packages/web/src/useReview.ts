@@ -11,10 +11,14 @@ export interface MarkEntry {
 export interface Review {
   states: Record<string, ChunkReview>;
   stateOf: (chunkId: string) => ChunkReviewState;
+  /** The full ChunkReview (unseen default) — snapshotted before a batch so undo restores exact values. */
+  reviewOf: (chunkId: string) => ChunkReview;
   /** Explicit mark/unmark — persisted immediately. */
   setState: (chunkId: string, state: ChunkReviewState, markedUnseen?: boolean) => void;
-  /** Batch acknowledgment / undo — one local update and one immediate flush for the group. */
+  /** Batch acknowledgment — one local update and one immediate flush for the group. */
   setMany: (entries: MarkEntry[]) => void;
+  /** Undo a batch: restore each chunk's exact prior ChunkReview (state, markedUnseen, expanded). */
+  restoreMany: (entries: { chunkId: string; review: ChunkReview }[]) => void;
   /** Automatic seen-tracking — batched and persisted on a debounce. */
   setSeen: (chunkIds: string[]) => void;
   /** Stub expand/collapse (low-signal chunks only) — persisted on a debounce. */
@@ -90,6 +94,7 @@ export function useReview(initial: ReviewFile): Review {
   return {
     states,
     stateOf: (chunkId) => states[chunkId]?.state ?? 'unseen',
+    reviewOf: (chunkId) => states[chunkId] ?? { state: 'unseen' },
     setState: (chunkId, state, markedUnseen) => {
       applyLocal([{ chunkId, state, ...(markedUnseen ? { markedUnseen } : {}) }]);
       queue(chunkId, { state, ...(markedUnseen ? { markedUnseen } : {}) });
@@ -98,6 +103,23 @@ export function useReview(initial: ReviewFile): Review {
     setMany: (entries) => {
       applyLocal(entries);
       for (const { chunkId, ...fields } of entries) queue(chunkId, fields);
+      flush();
+    },
+    restoreMany: (entries) => {
+      // Restore the exact snapshot locally (this is the only path that can return a field to absent);
+      // the queued patch re-asserts the set fields the wire protocol carries.
+      setStates((prev) => {
+        const next = { ...prev };
+        for (const { chunkId, review } of entries) next[chunkId] = { ...review };
+        return next;
+      });
+      for (const { chunkId, review } of entries) {
+        queue(chunkId, {
+          state: review.state,
+          ...(review.markedUnseen ? { markedUnseen: true } : {}),
+          ...(review.expanded ? { expanded: true } : {}),
+        });
+      }
       flush();
     },
     setSeen: (chunkIds) => {
