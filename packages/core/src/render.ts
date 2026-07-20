@@ -38,7 +38,8 @@ export function unifiedChunkLines(chunk: Chunk, contents: FileContents | undefin
   const hunks = [...chunk.hunks].sort((a, b) =>
     deleted ? a.baseStart - b.baseStart : a.headStart - b.headStart,
   );
-  for (const h of hunks) {
+  for (let hi = 0; hi < hunks.length; hi++) {
+    const h = hunks[hi]!;
     const [start, count] = deleted ? [h.baseStart, h.baseCount] : [h.headStart, h.headCount];
     // For zero-count hunks, start is the line *before* the change point (unified diff semantics)
     const beforeEnd = count > 0 ? start - 1 : start;
@@ -56,7 +57,12 @@ export function unifiedChunkLines(chunk: Chunk, contents: FileContents | undefin
       emitted = start + i;
     }
 
-    pushContext(beforeEnd + count + 1, beforeEnd + count + context);
+    // Trailing context must not reach into the next hunk's changed lines. A chunk can have a hole
+    // (a nested symbol carved into its own chunk leaves a gap in this chunk's hunks); without this
+    // clamp the hole's far side gets emitted as context here AND as add/del in the next hunk.
+    const next = hunks[hi + 1];
+    const nextStart = next ? (deleted ? next.baseStart : next.headStart) : Infinity;
+    pushContext(beforeEnd + count + 1, Math.min(beforeEnd + count + context, nextStart - 1));
   }
   return out;
 }
