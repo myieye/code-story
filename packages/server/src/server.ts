@@ -55,6 +55,10 @@ import {
   loadContextStore,
   persistContextPayload,
 } from './context-store.js';
+import { createGlueInvoker, type GlueSpawn } from './glue/invoker.js';
+import { GlueLedger, glueLedgerFilePath } from './glue/ledger.js';
+import { createModelPolicy } from './glue/model-policy.js';
+import { GlueScheduler } from './glue/scheduler.js';
 import { JobRuntime } from './job-runtime.js';
 import { diffRange, fileAt, listTree, originUrl, type ResolvedRange, rootCommit } from './git.js';
 import { runNarrationJob } from './narration-job.js';
@@ -128,6 +132,12 @@ export interface ServerOptions {
   storyConfig?: StoryConfig;
   /** Auto-run the ordering job on compile when no fresh overlay exists (default true; #71). */
   autoOrder?: boolean;
+  /**
+   * Master switch for the AI glue pipeline (spec 07). `autoOrder` aliases to it
+   * (`glue ?? autoOrder ?? true`), so a test passing `autoOrder:false` disables all glue auto-kicks
+   * with zero edits. No glue task auto-kicks yet (G2/G3), so this is wiring only in G1.
+   */
+  glue?: boolean;
   /** Model for the auto-kicked ordering job and the default for POST /api/order-job. */
   orderModel?: string;
   /** Test seam: replaces the claude subprocess the order job spawns. */
@@ -136,6 +146,8 @@ export interface ServerOptions {
   narrationInvoke?: (prompt: string, model: string, cwd: string) => Promise<string>;
   /** Byte cap for the context payload store (default ~2 MB); a tiny value exercises cap behavior. */
   contextStoreCapBytes?: number;
+  /** Test seam: replaces the raw `claude -p` spawn the glue invoker drives. */
+  glueInvoke?: GlueSpawn;
 }
 
 export interface RunningServer {
@@ -278,6 +290,7 @@ export function startServer(options: ServerOptions, requestedPort = 0): Promise<
         narrationJobFile: string;
         contextFile: string;
         contextJobFile: string;
+        glueLedgerFile: string;
       }>
     | undefined;
   const getStore = () =>
@@ -295,6 +308,7 @@ export function startServer(options: ServerOptions, requestedPort = 0): Promise<
           narrationJobFile: narrationJobFilePath(dataHome, repoId, options.range),
           contextFile: contextFilePath(dataHome, repoId, options.range),
           contextJobFile: contextJobFilePath(dataHome, repoId, options.range),
+          glueLedgerFile: glueLedgerFilePath(dataHome, repoId, options.range),
         };
       })(),
       () => (storeCache = undefined),
@@ -320,7 +334,30 @@ export function startServer(options: ServerOptions, requestedPort = 0): Promise<
   // Serializes saves so concurrent PATCHes never interleave the write-temp/rename pair.
   let saveChain = Promise.resolve();
 
+  // The AI glue pipeline (spec 07). `autoOrder:false` aliases to `glue:false` so the existing test
+  // corpus disables all glue auto-kicks unchanged. No tasks register in G1 — the scheduler exists
+  // for `/api/glue` (status + ledger spend); the first native tasks land in G2/G3.
+  const glueEnabled = options.glue ?? options.autoOrder ?? true;
+  let glueCache: Promise<{ scheduler: GlueScheduler; ledger: GlueLedger }> | undefined;
+  const getGlue = () =>
+    (glueCache ??= uncacheOnError(
+      (async () => {
+        const store = await getStore();
+        const policy = createModelPolicy();
+        const ledger = new GlueLedger(store.glueLedgerFile);
+        const invoker = createGlueInvoker({ policy, ledger, cwd: store.dataHome, spawn: options.glueInvoke });
+        const scheduler = new GlueScheduler({ invoker, ledger, policy, enabled: glueEnabled });
+        return { scheduler, ledger };
+      })(),
+      () => (glueCache = undefined),
+    ));
+
   app.get('/api/health', (c) => c.json({ ok: true, name: 'code-story', core: CORE_VERSION }));
+
+  app.get('/api/glue', async (c) => {
+    const { scheduler } = await getGlue();
+    return c.json(await scheduler.status());
+  });
 
   app.get('/api/diff', async (c) => {
     return c.json({ ...options.range, files: await getDiff() });
