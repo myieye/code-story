@@ -1196,3 +1196,188 @@ button.piece-indicator[aria-expanded='true'] {
 .ai-popover-line {
   color: #4a463f;
 }
+
+/* ---- Deferral (spec 06 slice 6) ---------------------------------------------------------- */
+
+/* The Defer button sits beside Mark reviewed; disabled once a chunk is reviewed (nothing to park). */
+.defer-button {
+  color: #6b675f;
+}
+.defer-button:hover:not(:disabled) {
+  border-color: #b58a3c;
+  color: #8a5a12;
+}
+.defer-button[aria-expanded='true'] {
+  border-color: #b58a3c;
+  background: #fbf3e2;
+  color: #8a5a12;
+}
+
+/* The inline Defer popover grows the row (never a floating layer) — the DefinitionPanel precedent. */
+.defer-popover {
+  margin: 6px 0 4px;
+  padding: 10px 12px;
+  border: 1px solid #e2dccb;
+  border-radius: 8px;
+  background: #fbf9f3;
+}
+.defer-popover-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #5c584f;
+  margin-bottom: 6px;
+}
+.defer-close {
+  border: none;
+  background: none;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  color: #8a857b;
+}
+.defer-line-range {
+  font-size: 11.5px;
+  color: #8a5a12;
+  margin-bottom: 6px;
+}
+.defer-textarea {
+  width: 100%;
+  min-height: 52px;
+  resize: vertical;
+  box-sizing: border-box;
+  padding: 6px 8px;
+  border: 1px solid #d8d2c5;
+  border-radius: 6px;
+  font: inherit;
+  font-size: 12.5px;
+}
+.defer-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+.defer-split {
+  display: inline-flex;
+}
+.defer-primary {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+.defer-caret {
+  margin-left: -1px;
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+  padding-left: 7px;
+  padding-right: 7px;
+}
+.defer-inline {
+  margin-top: 8px;
+  align-self: flex-start;
+}
+
+/* Passive progress-cluster count (position 4) — click scrolls to the Deferred section, never a nag. */
+.deferred-cluster {
+  border: none;
+  background: none;
+  padding: 0 2px;
+  color: #8a5a12;
+  cursor: pointer;
+}
+.deferred-cluster:hover {
+  text-decoration: underline;
+}
+
+/* Deferred-section cards. Greyed once the chunk is marked reviewed (resolved). */
+.deferred-card {
+  max-width: 1120px;
+  margin: 6px auto;
+  padding: 10px 16px;
+  border: 1px solid #e2dccb;
+  border-radius: 8px;
+  background: #fbf9f3;
+}
+.deferred-card.resolved {
+  opacity: 0.55;
+}
+.deferred-card-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.deferred-card-head .spacer {
+  flex: 1;
+}
+.deferred-goto {
+  font-family: Consolas, monospace;
+  font-weight: 600;
+}
+.deferral-list {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.deferral-item-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 12.5px;
+}
+.deferral-prompt {
+  flex: 1;
+  color: #4a463f;
+}
+.deferral-remove,
+.inline-deferral-remove {
+  color: #a05252;
+}
+.line-range-badge {
+  background: #f2ead8;
+  color: #8a5a12;
+}
+.deferral-answer {
+  margin-top: 4px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: #4a463f;
+}
+.deferral-answer.answering {
+  font-style: italic;
+  color: #8a857b;
+}
+.deferral-answer.failed {
+  color: #a05252;
+}
+.deferred-card-diff {
+  margin-top: 8px;
+}
+
+/* Inline AI answer (answer-in-place) — a sibling region below the diff, never inside the CM6 view. */
+.inline-deferrals {
+  margin-top: 6px;
+  border-top: 1px dashed #e2dccb;
+  padding-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.inline-deferral-prompt {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 12px;
+  color: #6b675f;
+}
+.inline-deferral-prompt .link-button {
+  margin-left: auto;
+}
+
+.outline-item.deferred .outline-path {
+  color: #8a5a12;
+}

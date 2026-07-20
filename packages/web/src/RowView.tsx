@@ -1,12 +1,21 @@
-import { type Chunk, type ChunkReviewState, isLowSignal, lowSignalReason } from '@code-story/core';
+import { type Chunk, type ChunkReviewState, type Deferral, type LineRange, isLowSignal, lowSignalReason } from '@code-story/core';
+import type { EditorView } from '@codemirror/view';
+import { useCallback, useRef, useState } from 'react';
 import type { BookResponse } from './api.js';
 import { affordanceLabel, hasDefinitions, type PayloadState } from './context-panel-logic.js';
+import { selectionLineRange, splitButtonModel } from './defer-logic.js';
 import { DefinitionPanel } from './DefinitionPanel.js';
 import { DiffView } from './DiffView.js';
 import { NeighborStrip } from './NeighborStrip.js';
 import type { NeighborChip } from './neighbor-strip-logic.js';
 import type { FilePiece } from './piece-nav-logic.js';
 import { chunkSize, chunkTitle, type Row } from './rows.js';
+
+/** The action a Defer popover submits (spec 06 slice 6). */
+export interface DeferSubmit {
+  kind: 'note' | 'ai';
+  inline: boolean;
+}
 
 /** Section-header action: batch-confirm the remaining stubs/auto-read chunks, or undo the batch just made. */
 export type SectionAck =
@@ -66,6 +75,18 @@ export function RowView({
   piece,
   pieceMenuOpen,
   onOpenPieceMenu,
+  deferralsArriving,
+  deferOpen,
+  deferText,
+  deferLineRange,
+  onDeferOpen,
+  onDeferClose,
+  onDeferTextChange,
+  onDeferSubmit,
+  deferStub,
+  inlineDeferrals,
+  onRetryDeferral,
+  onRemoveDeferral,
 }: {
   row: Row;
   data: BookResponse;
@@ -127,7 +148,31 @@ export function RowView({
   piece?: FilePiece;
   pieceMenuOpen?: boolean;
   onOpenPieceMenu?: (chunkId: string, anchorEl: HTMLElement) => void;
+  /** ai answers still arriving in Deferred (spec 06 slice 6) — the extra done-banner line when > 0. */
+  deferralsArriving?: number;
+  /** Defer popover (spec 06 slice 6): is it open for this chunk, and its captured selection to show. */
+  deferOpen?: boolean;
+  deferText?: string;
+  deferLineRange?: LineRange;
+  /** Open the inline Defer popover; RowView passes up the CM6 selection it captured, if any. */
+  onDeferOpen?: (chunkId: string, lineRange: LineRange | undefined) => void;
+  onDeferClose?: () => void;
+  onDeferTextChange?: (text: string) => void;
+  onDeferSubmit?: (chunk: Chunk, action: DeferSubmit) => void;
+  /** When set, the collapsed stub shows this deferral copy instead of the generic collapsed note. */
+  deferStub?: string;
+  /** Inline ai deferrals (`inline:true`) for this chunk — rendered below the diff, never inside CM6. */
+  inlineDeferrals?: Deferral[];
+  onRetryDeferral?: (deferral: Deferral) => void;
+  onRemoveDeferral?: (id: string) => void;
 }) {
+  const diffViewRef = useRef<EditorView | null>(null);
+  const captureViewReady = useCallback((view: EditorView | null) => {
+    diffViewRef.current = view;
+  }, []);
+  const [caretOpen, setCaretOpen] = useState(false);
+
+  if (row.kind === 'deferred-card') return null; // rendered by DeferredCard in BookPage
   if (row.kind === 'section') {
     const stats = sectionStats.get(row.id);
     return (
@@ -179,6 +224,11 @@ export function RowView({
               during review — none {interactions === 1 ? 'was' : 'were'} individually verified.
             </p>
           )}
+          {deferralsArriving !== undefined && deferralsArriving > 0 && (
+            <p className="done-provenance">
+              {deferralsArriving} AI answer{deferralsArriving === 1 ? '' : 's'} still arriving in Deferred.
+            </p>
+          )}
           <table className="done-table">
             <tbody>
               {data.book.sections.map((section) => {
@@ -219,6 +269,28 @@ export function RowView({
   const { chunk } = row;
   const size = chunkSize(chunk);
   const lowSignal = isLowSignal(chunk);
+  const split = splitButtonModel(deferText ?? '');
+
+  // Opening Defer captures any non-empty CM6 selection as a descriptive line range (spec 06 slice 6).
+  const toggleDefer = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (deferOpen) {
+      onDeferClose?.();
+      return;
+    }
+    const view = diffViewRef.current;
+    let range: LineRange | undefined;
+    if (view) {
+      const sel = view.state.selection.main;
+      if (!sel.empty) {
+        const fromLine = view.state.doc.lineAt(sel.from).number;
+        const toLine = view.state.doc.lineAt(sel.to).number;
+        range = selectionLineRange(fromLine, toLine, data.diffs[chunk.id] ?? []);
+      }
+    }
+    setCaretOpen(false);
+    onDeferOpen?.(chunk.id, range);
+  };
   const classes = ['chunk', `state-${state}`];
   if (autoRead) classes.push('autoread');
   if (justReviewed) classes.push('just-reviewed');
@@ -291,7 +363,92 @@ export function RowView({
             >
               {state === 'reviewed' ? '✓ Reviewed' : autoRead ? 'Auto-read — click to confirm' : 'Mark reviewed'}
             </button>
+            {/* Defer to the end — a note or a background-AI question (spec 06 slice 6). */}
+            <button
+              type="button"
+              className="review-toggle defer-button"
+              disabled={state === 'reviewed'}
+              aria-expanded={deferOpen ?? false}
+              title={state === 'reviewed' ? 'Already reviewed — unmark first' : 'Set this chunk aside for the end — with a note or an AI question'}
+              onClick={toggleDefer}
+            >
+              Defer
+            </button>
           </div>
+          {deferOpen && (
+            <div
+              className="defer-popover"
+              role="group"
+              aria-label="Defer this chunk"
+              onClick={(e) => e.stopPropagation()}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') {
+                  e.stopPropagation();
+                  onDeferClose?.();
+                }
+              }}
+            >
+              <div className="defer-popover-head">
+                <span>Defer this chunk to the end</span>
+                <button className="defer-close" aria-label="Close" onClick={() => onDeferClose?.()}>
+                  ×
+                </button>
+              </div>
+              {deferLineRange && (
+                <div className="defer-line-range">
+                  Deferring lines {deferLineRange.start}–{deferLineRange.end}
+                </div>
+              )}
+              <textarea
+                className="defer-textarea"
+                autoFocus
+                value={deferText ?? ''}
+                placeholder="Note to yourself, or a question for AI…"
+                onChange={(e) => onDeferTextChange?.(e.currentTarget.value)}
+                onKeyDown={(e) => {
+                  if ((e.metaKey || e.ctrlKey) && e.key === 'Enter' && !split.primaryDisabled) {
+                    e.preventDefault();
+                    onDeferSubmit?.(chunk, { kind: 'ai', inline: false });
+                  }
+                }}
+              />
+              <div className="defer-actions">
+                <span className="defer-split">
+                  <button
+                    type="button"
+                    className="bar-button defer-primary"
+                    disabled={split.primaryDisabled}
+                    onClick={() => onDeferSubmit?.(chunk, { kind: 'ai', inline: false })}
+                  >
+                    {split.primaryLabel}
+                  </button>
+                  <button
+                    type="button"
+                    className="bar-button defer-caret"
+                    aria-haspopup="true"
+                    aria-expanded={caretOpen}
+                    aria-label="More AI options"
+                    onClick={() => setCaretOpen((v) => !v)}
+                  >
+                    ▾
+                  </button>
+                </span>
+                <button type="button" className="bar-button defer-note" onClick={() => onDeferSubmit?.(chunk, { kind: 'note', inline: false })}>
+                  {split.noteLabel}
+                </button>
+              </div>
+              {caretOpen && (
+                <button
+                  type="button"
+                  className="bar-button defer-inline"
+                  disabled={split.primaryDisabled}
+                  onClick={() => onDeferSubmit?.(chunk, { kind: 'ai', inline: true })}
+                >
+                  {split.inlineLabel}
+                </button>
+              )}
+            </div>
+          )}
           {isCursor && neighborChips && neighborChips.length > 0 && (
             <NeighborStrip
               chips={neighborChips}
@@ -308,7 +465,14 @@ export function RowView({
           )}
           {collapsed ? (
             <div className="chunk-collapsed-note">
-              {lowSignal ? (
+              {deferStub ? (
+                <>
+                  {deferStub}{' '}
+                  <button className="link-button" onClick={() => onExpand(chunk)}>
+                    Show diff
+                  </button>
+                </>
+              ) : lowSignal ? (
                 <>
                   collapsed ({lowSignalReason(chunk)}) —{' '}
                   <button className="link-button" onClick={() => onExpand(chunk)}>
@@ -321,7 +485,33 @@ export function RowView({
               )}
             </div>
           ) : (
-            <DiffView file={chunk.file} lines={data.diffs[chunk.id] ?? []} />
+            <DiffView file={chunk.file} lines={data.diffs[chunk.id] ?? []} onViewReady={captureViewReady} />
+          )}
+          {inlineDeferrals && inlineDeferrals.length > 0 && (
+            <section className="inline-deferrals" tabIndex={-1} aria-label="AI answers in place">
+              {inlineDeferrals.map((d) => (
+                <div key={d.id} className="inline-deferral">
+                  <div className="inline-deferral-prompt">
+                    <span className="badge ai-badge">AI</span> asked: {d.text || '(no question)'}
+                    <button className="link-button inline-deferral-remove" onClick={() => onRemoveDeferral?.(d.id)} title="Discard this answer">
+                      ✕
+                    </button>
+                  </div>
+                  {d.answerStatus === 'done' && d.answer ? (
+                    <div className="deferral-answer">{d.answer}</div>
+                  ) : d.answerStatus === 'failed' ? (
+                    <div className="deferral-answer failed">
+                      AI couldn't answer this — the prompt is saved.{' '}
+                      <button className="link-button" onClick={() => onRetryDeferral?.(d)}>
+                        Retry
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="deferral-answer answering">AI answering…</div>
+                  )}
+                </div>
+              ))}
+            </section>
           )}
           {hasDefinitions(contextPayload) && (
             <div className="definitions-affordance">
@@ -362,6 +552,8 @@ export function estimateRowHeight(
 ): number {
   if (row.kind === 'section') return 46 + (aiLines?.hasSectionLine(row.id) ? AI_LINE_HEIGHT : 0);
   if (row.kind === 'end') return 160;
+  // A deferred card starts diff-collapsed; measureElement corrects once its answers/notes render.
+  if (row.kind === 'deferred-card') return 120;
   const chunkLine = aiLines?.hasChunkLine(row.sectionId, row.chunk.id) ? AI_LINE_HEIGHT : 0;
   if (isCollapsed(row.chunk)) return 76 + chunkLine;
   const lines = data.diffs[row.chunk.id]?.length ?? 1;

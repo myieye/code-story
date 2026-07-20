@@ -37,6 +37,7 @@ export function OutlineSidebar({
   currentOccurrenceKey,
   onScreenSectionIds,
   onJump,
+  deferred,
 }: {
   data: BookResponse;
   flat: FlatBook;
@@ -48,6 +49,8 @@ export function OutlineSidebar({
   /** Sections with any chunk in the feed's virtual window — the faint viewport-range rail. */
   onScreenSectionIds: ReadonlySet<string>;
   onJump: (cursorIndex: number) => void;
+  /** The trailing web-only Deferred section (spec 06 slice 6) — absent when nothing is deferred. */
+  deferred?: { count: number; current: boolean; onJump: () => void };
 }) {
   const [manual, setManual] = useState<ReadonlySet<string>>(new Set());
   const autoRef = useRef<string | undefined>(undefined);
@@ -136,6 +139,14 @@ export function OutlineSidebar({
           </div>
         );
       })}
+      {deferred && (
+        <div className={deferred.current ? 'outline-item deferred current' : 'outline-item deferred'} {...(deferred.current ? { 'aria-current': 'true' as const } : {})}>
+          <button className="outline-row" title="Deferred chunks" onClick={deferred.onJump}>
+            <span className="outline-path">⏲ Deferred</span>
+            <span className="outline-count">{deferred.count}</span>
+          </button>
+        </div>
+      )}
     </nav>
   );
 }

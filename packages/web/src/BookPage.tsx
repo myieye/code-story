@@ -3,16 +3,36 @@ import {
   type ChunkReview,
   type ChunkReviewState,
   DEFAULT_STORY_CONFIG,
+  type Deferral,
+  type DeferralRequest,
   FILE_MODE_STORY_CONFIG,
   isFileModeConfig,
   isLowSignal,
+  type LineRange,
   type ReviewFile,
   type StoryConfig,
   storyConfigKey,
 } from '@code-story/core';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { type BookResponse, fetchBook, type NarrationResponse, type OrderResponse } from './api.js';
+import {
+  type BookResponse,
+  deleteDeferral,
+  fetchBook,
+  fetchDeferrals,
+  type NarrationResponse,
+  type OrderResponse,
+  postDeferral,
+} from './api.js';
+import {
+  answersStillArriving,
+  deferCluster,
+  deferredChunkIds,
+  newlyAnswered,
+  shouldPoll,
+  stubCopy,
+} from './defer-logic.js';
+import { DeferredCard } from './DeferredCard.js';
 import { configSummary } from './order-options-logic.js';
 import { OrderOptionsControl } from './OrderOptionsControl.js';
 import { isAutoReadReview, OutlineSidebar } from './OutlineSidebar.js';
@@ -32,7 +52,7 @@ import {
   sectionLabel,
   segmentModel,
 } from './progress-logic.js';
-import { chunkSize, chunkTitle, flattenBook, type Row } from './rows.js';
+import { chunkSize, chunkTitle, DEFERRED_SECTION_ID, flattenBook, type Row } from './rows.js';
 import { ShortcutOverlay } from './ShortcutOverlay.js';
 import { affordanceLabel, hasDefinitions, type PayloadState } from './context-panel-logic.js';
 import { useBookKeymap } from './useBookKeymap.js';
@@ -51,13 +71,20 @@ export function BookPage({
   initialReview,
   initialOrder,
   initialNarration,
+  initialDeferrals,
 }: {
   data: BookResponse;
   initialReview: ReviewFile;
   initialOrder: OrderResponse;
   initialNarration: NarrationResponse;
+  initialDeferrals: Deferral[];
 }) {
   const review = useReview(initialReview);
+  const [deferrals, setDeferrals] = useState<Deferral[]>(initialDeferrals);
+  // The open Defer popover: which chunk, its draft text, and any captured CM6 selection.
+  const [deferState, setDeferState] = useState<{ chunkId: string; text: string; lineRange?: LineRange } | null>(null);
+  // Which deferred cards have their (lazy, heavy) diff mounted.
+  const [deferredDiffShown, setDeferredDiffShown] = useState<ReadonlySet<string>>(new Set());
   // The book currently displayed (config-swappable, #114). Starts at the launch-config response the
   // App fetched; changing the reading order re-fetches /api/book with the new axes and swaps it in.
   const [bookResponse, setBookResponse] = useState(data);
@@ -72,7 +99,22 @@ export function BookPage({
     [narration],
   );
 
-  const flat = useMemo(() => flattenBook(bookData.book, bookData.chunks), [bookData]);
+  // Non-inline deferrals define the pinned Deferred section; inline ones render in place. Both maps
+  // and the ordered id list drive the synthetic section injected into the flat book after compile.
+  const deferredIds = useMemo(() => deferredChunkIds(deferrals), [deferrals]);
+  const deferralsByChunk = useMemo(() => {
+    const deferred = new Map<string, Deferral[]>();
+    const inline = new Map<string, Deferral[]>();
+    for (const d of deferrals) {
+      const target = d.inline ? inline : deferred;
+      const list = target.get(d.chunkId);
+      if (list) list.push(d);
+      else target.set(d.chunkId, [d]);
+    }
+    return { deferred, inline };
+  }, [deferrals]);
+
+  const flat = useMemo(() => flattenBook(bookData.book, bookData.chunks, deferredIds), [bookData, deferredIds]);
   const chunksById = useMemo(() => new Map(bookData.chunks.map((c) => [c.id, c])), [bookData]);
   const fileOrder = useMemo(() => fileOrderIndex(bookData.chunks), [bookData]);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -405,6 +447,82 @@ export function BookPage({
     setLastBatch(null);
   };
 
+  // ---- Deferral (spec 06 slice 6) ------------------------------------------------------------
+  const openDefer = (chunkId: string, lineRange: LineRange | undefined) => setDeferState({ chunkId, text: '', lineRange });
+  const closeDefer = () => setDeferState(null);
+  const changeDeferText = (text: string) => setDeferState((s) => (s ? { ...s, text } : s));
+
+  // POST optimistically (an ai record starts `running` so the poll + stub react immediately), then
+  // reconcile with the server's stored record. Deferring collapses the chunk in place and banks
+  // `seen` if it was unseen — it's held, not un-encountered.
+  const submitDefer = (chunk: Chunk, action: { kind: 'note' | 'ai'; inline: boolean }) => {
+    if (!deferState) return;
+    const req: DeferralRequest = {
+      id: crypto.randomUUID(),
+      chunkId: chunk.id,
+      kind: action.kind,
+      text: deferState.text,
+      ...(deferState.lineRange ? { lineRange: deferState.lineRange } : {}),
+      ...(action.inline ? { inline: true } : {}),
+    };
+    const optimistic: Deferral = {
+      ...req,
+      createdAt: new Date().toISOString(),
+      ...(action.kind === 'ai' ? { answerStatus: 'running' as const } : {}),
+    };
+    setDeferrals((ds) => [...ds, optimistic]);
+    closeDefer();
+    if (!action.inline) setCollapsed(chunk, true);
+    if (review.stateOf(chunk.id) === 'unseen') review.setSeen([chunk.id]);
+    postDeferral(req)
+      .then((stored) => setDeferrals((ds) => ds.map((d) => (d.id === stored.id ? stored : d))))
+      .catch(() => say('Could not defer this chunk — try again.'));
+    say(action.kind === 'note' ? 'Deferred to the end.' : action.inline ? 'Asking AI here.' : 'Deferred — AI is answering.');
+  };
+
+  const retryDeferral = (d: Deferral) => {
+    const req: DeferralRequest = {
+      id: d.id,
+      chunkId: d.chunkId,
+      kind: 'ai',
+      text: d.text,
+      ...(d.lineRange ? { lineRange: d.lineRange } : {}),
+      ...(d.inline ? { inline: true } : {}),
+    };
+    setDeferrals((ds) => ds.map((x) => (x.id === d.id ? { ...x, answerStatus: 'running', answer: undefined, answerError: undefined } : x)));
+    postDeferral(req)
+      .then((stored) => setDeferrals((ds) => ds.map((x) => (x.id === stored.id ? stored : x))))
+      .catch(() => say('Could not retry.'));
+  };
+
+  const removeDeferral = (id: string) => {
+    const removed = deferrals.find((d) => d.id === id);
+    setDeferrals((ds) => ds.filter((d) => d.id !== id));
+    void deleteDeferral(id).catch(() => undefined);
+    // Restore the chunk from its stub once its last deferred (non-inline) deferral is gone.
+    if (removed && !removed.inline) {
+      const stillDeferred = deferrals.some((d) => d.id !== id && d.chunkId === removed.chunkId && !d.inline);
+      const chunk = chunksById.get(removed.chunkId);
+      if (!stillDeferred && chunk) setCollapsed(chunk, false);
+    }
+  };
+
+  const goToChunk = (chunkId: string) => {
+    const idx = flat.firstIndexByChunkId.get(chunkId);
+    if (idx !== undefined) moveCursor(idx);
+  };
+
+  const scrollToDeferred = () => {
+    if (flat.deferredSectionRowIndex !== undefined) scrollToRow(flat.deferredSectionRowIndex);
+  };
+
+  const toggleDeferredDiff = (chunkId: string) =>
+    setDeferredDiffShown((s) => {
+      const next = new Set(s);
+      if (!next.delete(chunkId)) next.add(chunkId);
+      return next;
+    });
+
   // Follow a neighbor edge to its chunk: push the origin, move the cursor, and re-highlight the
   // target (reviewed = a free re-encounter glance — never a re-audit). The move is instant scroll,
   // so prefers-reduced-motion is satisfied by construction.
@@ -530,6 +648,28 @@ export function BookPage({
     const copy = completionToastCopy(titles, chaptersRemaining(sectionStats));
     if (copy) say(copy);
   }, [sectionStats]);
+
+  // Scoped, self-terminating poll (spec 06 slice 6): while any ai answer is pending, refresh the
+  // deferral store every ~10s; the effect tears the interval down the moment `shouldPoll` goes false.
+  const polling = shouldPoll(deferrals);
+  useEffect(() => {
+    if (!polling) return;
+    const t = window.setInterval(() => {
+      void fetchDeferrals()
+        .then((r) => setDeferrals(r.deferrals))
+        .catch(() => undefined);
+    }, 10000);
+    return () => window.clearInterval(t);
+  }, [polling]);
+
+  // Polite announce once per running→done transition — never a toast or modal (the reviewer deferred
+  // precisely to avoid interruption; the passive cluster count + this live-region are the whole signal).
+  const prevDeferralsRef = useRef(deferrals);
+  useEffect(() => {
+    const prev = prevDeferralsRef.current;
+    prevDeferralsRef.current = deferrals;
+    if (newlyAnswered(prev, deferrals) > 0) say('An AI answer is ready in Deferred.');
+  }, [deferrals]);
 
   // Grouping (View: Story vs Files) is derived from the config — file mode is the dependency-first +
   // tests-after combination (isFileModeConfig). The last chapter-mode config is remembered so toggling
@@ -707,6 +847,10 @@ export function BookPage({
   const frontier = useMemo(() => frontierCount(graph, review.stateOf, inBook), [graph, review.states, inBook]);
   const interactions = useMemo(() => interactionCount(graph, inBook), [graph, inBook]);
 
+  // Deferral surfacing (spec 06 slice 6): the passive cluster count and the done-banner arriving line.
+  const deferralCluster = useMemo(() => deferCluster(deferrals), [deferrals]);
+  const deferralsArriving = useMemo(() => answersStillArriving(deferrals), [deferrals]);
+
   // "Why this order?" copy, templated from the live config so it stays true after a runtime flip (#114).
   const whyCopy = whyThisOrderCopy(bookResponse.config, orderApplied, grouping === 'files');
 
@@ -780,6 +924,11 @@ export function BookPage({
                 ▸ Confirm
               </button>
             </span>
+          )}
+          {deferralCluster.deferredCount > 0 && (
+            <button className="bar-button deferred-cluster" title="Jump to the Deferred section" onClick={scrollToDeferred}>
+              · {deferralCluster.text}
+            </button>
           )}
           {compact ? (
             <button
@@ -906,6 +1055,11 @@ export function BookPage({
           currentOccurrenceKey={currentSection?.occurrenceKey}
           onScreenSectionIds={onScreenSectionIds}
           onJump={moveCursor}
+          deferred={
+            deferredIds.length > 0
+              ? { count: deferredIds.length, current: currentSection?.sectionId === DEFERRED_SECTION_ID, onJump: scrollToDeferred }
+              : undefined
+          }
         />
         <div
           className="outline-resizer"
@@ -925,13 +1079,33 @@ export function BookPage({
             <div style={{ height: virtualizer.getTotalSize(), position: 'relative' }}>
               {items.map((item) => {
                 const row = flat.rows[item.index]!;
-                return (
+                const wrap = (children: React.ReactNode) => (
                   <div
                     key={item.key}
                     data-index={item.index}
                     ref={virtualizer.measureElement}
                     style={{ position: 'absolute', top: 0, left: 0, width: '100%', transform: `translateY(${item.start}px)` }}
                   >
+                    {children}
+                  </div>
+                );
+                if (row.kind === 'deferred-card') {
+                  return wrap(
+                    <DeferredCard
+                      chunk={row.chunk}
+                      deferrals={deferralsByChunk.deferred.get(row.chunk.id) ?? []}
+                      diffLines={bookData.diffs[row.chunk.id] ?? []}
+                      reviewed={review.stateOf(row.chunk.id) === 'reviewed'}
+                      showDiff={deferredDiffShown.has(row.chunk.id)}
+                      onToggleDiff={() => toggleDeferredDiff(row.chunk.id)}
+                      onMarkReviewed={() => toggleChunkReviewed(row.chunk)}
+                      onRemove={removeDeferral}
+                      onRetry={retryDeferral}
+                      onGoToChunk={() => goToChunk(row.chunk.id)}
+                    />,
+                  );
+                }
+                return wrap(
                     <RowView
                       row={row}
                       data={bookData}
@@ -987,8 +1161,23 @@ export function BookPage({
                       piece={row.kind === 'chunk' ? fileOrder.get(row.chunk.id) : undefined}
                       pieceMenuOpen={row.kind === 'chunk' && pieceMenu?.chunkId === row.chunk.id}
                       onOpenPieceMenu={(chunkId, anchorEl) => setPieceMenu({ chunkId, anchorEl })}
-                    />
-                  </div>
+                      deferralsArriving={row.kind === 'end' ? deferralsArriving : 0}
+                      deferOpen={row.kind === 'chunk' && deferState?.chunkId === row.chunk.id}
+                      deferText={row.kind === 'chunk' && deferState?.chunkId === row.chunk.id ? deferState.text : ''}
+                      deferLineRange={row.kind === 'chunk' && deferState?.chunkId === row.chunk.id ? deferState.lineRange : undefined}
+                      onDeferOpen={openDefer}
+                      onDeferClose={closeDefer}
+                      onDeferTextChange={changeDeferText}
+                      onDeferSubmit={submitDefer}
+                      deferStub={
+                        row.kind === 'chunk' && deferralsByChunk.deferred.has(row.chunk.id)
+                          ? stubCopy(deferralsByChunk.deferred.get(row.chunk.id)!)
+                          : undefined
+                      }
+                      inlineDeferrals={row.kind === 'chunk' ? deferralsByChunk.inline.get(row.chunk.id) : undefined}
+                      onRetryDeferral={retryDeferral}
+                      onRemoveDeferral={removeDeferral}
+                    />,
                 );
               })}
             </div>
