@@ -15,7 +15,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { type BookResponse, fetchBook, type NarrationResponse, type OrderResponse } from './api.js';
 import { configSummary } from './order-options-logic.js';
 import { OrderOptionsControl } from './OrderOptionsControl.js';
-import { OutlineSidebar } from './OutlineSidebar.js';
+import { isAutoReadReview, OutlineSidebar } from './OutlineSidebar.js';
 import { computeNeighborChips } from './neighbor-strip-logic.js';
 import { FilePiecesMenu } from './FilePiecesMenu.js';
 import { fileOrderIndex, pieceMenuModel, stepPieceTarget } from './piece-nav-logic.js';
@@ -29,6 +29,7 @@ import { useBookKeymap } from './useBookKeymap.js';
 import { useContextPanels } from './useContextPanels.js';
 import { useNarration } from './useNarration.js';
 import { useOrderOverlay } from './useOrderOverlay.js';
+import { useReadTracking } from './useReadTracking.js';
 import { useReview } from './useReview.js';
 import { useSeenTracking } from './useSeenTracking.js';
 
@@ -125,8 +126,23 @@ export function BookPage({
     return stats;
   }, [flat, review.states]);
 
-  const batches = useMemo(() => batchableSections(flat, review.stateOf), [flat, review.states]);
+  const batches = useMemo(() => batchableSections(flat, review.reviewOf), [flat, review.states]);
   const pendingStubs = useMemo(() => pendingStubCount(flat, review.stateOf), [flat, review.states]);
+
+  // Auto-read chunks awaiting bulk confirm, and reviewed chunks that were confirmed from auto-read
+  // (spec 06 slice 3). Both keyed off distinct chunks — the ledger lives on the chunk, not occurrences.
+  const autoReadIds = useMemo(
+    () => [...flat.firstIndexByChunkId.keys()].filter((id) => isAutoReadReview(review.reviewOf(id))),
+    [flat, review.states],
+  );
+  const autoConfirmedCount = useMemo(
+    () =>
+      [...flat.firstIndexByChunkId.keys()].reduce((n, id) => {
+        const r = review.reviewOf(id);
+        return n + (r.state === 'reviewed' && r.reviewedVia === 'auto' ? 1 : 0);
+      }, 0),
+    [flat, review.states],
+  );
 
   const isCollapsed = (chunk: Chunk) =>
     collapsedOverride.get(chunk.id) ?? (isLowSignal(chunk) || (hideReviewed && review.stateOf(chunk.id) === 'reviewed'));
@@ -236,13 +252,17 @@ export function BookPage({
   // Mouse mark toggle (the per-chunk "Reviewed" button): marks an arbitrary chunk in place — not the
   // cursor — so it can't reuse markCursorReviewed. Marks reviewed, or unmarks (→ seen) if already so.
   const toggleChunkReviewed = (chunk: Chunk) => {
-    const prior = review.stateOf(chunk.id);
-    if (prior === 'reviewed') {
+    const prior = review.reviewOf(chunk.id);
+    if (prior.state === 'reviewed') {
+      // Unmark → seen; the autoRead evidence flag (if set) survives, so the glyph returns to ◑.
       review.setState(chunk.id, 'seen');
       say('Unmarked.');
       return;
     }
-    review.setState(chunk.id, 'reviewed', prior === 'unseen' || undefined);
+    // Confirming an auto-read chunk in place is an 'auto' promotion (it was read at reading pace, not
+    // re-inspected now); any other mark is an explicit act.
+    const via = isAutoReadReview(prior) ? 'auto' : 'explicit';
+    review.setState(chunk.id, 'reviewed', prior.state === 'unseen' || undefined, via);
     const remaining = distinctChunks - reviewedCount - 1;
     say(remaining <= 0 ? 'Reviewed. All chunks reviewed.' : `Reviewed. ${remaining} remaining.`);
   };
@@ -299,14 +319,30 @@ export function BookPage({
     if (!batch) return;
     setLastBatch({ sectionId, prior: batch.ids.map((id) => ({ chunkId: id, review: review.reviewOf(id) })) });
     review.setMany(
-      batch.ids.map((id) => ({
-        chunkId: id,
-        state: 'reviewed' as const,
-        ...(review.stateOf(id) === 'unseen' ? { markedUnseen: true } : {}),
-      })),
+      batch.ids.map((id) => {
+        const r = review.reviewOf(id);
+        return {
+          chunkId: id,
+          state: 'reviewed' as const,
+          ...(r.state === 'unseen' ? { markedUnseen: true } : {}),
+          // Auto-read chunks promote as 'auto' (read at reading pace); stubs stay explicit acks.
+          ...(r.autoRead ? { reviewedVia: 'auto' as const } : {}),
+        };
+      }),
     );
     const remaining = distinctChunks - reviewedCount - batch.ids.length;
-    say(remaining === 0 ? `${batch.ids.length} chunks marked reviewed. All chunks reviewed.` : `${batch.ids.length} chunks marked reviewed. ${remaining} remaining.`);
+    const verb = batch.readCount > 0 ? 'Confirmed' : 'Marked';
+    say(remaining === 0 ? `${verb} ${batch.ids.length} chunks reviewed. All chunks reviewed.` : `${verb} ${batch.ids.length} chunks reviewed. ${remaining} remaining.`);
+  };
+
+  // Confirm all book-wide auto-read chunks (progress-cluster + end-row bulk). One accountable act over
+  // evidence gathered at reading pace — goes through the batch path so Undo restores exact prior values.
+  const confirmAutoRead = () => {
+    if (autoReadIds.length === 0) return;
+    setLastBatch({ prior: autoReadIds.map((id) => ({ chunkId: id, review: review.reviewOf(id) })) });
+    review.setMany(autoReadIds.map((id) => ({ chunkId: id, state: 'reviewed' as const, reviewedVia: 'auto' as const })));
+    const remaining = distinctChunks - reviewedCount - autoReadIds.length;
+    say(remaining === 0 ? `Confirmed ${autoReadIds.length} chunks reviewed. All chunks reviewed.` : `Confirmed ${autoReadIds.length} chunks reviewed. ${remaining} remaining.`);
   };
 
   const undoBatch = () => {
@@ -506,6 +542,15 @@ export function BookPage({
   });
 
   useSeenTracking({ scrollRef, virtualizer, flat, stateOf: review.stateOf, setSeen: review.setSeen });
+  useReadTracking({
+    scrollRef,
+    virtualizer,
+    flat,
+    data: bookData,
+    reviewOf: review.reviewOf,
+    isCollapsed,
+    setAutoRead: review.setAutoRead,
+  });
 
   const items = virtualizer.getVirtualItems();
   const spy = useMemo(() => {
@@ -537,9 +582,13 @@ export function BookPage({
   }, [items, flat]);
 
   const sectionAckFor = (sectionId: string): SectionAck | undefined => {
-    if (lastBatch?.sectionId === sectionId) return { kind: 'undo', count: lastBatch.prior.length };
+    if (lastBatch?.sectionId === sectionId) {
+      return { kind: 'undo', count: lastBatch.prior.length, hadRead: lastBatch.prior.some((p) => p.review.autoRead === true) };
+    }
     const batch = batches.get(sectionId);
-    return batch ? { kind: 'mark', count: batch.ids.length, reason: batch.reason } : undefined;
+    return batch
+      ? { kind: 'mark', count: batch.ids.length, reason: batch.reason, readCount: batch.readCount, stubCount: batch.stubCount }
+      : undefined;
   };
 
   const cursorRowIndex = flat.chunkRowIndexes[cursor];
@@ -581,6 +630,14 @@ export function BookPage({
           <span className="progress-bar">
             <span className="progress-fill" style={{ width: `${distinctChunks ? (reviewedCount / distinctChunks) * 100 : 0}%` }} />
           </span>
+          {!done && autoReadIds.length > 0 && (
+            <span className="autoread-cluster">
+              · {autoReadIds.length} auto-read{' '}
+              <button className="bar-button autoread-confirm" title="Confirm every auto-read chunk as reviewed" onClick={confirmAutoRead}>
+                ▸ Confirm
+              </button>
+            </span>
+          )}
           {!done && frontier > 0 && (
             <span
               className="frontier-indicator"
@@ -707,7 +764,7 @@ export function BookPage({
           data={bookData}
           flat={flat}
           width={outlineWidth}
-          stateOf={review.stateOf}
+          reviewOf={review.reviewOf}
           sectionStats={sectionStats}
           currentSectionId={currentSection?.sectionId}
           currentOccurrenceKey={currentSection?.occurrenceKey}
@@ -745,6 +802,9 @@ export function BookPage({
                       totalOccurrences={totalOccurrences}
                       distinctChunks={distinctChunks}
                       reviewedCount={reviewedCount}
+                      autoReadCount={autoReadIds.length}
+                      autoConfirmedCount={autoConfirmedCount}
+                      onConfirmAutoRead={confirmAutoRead}
                       interactions={interactions}
                       sectionStats={sectionStats}
                       sectionAck={row.kind === 'section' ? sectionAckFor(row.id) : undefined}
@@ -753,6 +813,7 @@ export function BookPage({
                       onMarkSection={markSection}
                       onUndoBatch={undoBatch}
                       state={row.kind === 'chunk' ? review.stateOf(row.chunk.id) : 'unseen'}
+                      autoRead={row.kind === 'chunk' && isAutoReadReview(review.reviewOf(row.chunk.id))}
                       collapsed={row.kind === 'chunk' && isCollapsed(row.chunk)}
                       isCursor={item.index === cursorRowIndex}
                       registerEl={(el) => {
@@ -803,7 +864,7 @@ export function BookPage({
           const piece = fileOrder.get(pieceMenu.chunkId);
           const chunk = chunksById.get(pieceMenu.chunkId);
           if (!piece || !chunk) return null;
-          const model = pieceMenuModel(chunk.file, piece, chunksById, review.stateOf, pieceMenu.chunkId);
+          const model = pieceMenuModel(chunk.file, piece, chunksById, review.reviewOf, pieceMenu.chunkId);
           return (
             <FilePiecesMenu
               model={model}

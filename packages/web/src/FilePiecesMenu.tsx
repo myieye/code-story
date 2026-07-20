@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { STATE_GLYPH } from './OutlineSidebar.js';
+import { reviewGlyph, reviewGlyphClass } from './OutlineSidebar.js';
 import type { PieceMenuModel } from './piece-nav-logic.js';
 
 /**
@@ -100,8 +100,8 @@ export function FilePiecesMenu({
           {...(item.current ? { 'aria-current': 'true' as const } : {})}
           onClick={() => onJump(item.chunkId)}
         >
-          <span className={`state-dot ${item.state}`} aria-hidden="true">
-            {STATE_GLYPH[item.state]}
+          <span className={`state-dot ${reviewGlyphClass(item)}`} aria-hidden="true">
+            {reviewGlyph(item)}
           </span>
           <span className="piece-menu-label">
             piece {item.n} · {item.title}

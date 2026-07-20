@@ -46,16 +46,22 @@ describe('fileOrderIndex', () => {
 
 describe('pieceMenuModel', () => {
   const byId = new Map(chunks.map((c) => [c.id, c]));
-  const stateOf = (id: string): ChunkReviewState => (id === 'a1' ? 'reviewed' : id === 'a2' ? 'seen' : 'unseen');
+  const reviewOf = (id: string) =>
+    id === 'a1'
+      ? { state: 'reviewed' as ChunkReviewState }
+      : id === 'a2'
+        ? { state: 'seen' as ChunkReviewState, autoRead: true as const }
+        : { state: 'unseen' as ChunkReviewState };
 
-  it('lists pieces in file order with per-piece state, size, and the reviewed count', () => {
+  it('lists pieces in file order with per-piece state, auto-read, size, and the reviewed count', () => {
     const piece = fileOrderIndex(chunks).get('a2')!;
-    const model = pieceMenuModel('Foo.cs', piece, byId, stateOf, 'a2');
+    const model = pieceMenuModel('Foo.cs', piece, byId, reviewOf, 'a2');
     expect(model.file).toBe('Foo.cs');
     expect(model.total).toBe(3);
     expect(model.reviewed).toBe(1);
     expect(model.items.map((i) => i.chunkId)).toEqual(['a1', 'a2', 'a3']);
     expect(model.items.map((i) => i.state)).toEqual(['reviewed', 'seen', 'unseen']);
+    expect(model.items.map((i) => i.autoRead)).toEqual([false, true, false]);
     expect(model.items.find((i) => i.current)?.chunkId).toBe('a2');
     expect(model.items[0]).toMatchObject({ added: 1, removed: 0 });
   });

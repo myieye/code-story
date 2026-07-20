@@ -1,4 +1,4 @@
-import type { Book, Chunk, ChunkReviewState } from '@code-story/core';
+import type { Book, Chunk, ChunkReview, ChunkReviewState } from '@code-story/core';
 import { describe, expect, it } from 'vitest';
 import { batchableSections, cursorAfterMark, findUnreviewed, pendingStubCount } from './review-logic.js';
 import { flattenBook } from './rows.js';
@@ -39,6 +39,10 @@ function book(sections: Record<string, Chunk[]>): { flat: ReturnType<typeof flat
 }
 
 const states = (map: Record<string, ChunkReviewState>) => (id: string) => map[id] ?? 'unseen';
+/** reviewOf for batchableSections: a plain state map, plus optional per-chunk autoRead flags. */
+const reviews =
+  (map: Record<string, ChunkReviewState>, auto: Record<string, true> = {}) =>
+  (id: string): ChunkReview => ({ state: map[id] ?? 'unseen', ...(auto[id] ? { autoRead: true as const } : {}) });
 
 describe('findUnreviewed', () => {
   const { flat } = book({ s1: [chunk('a'), chunk('b'), chunk('c')] });
@@ -83,27 +87,42 @@ describe('batchableSections', () => {
       mixed: [chunk('m1', 'lockfile'), chunk('m2')],
       code: [chunk('c1')],
     });
-    const batches = batchableSections(flat, states({}));
+    const batches = batchableSections(flat, reviews({}));
     expect([...batches.keys()]).toEqual(['lockfile']);
-    expect(batches.get('lockfile')).toEqual({ ids: ['l1', 'l2'], reason: 'lockfile' });
+    expect(batches.get('lockfile')).toEqual({ ids: ['l1', 'l2'], reason: 'lockfile', readCount: 0, stubCount: 2 });
   });
 
   it('becomes batchable once the non-stub chunks are reviewed, and lists unique reasons', () => {
     const { flat } = book({ mixed: [chunk('m1', 'lockfile'), chunk('m2'), chunk('m3', 'minified')] });
-    expect(batchableSections(flat, states({})).size).toBe(0);
-    const batches = batchableSections(flat, states({ m2: 'reviewed' }));
-    expect(batches.get('mixed')).toEqual({ ids: ['m1', 'm3'], reason: 'lockfile, minified' });
+    expect(batchableSections(flat, reviews({})).size).toBe(0);
+    const batches = batchableSections(flat, reviews({ m2: 'reviewed' }));
+    expect(batches.get('mixed')).toEqual({ ids: ['m1', 'm3'], reason: 'lockfile, minified', readCount: 0, stubCount: 2 });
   });
 
   it('offers nothing for fully reviewed sections', () => {
     const { flat } = book({ lockfile: [chunk('l1', 'lockfile')] });
-    expect(batchableSections(flat, states({ l1: 'reviewed' })).size).toBe(0);
+    expect(batchableSections(flat, reviews({ l1: 'reviewed' })).size).toBe(0);
   });
 
   it('treats whitespace-only chunks as stubs with reason "whitespace"', () => {
     const { flat } = book({ s: [whitespaceChunk('w1'), whitespaceChunk('w2')] });
-    expect(batchableSections(flat, states({})).get('s')).toEqual({ ids: ['w1', 'w2'], reason: 'whitespace' });
+    expect(batchableSections(flat, reviews({})).get('s')).toEqual({ ids: ['w1', 'w2'], reason: 'whitespace', readCount: 0, stubCount: 2 });
     expect(pendingStubCount(flat, states({}))).toBe(2);
+  });
+
+  it('offers a confirm batch when every remaining chunk is auto-read', () => {
+    const { flat } = book({ s: [chunk('a'), chunk('b')] });
+    const batches = batchableSections(flat, reviews({ a: 'seen', b: 'seen' }, { a: true, b: true }));
+    expect(batches.get('s')).toEqual({ ids: ['a', 'b'], reason: '', readCount: 2, stubCount: 0 });
+  });
+
+  it('mixes auto-read and stubs, and stays non-batchable while a plain chunk is unread', () => {
+    const { flat } = book({ s: [chunk('a'), chunk('b'), chunk('l1', 'lockfile'), chunk('l2', 'lockfile')] });
+    // b is auto-read but a is only seen (not read) → not batchable yet.
+    expect(batchableSections(flat, reviews({ a: 'seen', b: 'seen' }, { b: true })).size).toBe(0);
+    // a auto-reads too → batchable, mixed counts.
+    const mixed = batchableSections(flat, reviews({ a: 'seen', b: 'seen' }, { a: true, b: true }));
+    expect(mixed.get('s')).toEqual({ ids: ['a', 'b', 'l1', 'l2'], reason: 'lockfile', readCount: 2, stubCount: 2 });
   });
 });
 
@@ -136,6 +155,6 @@ describe('multi-occurrence books', () => {
   it('counts a twice-occurring stub chunk once', () => {
     const { flat: stubs } = book({ s1: [whitespaceChunk('w')], s2: [whitespaceChunk('w')] });
     expect(pendingStubCount(stubs, states({}))).toBe(1);
-    expect(batchableSections(stubs, states({})).get('s1')).toEqual({ ids: ['w'], reason: 'whitespace' });
+    expect(batchableSections(stubs, reviews({})).get('s1')).toEqual({ ids: ['w'], reason: 'whitespace', readCount: 0, stubCount: 1 });
   });
 });

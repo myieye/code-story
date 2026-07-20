@@ -1,7 +1,8 @@
-import { type Chunk, type ChunkReviewState, isLowSignal, lowSignalReason } from '@code-story/core';
+import { type Chunk, type ChunkReview, type ChunkReviewState, isLowSignal, lowSignalReason } from '@code-story/core';
 import type { FlatBook, Row } from './rows.js';
 
 export type StateOf = (chunkId: string) => ChunkReviewState;
+export type ReviewOf = (chunkId: string) => ChunkReview;
 
 export function chunkAt(flat: FlatBook, cursorIndex: number): Chunk {
   const row = flat.rows[flat.chunkRowIndexes[cursorIndex]!] as Extract<Row, { kind: 'chunk' }>;
@@ -47,33 +48,41 @@ export function cursorAfterMark(
 
 export interface SectionBatch {
   ids: string[];
-  /** Unique stub reasons, e.g. "lockfile" — enumerated on the button (spec 00a). */
+  /** Unique stub reasons, e.g. "lockfile" — enumerated on the button (spec 00a). Empty when no stubs. */
   reason: string;
+  /** Auto-read chunks in the batch (spec 06 slice 3) — read at reading pace, awaiting confirm. */
+  readCount: number;
+  /** Low-signal stub chunks in the batch. */
+  stubCount: number;
 }
 
 /**
- * Sections whose every remaining (unreviewed) chunk is a low-signal stub — the only case where
- * batch acknowledgment is offered (spec 00a: stub ≠ handled, but no per-stub click-through).
+ * Sections whose every remaining (unreviewed) chunk is bulk-acknowledgeable: a low-signal stub
+ * (spec 00a: stub ≠ handled, but no per-stub click-through) or an auto-read chunk (spec 06 slice 3:
+ * seen at reading pace, awaiting a single bulk confirm). Mixed remainders count both.
  */
-export function batchableSections(flat: FlatBook, stateOf: StateOf): Map<string, SectionBatch> {
-  const bySection = new Map<string, { unreviewed: Chunk[]; seen: Set<string>; allStubs: boolean }>();
+export function batchableSections(flat: FlatBook, reviewOf: ReviewOf): Map<string, SectionBatch> {
+  const bySection = new Map<string, { unreviewed: Chunk[]; seen: Set<string>; batchable: boolean }>();
   for (const row of flat.rows) {
     if (row.kind !== 'chunk') continue;
-    const entry = bySection.get(row.sectionId) ?? { unreviewed: [], seen: new Set<string>(), allStubs: true };
+    const entry = bySection.get(row.sectionId) ?? { unreviewed: [], seen: new Set<string>(), batchable: true };
     // A chunk occurring twice in a section is still one mark (state lives on the chunk).
-    if (stateOf(row.chunk.id) !== 'reviewed' && !entry.seen.has(row.chunk.id)) {
+    if (reviewOf(row.chunk.id).state !== 'reviewed' && !entry.seen.has(row.chunk.id)) {
       entry.seen.add(row.chunk.id);
       entry.unreviewed.push(row.chunk);
-      if (!isLowSignal(row.chunk)) entry.allStubs = false;
+      if (!isLowSignal(row.chunk) && !reviewOf(row.chunk.id).autoRead) entry.batchable = false;
     }
     bySection.set(row.sectionId, entry);
   }
   const result = new Map<string, SectionBatch>();
   for (const [sectionId, entry] of bySection) {
-    if (!entry.allStubs || entry.unreviewed.length === 0) continue;
+    if (!entry.batchable || entry.unreviewed.length === 0) continue;
+    const stubs = entry.unreviewed.filter(isLowSignal);
     result.set(sectionId, {
       ids: entry.unreviewed.map((c) => c.id),
-      reason: [...new Set(entry.unreviewed.map(lowSignalReason))].join(', '),
+      reason: [...new Set(stubs.map(lowSignalReason))].join(', '),
+      readCount: entry.unreviewed.length - stubs.length,
+      stubCount: stubs.length,
     });
   }
   return result;

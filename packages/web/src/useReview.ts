@@ -6,6 +6,8 @@ export interface MarkEntry {
   chunkId: string;
   state: ChunkReviewState;
   markedUnseen?: boolean;
+  autoRead?: boolean;
+  reviewedVia?: 'explicit' | 'auto';
 }
 
 export interface Review {
@@ -13,20 +15,28 @@ export interface Review {
   stateOf: (chunkId: string) => ChunkReviewState;
   /** The full ChunkReview (unseen default) — snapshotted before a batch so undo restores exact values. */
   reviewOf: (chunkId: string) => ChunkReview;
-  /** Explicit mark/unmark — persisted immediately. */
-  setState: (chunkId: string, state: ChunkReviewState, markedUnseen?: boolean) => void;
+  /** Explicit mark/unmark — persisted immediately. Marking reviewed stamps reviewedVia (default 'explicit'). */
+  setState: (chunkId: string, state: ChunkReviewState, markedUnseen?: boolean, reviewedVia?: 'explicit' | 'auto') => void;
   /** Batch acknowledgment — one local update and one immediate flush for the group. */
   setMany: (entries: MarkEntry[]) => void;
-  /** Undo a batch: restore each chunk's exact prior ChunkReview (state, markedUnseen, expanded). */
+  /** Undo a batch: restore each chunk's exact prior ChunkReview (state, markedUnseen, expanded, autoRead). */
   restoreMany: (entries: { chunkId: string; review: ChunkReview }[]) => void;
   /** Automatic seen-tracking — batched and persisted on a debounce. */
   setSeen: (chunkIds: string[]) => void;
+  /** Automatic auto-read banking (spec 06 slice 3) — evidence flag on `seen`, debounced like seen. */
+  setAutoRead: (chunkIds: string[]) => void;
   /** Stub expand/collapse (low-signal chunks only) — persisted on a debounce. */
   setExpanded: (chunkId: string, expanded: boolean) => void;
   setCursor: (chunkId: string) => void;
 }
 
-type PendingEntry = { state?: ChunkReviewState; markedUnseen?: boolean; expanded?: boolean };
+type PendingEntry = {
+  state?: ChunkReviewState;
+  markedUnseen?: boolean;
+  expanded?: boolean;
+  autoRead?: boolean;
+  reviewedVia?: 'explicit' | 'auto';
+};
 
 const FLUSH_DELAY_MS = 800;
 
@@ -82,9 +92,14 @@ export function useReview(initial: ReviewFile): Review {
   const applyLocal = useCallback((updates: MarkEntry[]) => {
     setStates((prev) => {
       const next = { ...prev };
-      for (const { chunkId, state, markedUnseen } of updates) {
+      for (const { chunkId, state, markedUnseen, autoRead, reviewedVia } of updates) {
         const entry: ChunkReview = { state };
+        // Mirror applyReviewPatch so local and persisted state agree: flags only add, via carries forward.
         if (markedUnseen ?? prev[chunkId]?.markedUnseen) entry.markedUnseen = true;
+        if (autoRead ?? prev[chunkId]?.autoRead) entry.autoRead = true;
+        const via = reviewedVia ?? prev[chunkId]?.reviewedVia;
+        if (via) entry.reviewedVia = via;
+        if (prev[chunkId]?.expanded) entry.expanded = true;
         next[chunkId] = entry;
       }
       return next;
@@ -95,9 +110,11 @@ export function useReview(initial: ReviewFile): Review {
     states,
     stateOf: (chunkId) => states[chunkId]?.state ?? 'unseen',
     reviewOf: (chunkId) => states[chunkId] ?? { state: 'unseen' },
-    setState: (chunkId, state, markedUnseen) => {
-      applyLocal([{ chunkId, state, ...(markedUnseen ? { markedUnseen } : {}) }]);
-      queue(chunkId, { state, ...(markedUnseen ? { markedUnseen } : {}) });
+    setState: (chunkId, state, markedUnseen, reviewedVia) => {
+      const via = state === 'reviewed' ? (reviewedVia ?? 'explicit') : undefined;
+      const fields = { state, ...(markedUnseen ? { markedUnseen } : {}), ...(via ? { reviewedVia: via } : {}) };
+      applyLocal([{ chunkId, ...fields }]);
+      queue(chunkId, fields);
       flush();
     },
     setMany: (entries) => {
@@ -118,6 +135,8 @@ export function useReview(initial: ReviewFile): Review {
           state: review.state,
           ...(review.markedUnseen ? { markedUnseen: true } : {}),
           ...(review.expanded ? { expanded: true } : {}),
+          ...(review.autoRead ? { autoRead: true } : {}),
+          ...(review.reviewedVia ? { reviewedVia: review.reviewedVia } : {}),
         });
       }
       flush();
@@ -128,6 +147,19 @@ export function useReview(initial: ReviewFile): Review {
       for (const id of fresh) {
         applyLocal([{ chunkId: id, state: 'seen' }]);
         queue(id, { state: 'seen' });
+      }
+      if (fresh.length > 0) scheduleFlush();
+    },
+    setAutoRead: (chunkIds) => {
+      // Upgrades seen→autoRead (an evidence flag, not a promotion): skip anything already reviewed or
+      // already banked. Debounced like seen — it's ambient reading evidence, not an explicit act.
+      const fresh = chunkIds.filter((id) => {
+        const cur = statesRef.current[id];
+        return (cur?.state ?? 'unseen') !== 'reviewed' && !cur?.autoRead;
+      });
+      for (const id of fresh) {
+        applyLocal([{ chunkId: id, state: 'seen', autoRead: true }]);
+        queue(id, { state: 'seen', autoRead: true });
       }
       if (fresh.length > 0) scheduleFlush();
     },

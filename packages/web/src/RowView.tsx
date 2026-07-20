@@ -8,8 +8,20 @@ import type { NeighborChip } from './neighbor-strip-logic.js';
 import type { FilePiece } from './piece-nav-logic.js';
 import { chunkSize, chunkTitle, type Row } from './rows.js';
 
-/** Section-header action: batch-mark the remaining stubs, or undo the batch just made. */
-export type SectionAck = { kind: 'mark'; count: number; reason: string } | { kind: 'undo'; count: number };
+/** Section-header action: batch-confirm the remaining stubs/auto-read chunks, or undo the batch just made. */
+export type SectionAck =
+  | { kind: 'mark'; count: number; reason: string; readCount: number; stubCount: number }
+  | { kind: 'undo'; count: number; hadRead: boolean };
+
+/** The section-ack button's label — a stub mark, an auto-read confirm, or their mix (spec 06 slice 3). */
+function sectionAckLabel(ack: SectionAck): string {
+  if (ack.kind === 'undo') return ack.hadRead ? `Undo confirm (${ack.count})` : `Undo mark all (${ack.count})`;
+  if (ack.readCount > 0 && ack.stubCount > 0) {
+    return `Confirm ${ack.count} (${ack.readCount} read, ${ack.stubCount} stub${ack.stubCount === 1 ? '' : 's'})`;
+  }
+  if (ack.readCount > 0) return `Confirm ${ack.count} read in this section`;
+  return `Mark all ${ack.count} reviewed (${ack.reason})`;
+}
 
 export function RowView({
   row,
@@ -17,6 +29,9 @@ export function RowView({
   totalOccurrences,
   distinctChunks,
   reviewedCount,
+  autoReadCount,
+  autoConfirmedCount,
+  onConfirmAutoRead,
   interactions,
   sectionStats,
   sectionAck,
@@ -25,6 +40,7 @@ export function RowView({
   onMarkSection,
   onUndoBatch,
   state,
+  autoRead,
   collapsed,
   isCursor,
   registerEl,
@@ -53,6 +69,12 @@ export function RowView({
   /** Review-progress denominator — state lives on the chunk. */
   distinctChunks: number;
   reviewedCount: number;
+  /** Book-wide chunks seen at reading pace, not yet confirmed (spec 06 slice 3) — the end-row confirm. */
+  autoReadCount: number;
+  /** Reviewed chunks promoted from auto-read (reviewedVia:'auto') — the done-banner provenance line. */
+  autoConfirmedCount: number;
+  /** Confirm all book-wide auto-read chunks as reviewed (the end-row bulk button). */
+  onConfirmAutoRead: () => void;
   /** Cross-chunk interactions (calls + exercises) surfaced across the book — honest done-banner figure (spec 05 gate 1). */
   interactions: number;
   sectionStats: Map<string, { done: number; total: number }>;
@@ -64,6 +86,8 @@ export function RowView({
   onMarkSection: (sectionId: string) => void;
   onUndoBatch: () => void;
   state: ChunkReviewState;
+  /** This chunk is seen at reading pace but not yet confirmed (spec 06 slice 3) — dashed rail, ◑ affordance. */
+  autoRead: boolean;
   collapsed: boolean;
   isCursor: boolean;
   registerEl: (el: HTMLElement | null) => void;
@@ -104,9 +128,7 @@ export function RowView({
               className="bar-button section-ack"
               onClick={() => (sectionAck.kind === 'mark' ? onMarkSection(row.id) : onUndoBatch())}
             >
-              {sectionAck.kind === 'mark'
-                ? `Mark all ${sectionAck.count} reviewed (${sectionAck.reason})`
-                : `Undo mark all (${sectionAck.count})`}
+              {sectionAckLabel(sectionAck)}
             </button>
           )}
         </div>
@@ -124,6 +146,11 @@ export function RowView({
         <div className="end-of-book done">
           <p className="done-headline">All {distinctChunks} chunks reviewed.</p>
           <p>Nothing was skipped — every chunk required your mark.</p>
+          {autoConfirmedCount > 0 && (
+            <p className="done-provenance">
+              {autoConfirmedCount} of {distinctChunks} confirmed from auto-read (seen at reading pace, then confirmed in bulk).
+            </p>
+          )}
           {interactions > 0 && (
             <p className="done-frontier">
               {interactions} cross-chunk interaction{interactions === 1 ? '' : 's'} {interactions === 1 ? 'was' : 'were'} surfaced
@@ -152,6 +179,14 @@ export function RowView({
     return (
       <div className="end-of-book">
         End of book — {distinctChunks - reviewedCount} of {distinctChunks} chunks remaining.{' '}
+        {autoReadCount > 0 && (
+          <span className="end-autoread">
+            {reviewedCount} of {distinctChunks} reviewed — {autoReadCount} auto-read awaiting your confirm.{' '}
+            <button className="bar-button" onClick={onConfirmAutoRead}>
+              Confirm {autoReadCount} auto-read as reviewed
+            </button>{' '}
+          </span>
+        )}
         <button className="bar-button" onClick={onJumpNext}>
           Jump to next unreviewed
         </button>
@@ -163,6 +198,7 @@ export function RowView({
   const size = chunkSize(chunk);
   const lowSignal = isLowSignal(chunk);
   const classes = ['chunk', `state-${state}`];
+  if (autoRead) classes.push('autoread');
   if (isCursor) classes.push('cursor');
   if (collapsed) classes.push('collapsed');
   if (reencounter) classes.push('reencounter', `reencounter-${reencounter}`);
@@ -209,15 +245,21 @@ export function RowView({
                 the loudest reviewed-state cue. stopPropagation so it doesn't also fire article-select. */}
             <button
               type="button"
-              className="review-toggle"
+              className={autoRead ? 'review-toggle autoread' : 'review-toggle'}
               aria-pressed={state === 'reviewed'}
-              title={state === 'reviewed' ? 'Reviewed — click to unmark' : 'Mark this chunk reviewed'}
+              title={
+                state === 'reviewed'
+                  ? 'Reviewed — click to unmark'
+                  : autoRead
+                    ? 'Auto-read — click to confirm reviewed'
+                    : 'Mark this chunk reviewed'
+              }
               onClick={(e) => {
                 e.stopPropagation();
                 onToggleReviewed(chunk);
               }}
             >
-              {state === 'reviewed' ? '✓ Reviewed' : 'Mark reviewed'}
+              {state === 'reviewed' ? '✓ Reviewed' : autoRead ? 'Auto-read — click to confirm' : 'Mark reviewed'}
             </button>
           </div>
           {isCursor && neighborChips && neighborChips.length > 0 && (

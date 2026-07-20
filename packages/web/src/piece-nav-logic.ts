@@ -1,4 +1,4 @@
-import type { Chunk, ChunkReviewState } from '@code-story/core';
+import type { Chunk, ChunkReview, ChunkReviewState } from '@code-story/core';
 import { chunkSize, chunkTitle } from './rows.js';
 
 /**
@@ -38,6 +38,8 @@ export interface PieceMenuItem {
   n: number;
   title: string;
   state: ChunkReviewState;
+  /** Seen at reading pace but not yet confirmed (spec 06 slice 3) — renders the ◑ glyph. */
+  autoRead: boolean;
   added: number;
   removed: number;
   current: boolean;
@@ -55,7 +57,7 @@ export function pieceMenuModel(
   file: string,
   piece: FilePiece,
   chunksById: Map<string, Chunk>,
-  stateOf: (id: string) => ChunkReviewState,
+  reviewOf: (id: string) => ChunkReview,
   currentChunkId: string,
 ): PieceMenuModel {
   let reviewed = 0;
@@ -63,14 +65,15 @@ export function pieceMenuModel(
   piece.fileChunkIdsInOrder.forEach((chunkId, i) => {
     const chunk = chunksById.get(chunkId);
     if (!chunk) return;
-    const state = stateOf(chunkId);
-    if (state === 'reviewed') reviewed++;
+    const review = reviewOf(chunkId);
+    if (review.state === 'reviewed') reviewed++;
     const size = chunkSize(chunk);
     items.push({
       chunkId,
       n: i + 1,
       title: chunkTitle(chunk),
-      state,
+      state: review.state,
+      autoRead: review.autoRead === true && review.state !== 'reviewed',
       added: size.added,
       removed: size.removed,
       current: chunkId === currentChunkId,
