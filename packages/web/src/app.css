@@ -288,6 +288,12 @@ body.resizing-outline {
   color: #1c3a6e;
 }
 
+/* Viewport-range rail: sections with any chunk in the feed's virtual window. Faint, and distinct
+   from the filled `.current` highlight — "what's on screen" vs the single "you are here". */
+.outline-item.in-view {
+  box-shadow: inset 2px 0 0 #c3cde0;
+}
+
 .outline-disclosure {
   flex: none;
   border: 0;

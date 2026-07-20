@@ -19,7 +19,7 @@ import { computeNeighborChips } from './neighbor-strip-logic.js';
 import { frontierCount, interactionCount } from './frontier-logic.js';
 import { batchableSections, cursorAfterMark, findUnreviewed, pendingStubCount } from './review-logic.js';
 import { estimateRowHeight, RowView, type SectionAck } from './RowView.js';
-import { chunkTitle, flattenBook, occurrenceKey, type Row } from './rows.js';
+import { chunkTitle, flattenBook, type Row } from './rows.js';
 import { ShortcutOverlay } from './ShortcutOverlay.js';
 import { affordanceLabel, hasDefinitions, type PayloadState } from './context-panel-logic.js';
 import { useBookKeymap } from './useBookKeymap.js';
@@ -440,17 +440,32 @@ export function BookPage({
   useSeenTracking({ scrollRef, virtualizer, flat, stateOf: review.stateOf, setSeen: review.setSeen });
 
   const items = virtualizer.getVirtualItems();
-  const currentSection = useMemo(() => {
-    // Skip overscan rows above the viewport — the bar must name the section actually on screen.
+  const spy = useMemo(() => {
+    // Skip overscan rows above the viewport — the spy must name what's actually on screen.
     const top = virtualizer.scrollOffset ?? 0;
     const first = (items.find((it) => it.end > top) ?? items[0])?.index ?? 0;
     for (let i = first; i >= 0; i--) {
       const row = flat.rows[i];
-      if (row?.kind === 'section') return row.title;
       // A chapter chunk may live outside its chapter's anchor file — name the file actually on screen.
-      if (row?.kind === 'chunk') return row.chunk.file;
+      if (row?.kind === 'chunk') return { sectionId: row.sectionId, occurrenceKey: row.occurrenceKey, title: row.chunk.file };
+      if (row?.kind === 'section') return { sectionId: row.id, occurrenceKey: undefined, title: row.title };
     }
     return undefined;
+  }, [items, flat]);
+  // Walk-back rule: hold the last resolved section at boundaries so the highlight never flickers to
+  // nowhere (spy is undefined only for an empty book).
+  const lastSpyRef = useRef(spy);
+  const currentSection = spy ?? lastSpyRef.current;
+  lastSpyRef.current = currentSection;
+
+  const onScreenSectionIds = useMemo(() => {
+    const set = new Set<string>();
+    for (const it of items) {
+      const row = flat.rows[it.index];
+      if (row?.kind === 'chunk') set.add(row.sectionId);
+      else if (row?.kind === 'section') set.add(row.id);
+    }
+    return set;
   }, [items, flat]);
 
   const sectionAckFor = (sectionId: string): SectionAck | undefined => {
@@ -626,8 +641,9 @@ export function BookPage({
           width={outlineWidth}
           stateOf={review.stateOf}
           sectionStats={sectionStats}
-          currentSection={currentSection}
-          cursorOccurrence={cursorRow ? occurrenceKey(cursorRow.occurrence) : undefined}
+          currentSectionId={currentSection?.sectionId}
+          currentOccurrenceKey={currentSection?.occurrenceKey}
+          onScreenSectionIds={onScreenSectionIds}
           onJump={moveCursor}
         />
         <div
@@ -638,7 +654,7 @@ export function BookPage({
           onPointerDown={startResize}
         />
         <div className="feed-wrap">
-          {currentSection && <div className="current-file">{currentSection}</div>}
+          {currentSection && <div className="current-file">{currentSection.title}</div>}
           <div
             className="feed"
             ref={scrollRef}

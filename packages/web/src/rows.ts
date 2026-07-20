@@ -3,7 +3,15 @@ export { chunkTitle } from '@code-story/core';
 
 export type Row =
   | { kind: 'section'; id: string; title: string; chunkCount: number }
-  | { kind: 'chunk'; chunk: Chunk; occurrence: Occurrence; sectionId: string; sectionTitle: string; posinset: number }
+  | {
+      kind: 'chunk';
+      chunk: Chunk;
+      occurrence: Occurrence;
+      sectionId: string;
+      sectionTitle: string;
+      occurrenceKey: string;
+      posinset: number;
+    }
   | { kind: 'end' };
 
 /** Identity of one occurrence row — a chunk may appear in the book more than once (R-004). */
@@ -44,10 +52,19 @@ export function flattenBook(book: Book, chunks: Chunk[]): FlatBook {
       if (!chunk) continue;
       posinset++;
       const cursorIndex = chunkRowIndexes.length;
+      const key = occurrenceKey(occurrence);
       if (!firstIndexByChunkId.has(chunk.id)) firstIndexByChunkId.set(chunk.id, cursorIndex);
-      indexByOccurrence.set(occurrenceKey(occurrence), cursorIndex);
+      indexByOccurrence.set(key, cursorIndex);
       chunkRowIndexes.push(rows.length);
-      rows.push({ kind: 'chunk', chunk, occurrence, sectionId: section.id, sectionTitle: section.title, posinset });
+      rows.push({
+        kind: 'chunk',
+        chunk,
+        occurrence,
+        sectionId: section.id,
+        sectionTitle: section.title,
+        occurrenceKey: key,
+        posinset,
+      });
     }
   }
   rows.push({ kind: 'end' });
