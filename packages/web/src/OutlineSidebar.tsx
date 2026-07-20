@@ -3,9 +3,13 @@ import { useMemo, useState } from 'react';
 import type { BookResponse } from './api.js';
 import { chunkTitle, type FlatBook, occurrenceKey } from './rows.js';
 
+/** State glyph for the outline — shape differs per state so it doesn't rely on colour (WCAG 1.4.1). */
+const STATE_GLYPH: Record<ChunkReviewState, string> = { reviewed: '✓', seen: '•', unseen: '○' };
+
 export function OutlineSidebar({
   data,
   flat,
+  width,
   stateOf,
   sectionStats,
   currentSection,
@@ -14,6 +18,7 @@ export function OutlineSidebar({
 }: {
   data: BookResponse;
   flat: FlatBook;
+  width: number;
   stateOf: (chunkId: string) => ChunkReviewState;
   sectionStats: Map<string, { done: number; total: number }>;
   currentSection: string | undefined;
@@ -24,7 +29,7 @@ export function OutlineSidebar({
   const byId = useMemo(() => new Map(data.chunks.map((c) => [c.id, c])), [data]);
 
   return (
-    <nav className="outline">
+    <nav className="outline" style={{ width }}>
       {data.book.sections.map((section) => {
         const stats = sectionStats.get(section.id);
         const isOpen = expanded.has(section.id);
@@ -71,7 +76,9 @@ export function OutlineSidebar({
                     title={chunkTitle(chunk)}
                     onClick={() => onJump(index)}
                   >
-                    <span className={`state-dot ${stateOf(chunk.id)}`} />
+                    <span className={`state-dot ${stateOf(chunk.id)}`} aria-hidden="true">
+                      {STATE_GLYPH[stateOf(chunk.id)]}
+                    </span>
                     <span className="outline-path">{chunkTitle(chunk)}</span>
                   </button>
                 );

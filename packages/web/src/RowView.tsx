@@ -30,6 +30,7 @@ export function RowView({
   onSelect,
   onJumpNext,
   onExpand,
+  onToggleReviewed,
   contextPayload,
   panelExpanded,
   onToggleDefinitions,
@@ -65,6 +66,8 @@ export function RowView({
   onSelect: () => void;
   onJumpNext: () => void;
   onExpand: (chunk: Chunk) => void;
+  /** Toggle this chunk's reviewed state from the mouse (marks in place; unmarks if already reviewed). */
+  onToggleReviewed: (chunk: Chunk) => void;
   /** This chunk's context payload: `undefined` unfetched, `null` empty, else the facts (spec 04). */
   contextPayload: PayloadState;
   panelExpanded: boolean;
@@ -168,7 +171,6 @@ export function RowView({
         <div className="state-rail" title={state} />
         <div className="chunk-main">
           <div className="chunk-header">
-            {state === 'reviewed' && <span className="check" aria-hidden="true">✓</span>}
             <span className="chunk-title">{chunkTitle(chunk)}</span>
             {/* Cross-file provenance for a chapter occurrence whose chunk lives outside the anchor file. */}
             {row.occurrence.label && <span className="chunk-from">from {row.occurrence.label}</span>}
@@ -177,6 +179,20 @@ export function RowView({
             <span className="chunk-size">
               <span className="added">+{size.added}</span> <span className="removed">−{size.removed}</span>
             </span>
+            {/* Mouse mark (GitHub's per-file "Viewed" placement/semantics): marks in place, doubles as
+                the loudest reviewed-state cue. stopPropagation so it doesn't also fire article-select. */}
+            <button
+              type="button"
+              className="review-toggle"
+              aria-pressed={state === 'reviewed'}
+              title={state === 'reviewed' ? 'Reviewed — click to unmark' : 'Mark this chunk reviewed'}
+              onClick={(e) => {
+                e.stopPropagation();
+                onToggleReviewed(chunk);
+              }}
+            >
+              {state === 'reviewed' ? '✓ Reviewed' : 'Mark reviewed'}
+            </button>
           </div>
           {isCursor && neighborChips && neighborChips.length > 0 && (
             <NeighborStrip

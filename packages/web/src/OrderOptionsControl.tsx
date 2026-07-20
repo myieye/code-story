@@ -14,24 +14,27 @@ export function OrderOptionsControl({
   config,
   orderApplied,
   busy,
+  fileView,
   onChange,
 }: {
   config: StoryConfig;
   orderApplied: boolean;
   busy: boolean;
+  /** In file view the ordering axes don't apply — the selects are disabled with a one-line note. */
+  fileView: boolean;
   onChange: (config: StoryConfig) => void;
 }) {
   return (
     <details className="order-options">
       <summary className="bar-button" title="Change the reading order">
-        Order: {configSummary(config)}
+        Order: {fileView ? 'by file' : configSummary(config)}
       </summary>
       <div className="order-options-panel" role="group" aria-label="Reading order options">
         <label>
           Reading order
           <select
             value={config.direction}
-            disabled={busy}
+            disabled={busy || fileView}
             onChange={(e) => onChange({ ...config, direction: e.currentTarget.value as StoryConfig['direction'] })}
           >
             {DIRECTION_OPTIONS.map((o) => (
@@ -45,7 +48,7 @@ export function OrderOptionsControl({
           Tests
           <select
             value={config.testPlacement}
-            disabled={busy}
+            disabled={busy || fileView}
             onChange={(e) => onChange({ ...config, testPlacement: e.currentTarget.value as StoryConfig['testPlacement'] })}
           >
             {TEST_PLACEMENT_OPTIONS.map((o) => (
@@ -55,7 +58,13 @@ export function OrderOptionsControl({
             ))}
           </select>
         </label>
-        <p className="order-source">{busy ? 'Re-ordering…' : orderSourceLabel(orderApplied)}</p>
+        <p className="order-source">
+          {fileView
+            ? 'File view groups each file’s changes together. Switch to Story view for reading-order options.'
+            : busy
+              ? 'Re-ordering…'
+              : orderSourceLabel(orderApplied)}
+        </p>
       </div>
     </details>
   );
