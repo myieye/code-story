@@ -7,6 +7,14 @@ export interface ChunkReview {
   markedUnseen?: boolean;
   /** Low-signal stubs only (R-002): the reviewer expanded the stub past its collapsed default. */
   expanded?: boolean;
+  /**
+   * The seen chunk cleared the reading gate (spec 06 slice 3). An evidence flag, never a state:
+   * auto-read stays below the coverage line (R-026) until an explicit bulk confirm. Set on `seen`,
+   * survives an unmark from `reviewed` so the glyph returns to ◑ rather than •.
+   */
+  autoRead?: true;
+  /** How a `reviewed` chunk got there: an explicit mark, or a bulk confirm of its auto-read evidence. */
+  reviewedVia?: 'explicit' | 'auto';
 }
 
 /** One review of one range, persisted under the per-repo data home (R-037, R-014 partial). */
@@ -26,11 +34,19 @@ export function emptyReview(base: string, head: string): ReviewFile {
 
 /** A client's incremental update to a review. Entries merge per field; omitted fields keep. */
 export interface ReviewPatch {
-  set?: { chunkId: string; state?: ChunkReviewState; markedUnseen?: boolean; expanded?: boolean }[];
+  set?: {
+    chunkId: string;
+    state?: ChunkReviewState;
+    markedUnseen?: boolean;
+    expanded?: boolean;
+    autoRead?: boolean;
+    reviewedVia?: 'explicit' | 'auto';
+  }[];
   cursor?: string;
 }
 
 const STATES: ChunkReviewState[] = ['unseen', 'seen', 'reviewed'];
+const VIAS = ['explicit', 'auto'];
 
 /** Applies a patch in place; ignores malformed entries rather than corrupting the file. */
 export function applyReviewPatch(review: ReviewFile, patch: ReviewPatch): void {
@@ -42,6 +58,10 @@ export function applyReviewPatch(review: ReviewFile, patch: ReviewPatch): void {
     if (entry.markedUnseen ?? prev?.markedUnseen) next.markedUnseen = true;
     const expanded = typeof entry.expanded === 'boolean' ? entry.expanded : prev?.expanded;
     if (expanded) next.expanded = true;
+    // Flags the wire protocol can only add (like markedUnseen); reviewedVia carries forward, newest wins.
+    if (entry.autoRead ?? prev?.autoRead) next.autoRead = true;
+    const via = entry.reviewedVia && VIAS.includes(entry.reviewedVia) ? entry.reviewedVia : prev?.reviewedVia;
+    if (via) next.reviewedVia = via;
     review.chunks[entry.chunkId] = next;
   }
   if (typeof patch.cursor === 'string') review.cursor = patch.cursor;
