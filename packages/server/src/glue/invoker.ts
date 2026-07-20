@@ -38,7 +38,7 @@ export function createGlueInvoker(deps: GlueInvokerDeps): GlueInvoker {
   return {
     forRun({ lane, signal }) {
       return async (req) => {
-        const model = deps.policy.resolve(req.tier);
+        const model = deps.policy.resolve(req.tier, req.model ? { taskModel: req.model } : undefined);
         const startedAt = now();
         const record = (outcome: 'ok' | 'error', usage?: GlueUsage) =>
           deps.ledger.append({

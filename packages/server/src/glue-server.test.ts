@@ -30,9 +30,10 @@ describe('GET /api/glue (#124)', () => {
     const server = await startServer({ repo, range, dataHome, autoOrder: false }, 0);
     try {
       const status = (await (await fetch(`${server.url}/api/glue`)).json()) as GlueStatus;
-      // The chunk-narration task (G2) registers on the background lane; it has not run.
+      // chunk-narration (G2) and order (G4) register on the background lane; neither has run.
       expect(status.tasks).toEqual([
         { kind: 'chunk-narration', lane: 'background', queued: 0, running: 0, done: 0, failed: 0, model: 'opus' },
+        { kind: 'order', lane: 'background', queued: 0, running: 0, done: 0, failed: 0, model: 'opus' },
       ]);
       expect(status.spend).toEqual({ calls: 0, inputTokens: 0, outputTokens: 0 });
     } finally {

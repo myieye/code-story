@@ -32,6 +32,8 @@ export type GlueOutcome<Out> =
 export type GlueInvoke = (req: {
   prompt: string;
   tier: Exclude<ModelTier, 'none'>;
+  /** Task-scoped model override (order's `orderModel`/POST `body.model`) — resolved via ModelPolicy. */
+  model?: string;
   timeoutMs?: number;
   kind: string;
   unitKey: string;

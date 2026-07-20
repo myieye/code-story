@@ -60,9 +60,8 @@ import {
   narrationFilePath,
   narrationJobFilePath,
 } from './narration-store.js';
-import { runChapterOrderJob, runOrderJob } from './order-job.js';
-import { CHAPTER_ORDER_PROMPT_VERSION, ORDER_PROMPT_VERSION } from './order-prompt.js';
-import { loadOverlay, orderFilePath, orderJobFilePath, type OrderJobRecord, saveJson } from './order-store.js';
+import { createOrderTask, ORDER_KIND } from './order-task.js';
+import { loadOverlay, orderFilePath, orderJobFilePath, saveJson } from './order-store.js';
 import { defaultDataHome, repoIdFrom } from './review-store.js';
 import { startServer } from './server.js';
 
@@ -478,47 +477,49 @@ if (aiOrder || narrate || exportPath) {
   const getChapterBits = async () => (chapterBitsCache ??= await buildChapterBits());
 
   if (aiOrder) {
-    const jobFile = orderJobFilePath(dataHome, repoId, resolved);
-    const record: OrderJobRecord = {
-      version: 1,
-      status: 'running',
-      model,
-      promptVersion: chapterMode ? CHAPTER_ORDER_PROMPT_VERSION : ORDER_PROMPT_VERSION,
-      startedAt: new Date().toISOString(),
-    };
-    await saveJson(jobFile, record);
+    // Drive the ordering glue task through a throwaway scheduler (same shape as --narrate-chunks):
+    // the task owns the overlay save, the `.order-job.json` lifecycle, and the retry loop, so this
+    // branch is just build-deps → kick → drain. The ledger records the spawn.
+    const policy = createModelPolicy({ top: model });
+    const ledger = new GlueLedger(glueLedgerFilePath(dataHome, repoId, resolved));
+    const invoker = createGlueInvoker({ policy, ledger, cwd: dataHome });
+    const scheduler = new GlueScheduler({ invoker, ledger, policy, enabled: true });
+    const bits = chapterMode ? await getChapterBits() : undefined;
+    scheduler.register(
+      createOrderTask({
+        tier: 'top',
+        chapterMode,
+        orderFile,
+        jobFile: orderJobFilePath(dataHome, repoId, resolved),
+        model: () => model,
+        getInputs: async () =>
+          bits
+            ? {
+                book: bits.chapter.book,
+                chunks: bits.chapter.chunks,
+                graph,
+                chunkGraph: bits.chunkGraph,
+                storyComposition: bits.chapter.storyComposition,
+                chapterInput: bits.chapterInput,
+                config,
+              }
+            : { book: compiledBook, chunks: compiledChunks, graph },
+      }),
+    );
+
     console.log(`code-story: running the AI ordering job (${model})…`);
-    try {
-      if (chapterMode) {
-        const { chunkGraph, chapterInput, chapter } = await getChapterBits();
-        const overlay = await runChapterOrderJob({
-          book: chapter.book,
-          chunks: chapter.chunks,
-          graph,
-          model,
-          cwd: dataHome,
-          input: chapterInput,
-          config,
-          chunkGraph,
-          storyComposition: chapter.storyComposition,
-        });
-        await saveJson(orderFile, overlay);
-        console.log(`code-story: AI order saved (${overlay.chapters.length} chapters)`);
-      } else {
-        const overlay = await runOrderJob({ book: compiledBook, graph, chunks: compiledChunks, model, cwd: dataHome });
-        await saveJson(orderFile, overlay);
-        console.log(`code-story: AI order saved (${overlay.permutation.length} story sections)`);
-      }
-      await saveJson(jobFile, { ...record, status: 'done', finishedAt: new Date().toISOString() });
-    } catch (e) {
-      await saveJson(jobFile, {
-        ...record,
-        status: 'failed',
-        finishedAt: new Date().toISOString(),
-        error: (e as Error).message,
-      });
-      throw e;
+    await scheduler.kick(ORDER_KIND, { force: true });
+    for (;;) {
+      const task = (await scheduler.status()).tasks.find((t) => t.kind === ORDER_KIND);
+      if (!task || (task.queued === 0 && task.running === 0)) break;
+      await new Promise((r) => setTimeout(r, 200));
     }
+    await scheduler.shutdown();
+
+    const overlay = await loadOverlay(orderFile);
+    if (overlay?.version === 2) console.log(`code-story: AI order saved (${overlay.chapters.length} chapters)`);
+    else if (overlay?.version === 1) console.log(`code-story: AI order saved (${overlay.permutation.length} story sections)`);
+    else console.error('code-story: AI ordering produced no overlay (see the .order-job.json record)');
   }
 
   if (narrate) {

@@ -128,6 +128,20 @@ export class GlueScheduler {
     return { tasks, spend };
   }
 
+  /**
+   * Queued + running unit counts for one kind. The per-job GET routes derive "is this job active?"
+   * (running or waiting behind a sibling in its lane) from this — one source of truth for orphan
+   * resolution, instead of a separate per-job `running` flag.
+   */
+  activity(kind: string): { queued: number; running: number } {
+    const task = this.tasks.get(kind);
+    const lane = task ? laneForPriority(task.priority) : 'background';
+    return {
+      queued: this.queues[lane].filter((q) => q.kind === kind).length,
+      running: this.runningByKind.get(kind) ?? 0,
+    };
+  }
+
   async shutdown(): Promise<void> {
     this.shuttingDown = true;
     this.abort.abort();

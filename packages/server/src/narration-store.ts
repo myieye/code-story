@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { NarrationOverlay, NarrationOverlayV2 } from '@code-story/core';
 import type { ResolvedRange } from './git.js';
+import { loadJobRecordFile } from './job-runtime.js';
 
 export { saveJson } from './json-file.js';
 
@@ -71,14 +72,6 @@ export async function loadNarrationOverlay(file: string): Promise<NarrationOverl
   return null;
 }
 
-export async function loadNarrationJobRecord(file: string): Promise<NarrationJobRecord | null> {
-  try {
-    const parsed = JSON.parse(await readFile(file, 'utf8')) as NarrationJobRecord;
-    if (parsed.version === 1) return parsed;
-  } catch (e) {
-    if ((e as NodeJS.ErrnoException).code !== 'ENOENT') {
-      console.warn(`code-story: could not read narration job record at ${file}:`, e);
-    }
-  }
-  return null;
+export function loadNarrationJobRecord(file: string): Promise<NarrationJobRecord | null> {
+  return loadJobRecordFile<NarrationJobRecord>(file, 'narration job record');
 }

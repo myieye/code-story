@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { ContextPayload, ContextStoreFile } from '@code-story/core';
 import type { ResolvedRange } from './git.js';
+import { loadJobRecordFile } from './job-runtime.js';
 import { saveJson } from './json-file.js';
 
 export { saveJson };
@@ -47,16 +48,8 @@ export interface ContextJobRecord {
   cappedCount: number;
 }
 
-export async function loadContextJobRecord(file: string): Promise<ContextJobRecord | null> {
-  try {
-    const parsed = JSON.parse(await readFile(file, 'utf8')) as ContextJobRecord;
-    if (parsed.version === 1) return parsed;
-  } catch (e) {
-    if ((e as NodeJS.ErrnoException).code !== 'ENOENT') {
-      console.warn(`code-story: could not read context job record at ${file}:`, e);
-    }
-  }
-  return null;
+export function loadContextJobRecord(file: string): Promise<ContextJobRecord | null> {
+  return loadJobRecordFile<ContextJobRecord>(file, 'context job record');
 }
 
 /**
