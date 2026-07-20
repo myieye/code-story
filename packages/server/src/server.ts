@@ -45,7 +45,8 @@ import { buildChunkGraph } from './chunk-graph-build.js';
 import { chunkGraphFilePath, loadChunkGraph } from './chunk-graph-store.js';
 import { computeChunks } from './chunks.js';
 import { createContextResolver } from './context-resolve.js';
-import { eligibleContextChunks, runContextJob } from './context-job.js';
+import { eligibleContextChunks } from './context-job.js';
+import { CONTEXT_KIND, createContextTask } from './context-task.js';
 import {
   type ContextJobRecord,
   contextFilePath,
@@ -378,6 +379,25 @@ export function startServer(options: ServerOptions, requestedPort = 0): Promise<
               : undefined,
           }),
         );
+        scheduler.register(
+          createContextTask({
+            headSha: options.range.head,
+            jobFile: store.contextJobFile,
+            prepare: async () => {
+              const { chunks, graph, book } = await getBook();
+              const freshIds = new Set(
+                Object.keys(filterFreshContext(options.range.head, book, await loadContextStore(store.contextFile))),
+              );
+              const { resolver, changedFiles } = await contextResolveInputs();
+              return {
+                eligibleChunks: eligibleContextChunks(book, chunks),
+                freshIds,
+                resolve: (chunk) => resolver.resolve(chunk, changedFiles, graph),
+                persist: (payload) => persistPayload(store.contextFile, payload),
+              };
+            },
+          }),
+        );
         return { scheduler, ledger };
       })(),
       () => (glueCache = undefined),
@@ -651,59 +671,29 @@ export function startServer(options: ServerOptions, requestedPort = 0): Promise<
     }
   });
 
-  // The bulk context fill, modeled on the order/narration jobs minus the model calls. One in flight
-  // per range.
-  const contextRuntime = new JobRuntime<ContextJobRecord>();
+  // The bulk context fill is a `none`-tier glue task on the scheduler's bulk lane (spec 07 G5); its
+  // deps (eligible chunks, resolver, cap-aware persist) are assembled in getGlue. GET-on-miss above
+  // stays inline. Active = running or queued behind a background sibling.
+  const contextActive = async (): Promise<boolean> => {
+    const a = (await getGlue()).scheduler.activity(CONTEXT_KIND);
+    return a.running > 0 || a.queued > 0;
+  };
 
   app.get('/api/context-job', async (c) => {
     const { contextJobFile } = await getStore();
-    const stored = await loadContextJobRecord(contextJobFile);
-    const job = await contextRuntime.resolve(stored, () => loadContextJobRecord(contextJobFile));
+    const [stored, active] = await Promise.all([loadContextJobRecord(contextJobFile), contextActive()]);
+    const job = await resolveJobRecord(stored, active, () => loadContextJobRecord(contextJobFile));
     return c.json({ job: job && contextJobSummary(job) } satisfies ContextJobResponse);
   });
 
   app.post('/api/context-job', async (c) => {
-    const { contextFile, contextJobFile } = await getStore();
-    const { chunks, graph, book } = await getBook();
-    // No awaits between this guard and `run`'s handle assignment — a second concurrent POST must see
-    // the first one's handle.
-    if (contextRuntime.running) {
-      return c.json(
-        {
-          job: contextRuntime.liveRecord ? contextJobSummary(contextRuntime.liveRecord) : null,
-        } satisfies ContextJobResponse,
-        200,
-      );
-    }
-    const record: ContextJobRecord = {
-      version: 1,
-      status: 'running',
-      startedAt: new Date().toISOString(),
-      chunksTotal: 0,
-      chunksDone: 0,
-      computed: 0,
-      skipped: 0,
-      capped: false,
-      cappedCount: 0,
-    };
-    contextRuntime.run(record, contextJobFile, async () => {
-      const eligible = eligibleContextChunks(book, chunks);
-      const freshIds = new Set(
-        Object.keys(filterFreshContext(options.range.head, book, await loadContextStore(contextFile))),
-      );
-      const { resolver, changedFiles } = await contextResolveInputs();
-      return runContextJob({
-        eligibleChunks: eligible,
-        freshIds,
-        resolve: (chunk) => resolver.resolve(chunk, changedFiles, graph),
-        persist: (payload) => persistPayload(contextFile, payload),
-        onProgress: (done, total) => {
-          record.chunksDone = done;
-          record.chunksTotal = total;
-        },
-      });
-    });
-    return c.json({ job: contextJobSummary(record) } satisfies ContextJobResponse, 202);
+    const { contextJobFile } = await getStore();
+    const result = await (await getGlue()).scheduler.kick(CONTEXT_KIND, { force: true });
+    const record = await loadContextJobRecord(contextJobFile);
+    return c.json(
+      { job: record && contextJobSummary(record) } satisfies ContextJobResponse,
+      result.enqueued.length > 0 ? 202 : 200,
+    );
   });
 
   // `?order=ai` must never silently fall back to tier 0 — an eval comparing "both orders"

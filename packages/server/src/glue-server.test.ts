@@ -30,10 +30,12 @@ describe('GET /api/glue (#124)', () => {
     const server = await startServer({ repo, range, dataHome, autoOrder: false }, 0);
     try {
       const status = (await (await fetch(`${server.url}/api/glue`)).json()) as GlueStatus;
-      // chunk-narration (G2) and order (G4) register on the background lane; neither has run.
+      // chunk-narration (G2), order (G4) and context (G5) all register on the background lane; none
+      // has run. Context is a script task (tier none), so its model reads 'none'.
       expect(status.tasks).toEqual([
         { kind: 'chunk-narration', lane: 'background', queued: 0, running: 0, done: 0, failed: 0, model: 'opus' },
         { kind: 'order', lane: 'background', queued: 0, running: 0, done: 0, failed: 0, model: 'opus' },
+        { kind: 'context', lane: 'background', queued: 0, running: 0, done: 0, failed: 0, model: 'none' },
       ]);
       expect(status.spend).toEqual({ calls: 0, inputTokens: 0, outputTokens: 0 });
     } finally {
