@@ -49,6 +49,10 @@ BYO-agent threads whose code changes are verifiable patches.
   Tim always picks gradual — choose it automatically, record the deferred ambitious path in the
   spec, don't ask. (He confirmed this after picking the gradual option on all four spec 01
   questions.)
+- **One question per round (Tim, 2026-07-20)**: when questions for Tim exist, always ask —
+  clearly, with enough context, and pick THE one with the biggest bang for the buck in unblock
+  value. Everything else: research it yourself ("you can do thorough research that's better
+  than most answers I can give you"). Ask in the closing report, never blocking mid-work.
 - **Commits**: `git config user.email noreply@anthropic.com`, `user.name Claude` (a stop-hook
   enforces this).
 - **GitHub provenance in this repo**: everything here is Claude-authored by default (vibe
