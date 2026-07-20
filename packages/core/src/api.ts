@@ -1,5 +1,6 @@
 import type { ChunkGraph } from './chunk-graph.js';
 import type { ContextPayload } from './context.js';
+import type { Deferral } from './deferral.js';
 import type { ImportGraph } from './import-graph.js';
 import type { Book, Chunk } from './model.js';
 import type { NarrationOverlay } from './narration.js';
@@ -79,6 +80,14 @@ export interface ContextJobResponse {
     capped: boolean;
     cappedCount: number;
   } | null;
+}
+
+/**
+ * `GET /api/deferrals`: every deferral for this range (spec 06 slice 6). `POST` echoes the one
+ * stored record; `DELETE /api/deferrals/:id` removes one. Resolution reuses `PATCH /api/review`.
+ */
+export interface DeferralsResponse {
+  deferrals: Deferral[];
 }
 
 /** `PATCH /api/order`: the reviewer's banner decision (spec 02 — never re-ask on reload). */

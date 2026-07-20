@@ -36,6 +36,8 @@ describe('GET /api/glue (#124)', () => {
         { kind: 'chunk-narration', lane: 'background', queued: 0, running: 0, done: 0, failed: 0, model: 'opus' },
         { kind: 'order', lane: 'background', queued: 0, running: 0, done: 0, failed: 0, model: 'opus' },
         { kind: 'context', lane: 'background', queued: 0, running: 0, done: 0, failed: 0, model: 'none' },
+        // The deferral task registers on the interactive lane; it never auto-kicks (only POST does).
+        { kind: 'deferral', lane: 'interactive', queued: 0, running: 0, done: 0, failed: 0, model: 'opus' },
       ]);
       expect(status.spend).toEqual({ calls: 0, inputTokens: 0, outputTokens: 0 });
     } finally {

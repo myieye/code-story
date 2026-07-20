@@ -18,6 +18,10 @@ import {
   type ContextJobResponse,
   type ContextPayload,
   type ContextResponse,
+  type Deferral,
+  type DeferralRequest,
+  type DeferralsResponse,
+  type DeferralStoreFile,
   DEFAULT_STORY_CONFIG,
   exportBookMarkdown,
   type FileContents,
@@ -29,6 +33,7 @@ import {
   filterFreshNarrationV2,
   isFileModeConfig,
   isOverlayFresh,
+  type LineRange,
   type NarrationResponse,
   type OrderOverlayV2,
   type OrderPatch,
@@ -56,11 +61,13 @@ import {
   loadContextStore,
   persistContextPayload,
 } from './context-store.js';
+import { createDeferralTask, DEFERRAL_KIND } from './deferral-task.js';
+import { deferralsFilePath, loadDeferralStore } from './deferral-store.js';
 import { createGlueInvoker, type GlueSpawn } from './glue/invoker.js';
 import { GlueLedger, glueLedgerFilePath } from './glue/ledger.js';
 import { createModelPolicy } from './glue/model-policy.js';
 import { GlueScheduler } from './glue/scheduler.js';
-import { JobRuntime, resolveJobRecord } from './job-runtime.js';
+import { JobRuntime, ORPHAN_ERROR, resolveJobRecord } from './job-runtime.js';
 import { diffRange, fileAt, listTree, originUrl, type ResolvedRange, rootCommit } from './git.js';
 import { CHUNK_NARRATION_KIND, createChunkNarrationTask } from './chunk-narration-task.js';
 import { runNarrationJob } from './narration-job.js';
@@ -99,6 +106,28 @@ function narrationJobSummary(record: NarrationJobRecord): NonNullable<NarrationR
 function contextJobSummary(record: ContextJobRecord): NonNullable<ContextJobResponse['job']> {
   const { chunksTotal, chunksDone, computed, skipped, capped, cappedCount } = record;
   return { ...jobSummaryBase(record), chunksTotal, chunksDone, computed, skipped, capped, cappedCount };
+}
+
+function isLineRange(v: unknown): v is LineRange {
+  return typeof v === 'object' && v !== null && typeof (v as LineRange).start === 'number' && typeof (v as LineRange).end === 'number';
+}
+
+/** POST /api/deferrals body → a validated request, or null (400). Answer fields are server-owned. */
+function validateDeferralRequest(body: unknown): DeferralRequest | null {
+  if (typeof body !== 'object' || body === null) return null;
+  const b = body as Record<string, unknown>;
+  if (typeof b.id !== 'string' || b.id.length === 0) return null;
+  if (typeof b.chunkId !== 'string' || b.chunkId.length === 0) return null;
+  if (b.kind !== 'note' && b.kind !== 'ai') return null;
+  if (typeof b.text !== 'string') return null;
+  return {
+    id: b.id,
+    chunkId: b.chunkId,
+    kind: b.kind,
+    text: b.text,
+    ...(b.inline === true ? { inline: true } : {}),
+    ...(isLineRange(b.lineRange) ? { lineRange: b.lineRange } : {}),
+  };
 }
 
 export interface ServerOptions {
@@ -278,6 +307,7 @@ export function startServer(options: ServerOptions, requestedPort = 0): Promise<
         narrationChunksFile: string;
         contextFile: string;
         contextJobFile: string;
+        deferralsFile: string;
         glueLedgerFile: string;
       }>
     | undefined;
@@ -297,6 +327,7 @@ export function startServer(options: ServerOptions, requestedPort = 0): Promise<
           narrationChunksFile: narrationChunksFilePath(dataHome, repoId, options.range),
           contextFile: contextFilePath(dataHome, repoId, options.range),
           contextJobFile: contextJobFilePath(dataHome, repoId, options.range),
+          deferralsFile: deferralsFilePath(dataHome, repoId, options.range),
           glueLedgerFile: glueLedgerFilePath(dataHome, repoId, options.range),
         };
       })(),
@@ -322,6 +353,25 @@ export function startServer(options: ServerOptions, requestedPort = 0): Promise<
     ));
   // Serializes saves so concurrent PATCHes never interleave the write-temp/rename pair.
   let saveChain = Promise.resolve();
+
+  // The one save-chain for the deferral store: POST (append/upsert), DELETE (remove), the GET orphan
+  // rewrite, and the deferral task's answer fills ALL funnel through here (read-modify-write, fresh
+  // load each turn), so a concurrent DELETE and answer arrival can never clobber each other.
+  let deferralChain = Promise.resolve();
+  const mutateDeferrals = <T>(fn: (store: DeferralStoreFile) => T): Promise<T> => {
+    const op = deferralChain.then(async () => {
+      const { deferralsFile } = await getStore();
+      const store = await loadDeferralStore(deferralsFile, options.range);
+      const result = fn(store);
+      await saveJson(deferralsFile, store);
+      return result;
+    });
+    deferralChain = op.then(
+      () => undefined,
+      () => undefined,
+    );
+    return op;
+  };
 
   // The AI glue pipeline (spec 07). `autoOrder:false` aliases to `glue:false` so the existing test
   // corpus disables all glue auto-kicks unchanged. The chunk-narration task (G2) registers here; its
@@ -396,6 +446,22 @@ export function startServer(options: ServerOptions, requestedPort = 0): Promise<
                 persist: (payload) => persistPayload(store.contextFile, payload),
               };
             },
+          }),
+        );
+        scheduler.register(
+          createDeferralTask({
+            tier: 'top',
+            loadDeferrals: async () => (await loadDeferralStore(store.deferralsFile, options.range)).deferrals,
+            getChunk: async (chunkId) => {
+              const built = await getBook();
+              const chunk = built.chunks.find((ch) => ch.id === chunkId);
+              return chunk ? { chunk, contents: built.contents.get(chunk.file) } : undefined;
+            },
+            saveAnswer: (id, patch) =>
+              mutateDeferrals((s) => {
+                const deferral = s.deferrals.find((d) => d.id === id);
+                if (deferral) Object.assign(deferral, patch);
+              }),
           }),
         );
         return { scheduler, ledger };
@@ -617,6 +683,72 @@ export function startServer(options: ServerOptions, requestedPort = 0): Promise<
     saveChain = save.catch(() => undefined);
     await save;
     return c.json({ ok: true });
+  });
+
+  // Deferrals (spec 06 slice 6). Reviewer-authored state — no fingerprint, immune to CORE_VERSION.
+  // "Running or queued for the deferral kind" is the one signal the GET orphan rule reads (the
+  // scheduler, not a per-deferral handle, owns the answer lifecycle).
+  const deferralActive = async (): Promise<boolean> => {
+    const a = (await getGlue()).scheduler.activity(DEFERRAL_KIND);
+    return a.running > 0 || a.queued > 0;
+  };
+
+  app.post('/api/deferrals', async (c) => {
+    const req = validateDeferralRequest(await c.req.json().catch(() => null));
+    if (!req) return c.json({ error: 'invalid deferral' }, 400);
+    // Upsert by id: a re-POST of the same id is Retry — it resets the answer fields (an ai record
+    // starts `running`, since the kick below enqueues it in the same tick) and re-runs the task.
+    const stored = await mutateDeferrals((store): Deferral => {
+      const record: Deferral = {
+        ...req,
+        createdAt: new Date().toISOString(),
+        ...(req.kind === 'ai' ? { answerStatus: 'running' as const } : {}),
+      };
+      const idx = store.deferrals.findIndex((d) => d.id === req.id);
+      if (idx >= 0) store.deferrals[idx] = record;
+      else store.deferrals.push(record);
+      return { ...record };
+    });
+    // ai (inline or deferred) rides the interactive lane; force bypasses the master switch a test may
+    // have disabled (like order-job/context-job POSTs) — the deferral task never auto-kicks otherwise.
+    if (req.kind === 'ai') {
+      await (await getGlue()).scheduler.kick(DEFERRAL_KIND, { force: true });
+      return c.json(stored, 202);
+    }
+    return c.json(stored, 200);
+  });
+
+  app.get('/api/deferrals', async (c) => {
+    const { deferralsFile } = await getStore();
+    const [active, initial] = await Promise.all([deferralActive(), loadDeferralStore(deferralsFile, options.range)]);
+    let deferrals = initial.deferrals;
+    // Per-deferral orphan rule: a `running` answer with no live scheduler unit (idle after a restart)
+    // is rewritten to `failed`, one re-read first (the mutate re-loads inside the chain), so a fast
+    // answer that just landed is not clobbered and the poll never chases a dead spinner.
+    if (!active && deferrals.some((d) => d.answerStatus === 'running')) {
+      deferrals = await mutateDeferrals((store) => {
+        for (const d of store.deferrals) {
+          if (d.answerStatus === 'running') {
+            d.answerStatus = 'failed';
+            d.answerError = ORPHAN_ERROR;
+            d.answeredAt = new Date().toISOString();
+          }
+        }
+        return store.deferrals.map((d) => ({ ...d }));
+      });
+    }
+    return c.json({ deferrals } satisfies DeferralsResponse);
+  });
+
+  app.delete('/api/deferrals/:id', async (c) => {
+    const id = c.req.param('id');
+    const found = await mutateDeferrals((store) => {
+      const idx = store.deferrals.findIndex((d) => d.id === id);
+      if (idx < 0) return false;
+      store.deferrals.splice(idx, 1);
+      return true;
+    });
+    return c.json({ ok: found }, found ? 200 : 404);
   });
 
   // Serializes the read-modify-write of the shared context store so a compute-on-miss GET and the
