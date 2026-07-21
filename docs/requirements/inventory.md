@@ -493,3 +493,36 @@ and moved as the tool improves. Critical architecture — build carefully.
 > build. it should be built with the best initial pieces you can think of for our final
 > goals, but be modular so that we can tweak and move pieces around later as we learn and
 > improve the tool. that's a critical piece of architecture. build it carefully."
+
+## O. Self-explanatory tool: library, config visibility, versioning, sync, 2026-07-21 ([verbatim source](../vision/addendum-2026-07-21-self-explanatory-and-library.md))
+
+### R-061 — UI to trigger reviews and browse/pick available stories
+The tool needs a UI for triggering reviews/code-stories, seeing what stories are available, and
+picking one. (Today the daemon serves one fixed range with no library/launcher.)
+> "What's currently missing is UI for actually triggering reviews/code-stories and seeing what
+> stories are available and picking one."
+
+### R-062 — Config used must be visible everywhere, and self-explanatory
+The configuration options a story was generated with must be clearly visible both in the list of
+reviews and within a single review, and it must be obvious what each option actually means —
+what it triggers in the internals — including that some options cost an AI re-run to change
+(confirmed: ordering axes invalidate the AI order overlay; model/toggle choices are free until a
+deliberate re-run). Overarching goal: make the tool *way* more self-explanatory.
+> "the options that were used to generate a review should be clearly visible both in the list of
+> reviews as well as in th context of a single review. it should also be obvious what the
+> options actually mean i.e. what they actually trigger in the bowels of the tool." /
+> "We're essentially trying really hard to make the tool waaaay more self-explanatory"
+
+### R-063 — Versioning + a changelog page (start now, not retroactive)
+Each story records which tool version generated it, and there is a quick page showing what
+changed in each version. Start the change list now; no retroactive backfill.
+> "we need some versioning, so that I can see what version was used for each story and jump to a
+> quick page that shows what changed in each version. we can start that change list now. no need
+> to do anything retroactively."
+
+### R-064 — Stories persisted to disk, auto-committed and pushed, conflict-free names
+Created stories are persisted to disk and automatically committed and pushed to the repo so they
+sync across environments. Names carry a timestamp (or similar) so stories never conflict.
+> "it would be great if created stories were persisted to disk and automatically commited and
+> pushed to the repo, so that they always sync across environments. they should not conflict, so
+> they need a timestamp or something in the name."
