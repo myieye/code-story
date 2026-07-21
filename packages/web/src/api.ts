@@ -1,6 +1,9 @@
 import type {
   BookResponse,
+  ChangelogResponse,
   ContextResponse,
+  CreateStoryRequest,
+  CreateStoryResponse,
   Deferral,
   DeferralRequest,
   DeferralsResponse,
@@ -9,17 +12,56 @@ import type {
   OrderResponse,
   ReviewFile,
   ReviewPatch,
+  StoriesResponse,
   StoryConfig,
 } from '@code-story/core';
 import { bookQuery } from './order-options-logic.js';
 
 export type { BookResponse, ContextResponse, Deferral, DeferralRequest, DeferralsResponse, NarrationResponse, OrderResponse };
+export type { ChangelogResponse, CreateStoryRequest, StoriesResponse };
 
 /** With a config, requests the book under that reading order (#114); without, the launch config. */
 export async function fetchBook(config?: StoryConfig): Promise<BookResponse> {
   const response = await fetch(`/api/book${config ? bookQuery(config) : ''}`);
   if (!response.ok) throw new Error(`GET /api/book failed: ${response.status}`);
   return response.json() as Promise<BookResponse>;
+}
+
+/** The story library (R-061): every persisted snapshot + which range is currently open. */
+export async function fetchStories(): Promise<StoriesResponse> {
+  const response = await fetch('/api/stories');
+  if (!response.ok) throw new Error(`GET /api/stories failed: ${response.status}`);
+  return response.json() as Promise<StoriesResponse>;
+}
+
+/** Trigger a new review; the daemon compiles + persists + switches to it. Returns the new story id. */
+export async function createStory(req: CreateStoryRequest): Promise<CreateStoryResponse> {
+  const response = await fetch('/api/stories', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(req),
+  });
+  if (!response.ok) {
+    const body = (await response.json().catch(() => ({}))) as { error?: string };
+    throw new Error(body.error ?? `POST /api/stories failed: ${response.status}`);
+  }
+  return response.json() as Promise<CreateStoryResponse>;
+}
+
+/** Open a persisted story: the daemon switches its active range to it. Reload to read it. */
+export async function openStory(id: string): Promise<void> {
+  const response = await fetch('/api/stories/open', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ id }),
+  });
+  if (!response.ok) throw new Error(`POST /api/stories/open failed: ${response.status}`);
+}
+
+export async function fetchChangelog(): Promise<ChangelogResponse> {
+  const response = await fetch('/api/changelog');
+  if (!response.ok) throw new Error(`GET /api/changelog failed: ${response.status}`);
+  return response.json() as Promise<ChangelogResponse>;
 }
 
 export async function fetchReview(): Promise<ReviewFile> {

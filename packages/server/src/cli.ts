@@ -180,6 +180,16 @@ async function effectiveStoryConfig(): Promise<StoryConfig> {
   return resolveStoryConfig(fromFile, { direction: directionArg, testPlacement: testPlacementArg });
 }
 
+/** `.code-story.json` `"sync": true` opts a repo into auto committing+pushing its story snapshots (R-064). */
+async function effectiveStorySync(): Promise<boolean> {
+  try {
+    const raw = JSON.parse(await readFile(path.join(repo, '.code-story.json'), 'utf8')) as { sync?: unknown };
+    return raw.sync === true;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * One diff + chunk + compile pass, shared by every flag branch that needs the compiled book — a
  * second tree-sitter pass costs ~30s on very large ranges. `book`/`compiled` are the file-mode
@@ -630,10 +640,13 @@ const { url, shutdownGlue } = await startServer(
   {
     repo,
     range: resolved,
+    rangeLabel: range,
     autoOrder: !noAiOrder,
     autoNarration: !noAiNarration,
     orderModel: model,
     storyConfig: await effectiveStoryConfig(),
+    storyPersist: true,
+    storySync: await effectiveStorySync(),
   },
   port,
 );

@@ -99,8 +99,8 @@ export interface DeferralsResponse {
  */
 export interface StoriesResponse {
   stories: StorySummary[];
-  /** The range this daemon booted with (`base..head`), or null when it opened straight to the library. */
-  launchRange: string | null;
+  /** The range currently open in the reader (`base..head` of resolved SHAs) — the UI highlights it. */
+  activeRange: string | null;
 }
 
 /**

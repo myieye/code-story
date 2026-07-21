@@ -6,9 +6,18 @@ import { serveStatic } from '@hono/node-server/serve-static';
 import {
   applyChapterOverlay,
   applyOrderOverlay,
+  APP_VERSION,
   applyReviewPatch,
   type Book,
   type BookResponse,
+  CHANGELOG,
+  type ChangelogResponse,
+  type CreateStoryRequest,
+  type CreateStoryResponse,
+  type StoriesResponse,
+  type StorySnapshot,
+  storyId,
+  toStorySummary,
   type Chunk,
   type ChunkGraph,
   type CompileChapterBookInput,
@@ -68,7 +77,7 @@ import { GlueLedger, glueLedgerFilePath } from './glue/ledger.js';
 import { createModelPolicy } from './glue/model-policy.js';
 import { GlueScheduler } from './glue/scheduler.js';
 import { JobRuntime, ORPHAN_ERROR, resolveJobRecord } from './job-runtime.js';
-import { diffRange, fileAt, listTree, originUrl, type ResolvedRange, rootCommit } from './git.js';
+import { diffRange, fileAt, listTree, originUrl, type ResolvedRange, resolveRange, rootCommit } from './git.js';
 import { CHUNK_NARRATION_KIND, createChunkNarrationTask } from './chunk-narration-task.js';
 import { runNarrationJob } from './narration-job.js';
 import { NARRATION_PROMPT_VERSION } from './narration-prompt.js';
@@ -84,6 +93,8 @@ import {
 import { createOrderTask, ORDER_KIND } from './order-task.js';
 import { loadJobRecord, loadOverlay, orderFilePath, orderJobFilePath, type OrderJobRecord, saveJson } from './order-store.js';
 import { defaultDataHome, loadReview, repoIdFrom, reviewFilePath, saveReview } from './review-store.js';
+import { listStories, loadStory, saveStory } from './story-store.js';
+import { syncStories } from './story-sync.js';
 
 const webDist = fileURLToPath(new URL('../../web/dist', import.meta.url));
 
@@ -133,6 +144,9 @@ function validateDeferralRequest(body: unknown): DeferralRequest | null {
 export interface ServerOptions {
   repo: string;
   range: ResolvedRange;
+  /** The human range the reviewer typed (e.g. `main..HEAD`) — the snapshot title/slug. Falls back to
+   * short SHAs. */
+  rangeLabel?: string;
   /** Override of `~/.code-story` for tests. */
   dataHome?: string;
   /**
@@ -164,6 +178,12 @@ export interface ServerOptions {
   contextStoreCapBytes?: number;
   /** Test seam: replaces the raw `claude -p` spawn the glue invoker drives. */
   glueInvoke?: GlueSpawn;
+  /** Persist the launch story snapshot to `<repo>/.code-story/stories/` on boot (R-064). Default off
+   * so tests never write into their repos; the CLI turns it on. Create/open endpoints always persist. */
+  storyPersist?: boolean;
+  /** Auto commit+push the stories dir after persisting (R-064). Default off; the CLI reads it from
+   * `.code-story.json`. */
+  storySync?: boolean;
 }
 
 export interface RunningServer {
@@ -176,8 +196,18 @@ export interface RunningServer {
 
 export function startServer(options: ServerOptions, requestedPort = 0): Promise<RunningServer> {
   const app = new Hono();
-  const storyConfig = options.storyConfig ?? DEFAULT_STORY_CONFIG;
-  const chapterMode = !isFileModeConfig(storyConfig);
+  // The active story is mutable: opening/creating a story switches the range and config in place and
+  // resets the per-range caches (resetEngine). `options.range` stays the boot range; every route reads
+  // `currentRange`/`storyConfig`/`chapterMode`, so with no switch the behavior is byte-identical.
+  let currentRange: ResolvedRange = options.range;
+  let currentRangeLabel = options.rangeLabel ?? shortRange(options.range);
+  let storyConfig = options.storyConfig ?? DEFAULT_STORY_CONFIG;
+  let chapterMode = !isFileModeConfig(storyConfig);
+  const storySync = options.storySync ?? false;
+
+  function shortRange(r: ResolvedRange): string {
+    return `${r.base.slice(0, 8)}..${r.head.slice(0, 8)}`;
+  }
 
   let diffCache: Promise<FileDiff[]> | undefined;
 
@@ -216,14 +246,14 @@ export function startServer(options: ServerOptions, requestedPort = 0): Promise<
     });
 
   const getDiff = () =>
-    (diffCache ??= uncacheOnError(diffRange(options.repo, options.range), () => (diffCache = undefined)));
+    (diffCache ??= uncacheOnError(diffRange(options.repo, currentRange), () => (diffCache = undefined)));
 
   const getBase = () =>
     (baseCache ??= uncacheOnError(
       (async () => {
         const files = await getDiff();
-        const { chunks, contents, graph } = await computeChunks(options.repo, options.range, files);
-        const fileCompiled = compileBook({ files, chunks, graph, headSha: options.range.head });
+        const { chunks, contents, graph } = await computeChunks(options.repo, currentRange, files);
+        const fileCompiled = compileBook({ files, chunks, graph, headSha: currentRange.head });
         return { files, chunks, contents, graph, fileCompiled };
       })(),
       () => (baseCache = undefined),
@@ -251,7 +281,7 @@ export function startServer(options: ServerOptions, requestedPort = 0): Promise<
             chunks: base.chunks,
             graph: base.graph,
             chunkGraph,
-            headSha: options.range.head,
+            headSha: currentRange.head,
           };
           const chapter = compileChapterBook(chapterInput, config);
           return {
@@ -279,7 +309,7 @@ export function startServer(options: ServerOptions, requestedPort = 0): Promise<
   // degenerates the chapter book to git order rather than bricking the daemon.
   async function resolveChunkGraph(base: Base): Promise<ChunkGraph> {
     const { graphFile } = await getStore();
-    const fresh = filterFreshGraph(options.range.head, await loadChunkGraph(graphFile));
+    const fresh = filterFreshGraph(currentRange.head, await loadChunkGraph(graphFile));
     if (fresh) return fresh;
     try {
       const built = await buildChunkGraph({
@@ -288,7 +318,7 @@ export function startServer(options: ServerOptions, requestedPort = 0): Promise<
         graph: base.graph,
         book: base.fileCompiled.book,
         files: base.files,
-        headSha: options.range.head,
+        headSha: currentRange.head,
       });
       await saveJson(graphFile, built);
       return { edges: built.edges };
@@ -320,17 +350,17 @@ export function startServer(options: ServerOptions, requestedPort = 0): Promise<
         const repoId = repoIdFrom(options.repo, await rootCommit(options.repo), await originUrl(options.repo));
         return {
           dataHome,
-          reviewFile: reviewFilePath(dataHome, repoId, options.range),
-          orderFile: orderFilePath(dataHome, repoId, options.range),
-          jobFile: orderJobFilePath(dataHome, repoId, options.range),
-          graphFile: chunkGraphFilePath(dataHome, repoId, options.range),
-          narrationFile: narrationFilePath(dataHome, repoId, options.range),
-          narrationJobFile: narrationJobFilePath(dataHome, repoId, options.range),
-          narrationChunksFile: narrationChunksFilePath(dataHome, repoId, options.range),
-          contextFile: contextFilePath(dataHome, repoId, options.range),
-          contextJobFile: contextJobFilePath(dataHome, repoId, options.range),
-          deferralsFile: deferralsFilePath(dataHome, repoId, options.range),
-          glueLedgerFile: glueLedgerFilePath(dataHome, repoId, options.range),
+          reviewFile: reviewFilePath(dataHome, repoId, currentRange),
+          orderFile: orderFilePath(dataHome, repoId, currentRange),
+          jobFile: orderJobFilePath(dataHome, repoId, currentRange),
+          graphFile: chunkGraphFilePath(dataHome, repoId, currentRange),
+          narrationFile: narrationFilePath(dataHome, repoId, currentRange),
+          narrationJobFile: narrationJobFilePath(dataHome, repoId, currentRange),
+          narrationChunksFile: narrationChunksFilePath(dataHome, repoId, currentRange),
+          contextFile: contextFilePath(dataHome, repoId, currentRange),
+          contextJobFile: contextJobFilePath(dataHome, repoId, currentRange),
+          deferralsFile: deferralsFilePath(dataHome, repoId, currentRange),
+          glueLedgerFile: glueLedgerFilePath(dataHome, repoId, currentRange),
         };
       })(),
       () => (storeCache = undefined),
@@ -340,7 +370,7 @@ export function startServer(options: ServerOptions, requestedPort = 0): Promise<
   let headPathsCache: Promise<Set<string>> | undefined;
   const getHeadPaths = () =>
     (headPathsCache ??= uncacheOnError(
-      listTree(options.repo, options.range.head).then((paths) => new Set(paths)),
+      listTree(options.repo, currentRange.head).then((paths) => new Set(paths)),
       () => (headPathsCache = undefined),
     ));
 
@@ -349,7 +379,7 @@ export function startServer(options: ServerOptions, requestedPort = 0): Promise<
     (reviewCache ??= uncacheOnError(
       (async () => {
         const file = (await getStore()).reviewFile;
-        return { file, review: await loadReview(file, options.range) };
+        return { file, review: await loadReview(file, currentRange) };
       })(),
       () => (reviewCache = undefined),
     ));
@@ -363,7 +393,7 @@ export function startServer(options: ServerOptions, requestedPort = 0): Promise<
   const mutateDeferrals = <T>(fn: (store: DeferralStoreFile) => T): Promise<T> => {
     const op = deferralChain.then(async () => {
       const { deferralsFile } = await getStore();
-      const store = await loadDeferralStore(deferralsFile, options.range);
+      const store = await loadDeferralStore(deferralsFile, currentRange);
       const result = fn(store);
       await saveJson(deferralsFile, store);
       return result;
@@ -397,7 +427,7 @@ export function startServer(options: ServerOptions, requestedPort = 0): Promise<
         const scheduler = new GlueScheduler({ invoker, ledger, policy, enabled: glueEnabled });
         scheduler.register(
           createChunkNarrationTask({
-            headSha: options.range.head,
+            headSha: currentRange.head,
             tier: 'top',
             model: policy.resolve('top'),
             overlayFile: store.narrationChunksFile,
@@ -433,12 +463,12 @@ export function startServer(options: ServerOptions, requestedPort = 0): Promise<
         );
         scheduler.register(
           createContextTask({
-            headSha: options.range.head,
+            headSha: currentRange.head,
             jobFile: store.contextJobFile,
             prepare: async () => {
               const { chunks, graph, book } = await getBook();
               const freshIds = new Set(
-                Object.keys(filterFreshContext(options.range.head, book, await loadContextStore(store.contextFile))),
+                Object.keys(filterFreshContext(currentRange.head, book, await loadContextStore(store.contextFile))),
               );
               const { resolver, changedFiles } = await contextResolveInputs();
               return {
@@ -453,7 +483,7 @@ export function startServer(options: ServerOptions, requestedPort = 0): Promise<
         scheduler.register(
           createDeferralTask({
             tier: 'top',
-            loadDeferrals: async () => (await loadDeferralStore(store.deferralsFile, options.range)).deferrals,
+            loadDeferrals: async () => (await loadDeferralStore(store.deferralsFile, currentRange)).deferrals,
             getChunk: async (chunkId) => {
               const built = await getBook();
               const chunk = built.chunks.find((ch) => ch.id === chunkId);
@@ -485,7 +515,145 @@ export function startServer(options: ServerOptions, requestedPort = 0): Promise<
     }
   }
 
-  app.get('/api/health', (c) => c.json({ ok: true, name: 'code-story', core: CORE_VERSION }));
+  // ── Story library, versioning, disk sync (spec 08) ──────────────────────────────────────────
+  // Tear down the active range's caches + glue so a switch to another story rebuilds cleanly. Called
+  // only on an explicit open/create; the web reloads afterward and re-fetches everything.
+  async function resetEngine(): Promise<void> {
+    if (glueCache) {
+      try {
+        await (await glueCache).scheduler.shutdown();
+      } catch {
+        // best-effort teardown — a shutdown hiccup must not block the switch
+      }
+    }
+    diffCache = undefined;
+    baseCache = undefined;
+    chunkGraphCache = undefined;
+    bookCacheByConfig.clear();
+    storeCache = undefined;
+    headPathsCache = undefined;
+    reviewCache = undefined;
+    glueCache = undefined;
+    narrationRuntime = new JobRuntime<NarrationJobRecord>();
+    saveChain = Promise.resolve();
+    deferralChain = Promise.resolve();
+    orderPatchChain = Promise.resolve();
+    contextSaveChain = Promise.resolve();
+    orderJobModel = options.orderModel ?? 'opus';
+  }
+
+  async function switchStory(
+    range: ResolvedRange,
+    config: StoryConfig,
+    label: string,
+    intent?: { aiOrder?: boolean; narrate?: boolean },
+  ): Promise<void> {
+    await resetEngine();
+    currentRange = range;
+    currentRangeLabel = label;
+    storyConfig = config;
+    chapterMode = !isFileModeConfig(storyConfig);
+    // maybeAutoKick* still honor the server-level autoOrder/autoNarration switch; an explicit
+    // per-story `false` suppresses it too.
+    if (intent?.aiOrder !== false) void maybeAutoKickOrder();
+    if (intent?.narrate !== false) void maybeAutoKickChunkNarration();
+  }
+
+  // Reuse the existing story id for this range+config so re-opening updates in place; otherwise mint a
+  // fresh timestamped id — conflict-free across machines (R-064).
+  async function resolveStoryId(): Promise<string> {
+    const existing = (await listStories(options.repo)).find(
+      (s) =>
+        s.range.baseSha === currentRange.base &&
+        s.range.headSha === currentRange.head &&
+        storyConfigKey(s.config) === storyConfigKey(storyConfig),
+    );
+    return existing?.id ?? storyId(currentRangeLabel, new Date());
+  }
+
+  async function buildSnapshot(id: string, createdAt: string): Promise<StorySnapshot> {
+    const built = await getBook();
+    const store = await getStore();
+    const orderOverlay = await loadOverlay(store.orderFile);
+    const freshOrder = orderOverlay && isOverlayFresh(built.book, orderOverlay) ? orderOverlay : undefined;
+    const [narr1, narr2] = await Promise.all([
+      loadNarrationOverlay(store.narrationFile),
+      loadChunkNarrationOverlay(store.narrationChunksFile),
+    ]);
+    const narration = narr1 || narr2 ? { ...(narr1 ? { v1: narr1 } : {}), ...(narr2 ? { v2: narr2 } : {}) } : undefined;
+    const distinctChunks = new Set(built.book.sections.flatMap((s) => s.occurrences.map((o) => o.chunkId)));
+    return {
+      id,
+      createdAt,
+      title: currentRangeLabel,
+      range: {
+        base: currentRange.base,
+        head: currentRange.head,
+        baseSha: currentRange.base,
+        headSha: currentRange.head,
+        label: currentRangeLabel,
+      },
+      config: storyConfig,
+      mode: chapterMode ? 'chapter' : 'file',
+      aiOrder: freshOrder !== undefined,
+      toolVersion: APP_VERSION,
+      coreVersion: CORE_VERSION,
+      models: { ...(orderJobModel ? { order: orderJobModel } : {}), ...(narr2?.model ? { narration: narr2.model } : {}) },
+      stats: { sections: built.book.sections.length, chunks: distinctChunks.size },
+      ...(freshOrder ? { orderOverlay: freshOrder } : {}),
+      ...(narration ? { narration } : {}),
+    };
+  }
+
+  // Persist the active story to `<repo>/.code-story/stories/` and (when enabled) commit+push it.
+  // Preserves the original createdAt when updating an existing story so the library order is stable.
+  async function persistCurrentSnapshot(): Promise<string> {
+    const id = await resolveStoryId();
+    const prior = await loadStory(options.repo, id);
+    const snap = await buildSnapshot(id, prior?.createdAt ?? new Date().toISOString());
+    await saveStory(options.repo, snap);
+    if (storySync) void syncStories(options.repo, { enabled: true });
+    return id;
+  }
+
+  app.get('/api/stories', async (c) => {
+    const stories = await listStories(options.repo);
+    const response: StoriesResponse = { stories, activeRange: `${currentRange.base}..${currentRange.head}` };
+    return c.json(response);
+  });
+
+  app.get('/api/changelog', (c) => c.json({ version: APP_VERSION, entries: CHANGELOG } satisfies ChangelogResponse));
+
+  app.post('/api/stories', async (c) => {
+    const body = (await c.req.json().catch(() => ({}))) as Partial<CreateStoryRequest>;
+    if (typeof body.range !== 'string' || !body.range.trim()) return c.json({ error: 'missing range' }, 400);
+    const label = body.range.trim();
+    let resolved: ResolvedRange;
+    try {
+      resolved = await resolveRange(options.repo, label);
+    } catch (e) {
+      return c.json({ error: `could not resolve range: ${e instanceof Error ? e.message : String(e)}` }, 400);
+    }
+    // Reject an empty diff before switching (spec 08) — a story with nothing to review is a mistake.
+    if ((await diffRange(options.repo, resolved)).length === 0) {
+      return c.json({ error: 'no changes in that range' }, 400);
+    }
+    const config = resolveStoryConfig(DEFAULT_STORY_CONFIG, body.config ?? null);
+    await switchStory(resolved, config, body.title?.trim() || label, { aiOrder: body.aiOrder, narrate: body.narrate });
+    const id = await persistCurrentSnapshot();
+    return c.json({ id } satisfies CreateStoryResponse, 201);
+  });
+
+  app.post('/api/stories/open', async (c) => {
+    const body = (await c.req.json().catch(() => ({}))) as { id?: string };
+    if (!body.id) return c.json({ error: 'missing id' }, 400);
+    const snap = await loadStory(options.repo, body.id);
+    if (!snap) return c.json({ error: 'unknown story' }, 404);
+    await switchStory({ base: snap.range.baseSha, head: snap.range.headSha }, snap.config, snap.range.label);
+    return c.json({ ok: true });
+  });
+
+  app.get('/api/health', (c) => c.json({ ok: true, name: 'code-story', core: CORE_VERSION, version: APP_VERSION }));
 
   app.get('/api/glue', async (c) => {
     const { scheduler } = await getGlue();
@@ -493,7 +661,7 @@ export function startServer(options: ServerOptions, requestedPort = 0): Promise<
   });
 
   app.get('/api/diff', async (c) => {
-    return c.json({ ...options.range, files: await getDiff() });
+    return c.json({ ...currentRange, files: await getDiff() });
   });
 
   app.get('/api/book', async (c) => {
@@ -509,7 +677,7 @@ export function startServer(options: ServerOptions, requestedPort = 0): Promise<
       chunks.map((chunk) => [chunk.id, unifiedChunkLines(chunk, contents.get(chunk.file))]),
     );
     const response: BookResponse = {
-      ...options.range,
+      ...currentRange,
       book,
       chunks,
       diffs,
@@ -602,7 +770,7 @@ export function startServer(options: ServerOptions, requestedPort = 0): Promise<
 
   // Narration is order-independent (keyed by section fingerprint), so it survives the order overlay
   // being applied or dismissed.
-  const narrationRuntime = new JobRuntime<NarrationJobRecord>();
+  let narrationRuntime = new JobRuntime<NarrationJobRecord>();
 
   app.get('/api/narration', async (c) => {
     const { narrationFile, narrationJobFile, narrationChunksFile } = await getStore();
@@ -612,13 +780,13 @@ export function startServer(options: ServerOptions, requestedPort = 0): Promise<
       getBook(),
       loadChunkNarrationOverlay(narrationChunksFile),
     ]);
-    const filtered = overlay !== null ? filterFreshNarration(book, options.range.head, overlay) : null;
+    const filtered = overlay !== null ? filterFreshNarration(book, currentRange.head, overlay) : null;
     const job = await narrationRuntime.resolve(stored, () => loadNarrationJobRecord(narrationJobFile));
     // Chunk narration v2 (spec 06 slice 5): fresh-filter the separate overlay and project it to
     // line/badge; the v1 fields above are unchanged.
     const chunkEntries = chunkOverlay
       ? Object.fromEntries(
-          Object.entries(filterFreshNarrationV2(options.range.head, chunkOverlay).chunks).map(([id, e]) => [
+          Object.entries(filterFreshNarrationV2(currentRange.head, chunkOverlay).chunks).map(([id, e]) => [
             id,
             { ...(e.line !== undefined ? { line: e.line } : {}), ...(e.badge !== undefined ? { badge: e.badge } : {}) },
           ]),
@@ -656,7 +824,7 @@ export function startServer(options: ServerOptions, requestedPort = 0): Promise<
         graph: built.graph,
         chunks: built.chunks,
         contents: built.contents,
-        headSha: options.range.head,
+        headSha: currentRange.head,
         model: record.model,
         cwd: dataHome,
         overlayFile: narrationFile,
@@ -722,7 +890,7 @@ export function startServer(options: ServerOptions, requestedPort = 0): Promise<
 
   app.get('/api/deferrals', async (c) => {
     const { deferralsFile } = await getStore();
-    const [active, initial] = await Promise.all([deferralActive(), loadDeferralStore(deferralsFile, options.range)]);
+    const [active, initial] = await Promise.all([deferralActive(), loadDeferralStore(deferralsFile, currentRange)]);
     let deferrals = initial.deferrals;
     // Per-deferral orphan rule: a `running` answer with no live scheduler unit (idle after a restart)
     // is rewritten to `failed`, one re-read first (the mutate re-loads inside the chain), so a fast
@@ -775,8 +943,8 @@ export function startServer(options: ServerOptions, requestedPort = 0): Promise<
     const resolver = createContextResolver({
       fileAt: async (sha, filePath) => fileAt(options.repo, sha, filePath).catch(() => undefined),
       headPaths,
-      headSha: options.range.head,
-      baseSha: options.range.base,
+      headSha: currentRange.head,
+      baseSha: currentRange.base,
     });
     return { resolver, changedFiles: files.map((f) => ({ path: f.path, status: f.status })) };
   }
@@ -790,7 +958,7 @@ export function startServer(options: ServerOptions, requestedPort = 0): Promise<
     if (!chunk) return c.json({ payload: null } satisfies ContextResponse);
 
     const store = await loadContextStore(contextFile);
-    const fresh = filterFreshContext(options.range.head, book, store)[chunkId];
+    const fresh = filterFreshContext(currentRange.head, book, store)[chunkId];
     if (fresh) return c.json({ payload: fresh } satisfies ContextResponse);
 
     try {
@@ -850,7 +1018,7 @@ export function startServer(options: ServerOptions, requestedPort = 0): Promise<
         exported = applyOrderOverlay(book, graph, chunks, overlay);
       }
     }
-    const title = `${options.range.base.slice(0, 8)}..${options.range.head.slice(0, 8)}`;
+    const title = `${currentRange.base.slice(0, 8)}..${currentRange.head.slice(0, 8)}`;
     return c.text(exportBookMarkdown({ book: exported, chunks, contents, title }));
   });
 
@@ -866,6 +1034,9 @@ export function startServer(options: ServerOptions, requestedPort = 0): Promise<
       const url = `http://127.0.0.1:${info.port}`;
       void maybeAutoKickOrder();
       void maybeAutoKickChunkNarration();
+      // Persist the launch story to disk (R-064). Off by default so tests never write into their repos;
+      // the CLI turns it on. Best-effort — a failure never blocks serving.
+      if (options.storyPersist) void persistCurrentSnapshot().catch(() => undefined);
       const shutdownGlue = async () => {
         if (glueCache) await (await glueCache).scheduler.shutdown();
       };
