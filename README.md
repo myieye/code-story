@@ -28,11 +28,13 @@ traceable list):
 
 ## Status
 
-**Runnable — milestones M0–M5 are built.** A local daemon + browser "book" UI: tree-sitter
-sub-file chunking with a 100%-diff-coverage guarantee, deterministic **and** AI chapter ordering
-(consumer-first, tests-before by default), a keyboard/mouse review loop with sub-file progress
-tracking, opt-in AI narration, called-code context payloads, and a chunk-graph "neighbor strip"
-for following how changed chunks call and exercise each other. See **[Try it](#try-it)** below;
+**Runnable — milestones M0–M5 plus the story library are built.** A local daemon + browser "book"
+UI: a **story library** to browse/trigger/pick reviews with the exact config and tool version each
+was generated with (disk-persisted and repo-synced); tree-sitter sub-file chunking with a
+100%-diff-coverage guarantee, deterministic **and** AI chapter ordering (consumer-first,
+tests-before by default), a keyboard/mouse review loop with sub-file progress tracking, opt-in AI
+narration, called-code context payloads, and a chunk-graph "neighbor strip" for following how
+changed chunks call and exercise each other. See **[Try it](#try-it)** below;
 `CLAUDE.md` carries the full build history, and
 [docs/research/00-synthesis.md](docs/research/00-synthesis.md) +
 [ADR 0001](docs/decisions/0001-architecture.md) explain why this shape.
@@ -54,6 +56,15 @@ tools/demo.sh /path/to/your/repo "main~5..main"   # …or any repo + range
 
 Open the printed URL and walk the change. What to look for:
 
+- **The library (`☰ Library`).** Every story you generate is listed with the exact options it used
+  and the tool version that made it. Start a new review from the form (a range + reading order),
+  or open any past story — no need to relaunch the daemon. Stories are saved to disk and (with
+  `.code-story.json` `"sync": true`) auto-committed and pushed, so they follow you across
+  environments.
+- **Self-explanatory config.** Click the range in the top bar for "How this story was generated" —
+  every option in plain language, badged 💸 *regenerates* (changing it needs a paid AI re-run) or
+  *free*. The same chips appear on each library card. `v1.0.0 → Changelog` shows what each version
+  added.
 - **Chapters, not files.** The change is grouped into call-path chapters and AI-ordered a few
   seconds after load (the deterministic order shows first; an "AI reading order" badge + one-line
   rationales appear when it applies). 100% of the diff is covered — nothing is skippable.

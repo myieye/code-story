@@ -484,6 +484,39 @@ clone auth-blocked) — dogfood on code-story's own history (`a53e79f~1..a53e79f
 throughout); `pkill -f <pattern>` matching your own bash command kills the shell (exit 144) —
 kill by pgrep+pid; the review agent died on a session usage limit mid-smoke (quota is real —
 its server-seam sub-report survived and fed the review doc).
+**Ninth window (2026-07-21, Tim live): the "make it self-explanatory" round — story library,
+config visibility, versioning, disk sync (R-061–R-064, spec 08).** Branch
+`claude/reviews-ui-config-visibility-q81jq1` (NOT yet a PR — designated-branch task; Tim's call
+whether to PR/merge). Tim's message persisted verbatim
+(`docs/vision/addendum-2026-07-21-self-explanatory-and-library.md`). **Grounded finding (the
+answer to his config-cost question, spec 08 §0, DON'T re-derive):** ordering axes
+(direction/testPlacement/mode) invalidate the AI order overlay → a paid re-run to restore AI order;
+model/toggle choices are FREE until a deliberate re-run; context is free. **testPlacement
+invalidates the order overlay even though the order prompt never receives it — a real efficiency
+bug, filed as a TODO in the spec (skip re-order when only the test-weave changed).** Built (all on
+branch, green core 255 / server 164 / web 150 = 569): core `story.ts` (StorySnapshot + timestamped
+conflict-free `storyId`), `version.ts` (APP_VERSION 1.0.0, distinct from CORE_VERSION),
+`changelog.ts` (+ `docs/CHANGELOG.md`), `config-explain.ts` (authoritative per-option meaning +
+free/regenerates — single source of truth for all UI copy); server `story-store.ts` (snapshots at
+`<repo>/.code-story/stories/<id>.json`, git-tracked) + `story-sync.ts` (best-effort scoped
+commit+push, non-fatal); **server made multi-story by making the active range MUTABLE in place**
+(`currentRange`/`storyConfig`/`chapterMode` + `resetEngine` on switch — existing single-range
+behavior byte-identical, all prior tests unchanged) with new routes `GET/POST /api/stories`,
+`POST /api/stories/open`, `GET /api/changelog`; launch story auto-persists when `storyPersist`
+(CLI on, tests off), syncs when `.code-story.json` `"sync": true` (SET for this repo); web hash
+router (`useHashRoute`), `LibraryPage` (cards w/ config chips + version + New-review form + pick),
+`ChangelogPage`, in-book "How this story was generated" popover (`StoryOptionsPanel` over core
+`explainStoryOptions`) opened from the top-bar range button + a `☰ Library` nav.
+**Dogfooded live** on code-story's own history (controlled script, AI off): changelog/list/create/
+open/empty-reject all work; 3 browser screenshots confirm the UI renders (library, changelog,
+in-book options popover). Delegated the web pages to a Sonnet subagent per Tim's "delegate to
+cheaper subagents" (server refactor + integration kept at root — too coupled). **Gradual
+auto-picks (deferred, in spec 08):** single mutable engine not N-concurrent; snapshot bundles AI
+overlays but NOT live review marks (review-state sync deferred); no range-less "library-on-launch"
+(daemon always has an active range, library reachable via `☰`); scoped current-branch sync commit
+(not an orphan branch). **Open question for Tim (closing report):** committing snapshots onto the
+current working branch mixes review artifacts into feature branches — OK, or want a dedicated
+sync branch/remote?
 Next (verify freshness on wake): **the feedback-round PR to main closes #115 + #120–#128;
 #54 closed by R-055 (Tim: "I definitely want narration")**. The next input is Tim driving
 the new UX (auto-read+confirm, pieces menu, defer, badges, segmented bar) and his answer on
