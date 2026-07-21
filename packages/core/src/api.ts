@@ -6,6 +6,8 @@ import type { Book, Chunk } from './model.js';
 import type { NarrationOverlay } from './narration.js';
 import type { AnyOrderOverlay } from './order.js';
 import type { UnifiedLine } from './render.js';
+import type { ChangelogEntry } from './changelog.js';
+import type { StorySummary } from './story.js';
 import type { StoryConfig } from './story-config.js';
 
 /**
@@ -88,6 +90,40 @@ export interface ContextJobResponse {
  */
 export interface DeferralsResponse {
   deferrals: Deferral[];
+}
+
+/**
+ * `GET /api/stories`: every persisted story snapshot for this repo (R-061), newest first, plus the
+ * range the daemon launched with so the web can highlight/open it. Summaries omit the bundled
+ * overlays — the reader fetches those via the range-scoped book/order/narration routes.
+ */
+export interface StoriesResponse {
+  stories: StorySummary[];
+  /** The range this daemon booted with (`base..head`), or null when it opened straight to the library. */
+  launchRange: string | null;
+}
+
+/**
+ * `POST /api/stories`: trigger a new review. Resolves the range, compiles, persists a snapshot, and
+ * kicks AI work as configured. Returns the new story's id so the web can open it.
+ */
+export interface CreateStoryRequest {
+  /** `base..head` (or any git range git can resolve). */
+  range: string;
+  config?: Partial<StoryConfig>;
+  aiOrder?: boolean;
+  narrate?: boolean;
+  title?: string;
+}
+
+export interface CreateStoryResponse {
+  id: string;
+}
+
+/** `GET /api/changelog`: the user-facing change list (R-063), newest first, plus the running version. */
+export interface ChangelogResponse {
+  version: string;
+  entries: ChangelogEntry[];
 }
 
 /** `PATCH /api/order`: the reviewer's banner decision (spec 02 — never re-ask on reload). */
