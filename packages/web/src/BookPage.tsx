@@ -936,7 +936,7 @@ export function BookPage({
               aria-haspopup="dialog"
               aria-expanded={aiAnchor !== null}
               title="AI reading order, notes, and open interactions"
-              onClick={(e) => setAiAnchor((a) => (a ? null : e.currentTarget))}
+              onClick={(e) => { const t = e.currentTarget; setAiAnchor((a) => (a ? null : t)); }}
             >
               AI ▾{aiItems.length > 0 ? ` ${aiItems.length}` : ''}
             </button>
@@ -1001,7 +1001,7 @@ export function BookPage({
             aria-haspopup="dialog"
             aria-expanded={overflowAnchor !== null}
             title="More controls"
-            onClick={(e) => setOverflowAnchor((a) => (a ? null : e.currentTarget))}
+            onClick={(e) => { const t = e.currentTarget; setOverflowAnchor((a) => (a ? null : t)); }}
           >
             ⋯
           </button>

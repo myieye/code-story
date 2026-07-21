@@ -45,9 +45,26 @@ export function AnchoredPopover({
   }, []);
 
   useEffect(() => {
-    const onScrollOrResize = () => close(false);
+    // The virtualized feed emits scroll events during async row re-measure, so closing on any
+    // scroll makes the popover vanish as it opens. Follow the anchor instead; close only when
+    // it actually leaves the viewport.
+    const onScrollOrResize = () => {
+      const a = anchorEl.getBoundingClientRect();
+      if (a.bottom < 0 || a.top > window.innerHeight) {
+        close(false);
+        return;
+      }
+      const menu = ref.current;
+      const width = menu?.offsetWidth ?? 280;
+      const height = menu?.offsetHeight ?? 0;
+      const left = Math.max(8, Math.min(a.left, window.innerWidth - width - 8));
+      const below = a.bottom + 4;
+      const top = height > 0 && below + height > window.innerHeight ? Math.max(8, a.top - height - 4) : below;
+      setPos({ top, left });
+    };
     const onPointerDown = (e: PointerEvent) => {
-      if (!ref.current?.contains(e.target as Node) && e.target !== anchorEl) close(false);
+      const t = e.target as Node;
+      if (!ref.current?.contains(t) && !anchorEl.contains(t)) close(false);
     };
     window.addEventListener('scroll', onScrollOrResize, true);
     window.addEventListener('resize', onScrollOrResize);

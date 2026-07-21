@@ -170,6 +170,8 @@ export interface RunningServer {
   port: number;
   url: string;
   close: () => void;
+  /** Aborts in-flight glue work and flushes the ledger; safe to call when no glue ever ran. */
+  shutdownGlue: () => Promise<void>;
 }
 
 export function startServer(options: ServerOptions, requestedPort = 0): Promise<RunningServer> {
@@ -864,7 +866,10 @@ export function startServer(options: ServerOptions, requestedPort = 0): Promise<
       const url = `http://127.0.0.1:${info.port}`;
       void maybeAutoKickOrder();
       void maybeAutoKickChunkNarration();
-      resolve({ port: info.port, url, close: () => server.close() });
+      const shutdownGlue = async () => {
+        if (glueCache) await (await glueCache).scheduler.shutdown();
+      };
+      resolve({ port: info.port, url, close: () => server.close(), shutdownGlue });
     });
   });
 }

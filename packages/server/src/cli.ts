@@ -626,7 +626,7 @@ if (aiOrder || narrate || exportPath) {
   }
 }
 
-const { url } = await startServer(
+const { url, shutdownGlue } = await startServer(
   {
     repo,
     range: resolved,
@@ -640,6 +640,12 @@ const { url } = await startServer(
 
 console.log(`code-story serving ${range} (${resolved.base.slice(0, 8)}..${resolved.head.slice(0, 8)}) at ${url}`);
 console.log('Ctrl+C to stop.');
+
+for (const signal of ['SIGINT', 'SIGTERM'] as const) {
+  process.once(signal, () => {
+    void shutdownGlue().finally(() => process.exit(0));
+  });
+}
 
 if (!noOpen) {
   await open(url);

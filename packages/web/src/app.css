@@ -28,6 +28,7 @@ body {
 
 .top-bar {
   display: flex;
+  flex-wrap: wrap;
   align-items: baseline;
   gap: 14px;
   padding: 8px 16px;
