@@ -441,20 +441,58 @@ byte-identical; AI overlay only for the launch config, others honest tier-0); re
 the reorder; also tidied the server config-coupling the M4/M5 review flagged. **#106** mark-in-place
 (PR #113) shipped earlier this session. Suite **400** (core 225 / server 99 / web 76). No
 CORE_VERSION bump.
-Next (verify freshness on wake): **MODE SHIFT — the deliverable is a tryable product, and the next
-input is Tim's concrete feedback from driving it, not answers to abstract questions.** He launches
-via `tools/demo.sh`; when he comes back with concrete changes, implement them per-issue. The
-felt-reads (#109 mow, #54 narration) are now best answered by him *trying* the product — don't push
-them as questions. Standing guidance holds: keep options open (R-025); do NOT spec M6 unprompted
-(Tim scopes milestones); PR-versions (R-038–R-041) stay deferred. Evidence-gated watches (act only on
-NEW dogfood recurrence): #100 (tier-0 fragmentation, double-confirmed by dogfood 6 — but its fix
-trades file-locality vs call-path flow, needs Tim's nod, do NOT build unprompted), #21, #27, #58,
-#92, #107 (frontier wording), #112 (back-stack staleness), #115 (narration file-mode-only),
-#116 (AI-order size ceiling). **If a nightly fires with no new Tim input: there is no unbuilt
-specced work left — do NOT manufacture speculative or design-laden changes; polish/verify the
-tryable product or hold.** Tim can now DRIVE real reviews: `docs/evals/prepared-reviews-2026-07-19/`
-(6 books for 4 lexbox PRs) + the live order-options control in the UI (#114). No open PRs; main green
-(ad92382).
+**Eighth window (2026-07-20 evening → 07-21, Tim live twice): the feedback round + the glue
+pipeline — R-051–R-060, specs 06+07, issues #120–#128, ALL BUILT on branch
+`claude/code-review-interface-uk7s3c` (24+ commits).** Tim's two inputs persisted verbatim
+(`docs/vision/addendum-2026-07-20-{review-ux-feedback,ai-pipeline}.md`). Process: 4 parallel
+ux-expert passes + a UI map (archived `docs/design/2026-07-20-review-ux-round/`), spec 06
+grilled (17 findings folded), spec 07 (pipeline) written at root + grilled (21 findings; the
+two blockers: ledger at the INVOKER — task-internal re-asks are real spawns, observed 7 calls
+for 5 units — and `autoOrder:false` aliases to all-glue-off or the corpus spawns real claude).
+Landed: **06-1** scrollspy (spy on sectionId, rows carry sectionId/occurrenceKey, auto-expand
+current, aria-current); **06-2** file-pieces (`piece n/N` header button → portal menu,
+jumps via the back-stack, mark-all-pieces batch; `lastBatch.prior` = FULL ChunkReview);
+**06-3** auto-read (never auto-promotes: `autoRead`/`reviewedVia` FLAGS not enum, gate =
+60% visible + 300ms/line dwell clamp 1.5–8s + 2000px/s velocity reset + tall/stub/collapsed
+ineligible, rAF sampler NOT the settle-scan; ◑ glyph, dashed rail, confirm moments in section
+morph/cluster/end-row); **06-4** segmented chapter bar + chapter-done beat (one summarizing
+toast per batch) + resume/done copy + "Why this order?" (config-derived, AI-badged only when
+AI order applied) + top-bar ⋯ overflow; **G1** `packages/server/src/glue/` (two single-flight
+lanes interactive/background, dedupe (kind,fingerprint), failed set, force kicks for POSTs,
+running spans backoff, injectable delay/now, ModelPolicy top/mid/cheap + per-task override
+(`orderModel` stays order-only), invoker wraps claude-cli + harvests usage → JSONL ledger
+`<range>.glue-ledger.jsonl`, `GET /api/glue` + `--dump-glue`); **G2** chunk narration v2 +
+badges DEFAULT-ON (per-chunk overlay in OWN file `.narration-chunks.json`, v1 untouched;
+prompt `narration-chunk-1` bakes in point-don't-assert from day one; by-file aliased batches;
+badge gate incl. placeholder stoplist; `--no-ai-narration`/env opt-out; web chips + AI lines +
+"AI notes: N of M"); **G3** deferral (header Defer split-button: Ask-AI-&-defer default /
+note / inline; ONE save-chain for deferrals.json across POST/DELETE/GET-orphan/task-fill;
+`deferral` task on the interactive lane, fail-open per deferral, Retry = re-POST upsert;
+web-only `deferred:web` end section ⏲, excluded from the bar; scoped self-terminating 10s
+poll; done can fire with "M AI answers still arriving"); **G4+G5** order+context migrated
+onto the pipeline contract-stable (server.ts −58, retry loop deleted, three job-record
+loaders → one; forced POST on fresh overlay now 200-skips, deliberate). **Suite 537**
+(core 244 / server 155 / web 138). **Live pipeline proof**: 15-chunk book → 5 narration
+units, 7 opus calls, $0.65 ledgered, 15/15 chunks got badge+/line, gates held. **Integration
+review** (`docs/reviews/2026-07-20-feedback-round-review.md`): 4 defects found+fixed (the
+React functional-updater `e.currentTarget`-is-null trap broke BOTH compact popovers; popover
+scroll-close vs feed re-measure; top-bar page overflow; daemon exit never drained the glue
+scheduler — SIGINT now calls `shutdownGlue()`); MED recorded: v1 narration POST spawns
+outside the invoker (unledgered, can make a 3rd child) — fix when v1 retires. Ops notes:
+**lexbox clone does NOT survive containers** (proxy only serves myieye/code-story; cross-repo
+clone auth-blocked) — dogfood on code-story's own history (`a53e79f~1..a53e79f` used
+throughout); `pkill -f <pattern>` matching your own bash command kills the shell (exit 144) —
+kill by pgrep+pid; the review agent died on a session usage limit mid-smoke (quota is real —
+its server-seam sub-report survived and fed the review doc).
+Next (verify freshness on wake): **the feedback-round PR to main closes #115 + #120–#128;
+#54 closed by R-055 (Tim: "I definitely want narration")**. The next input is Tim driving
+the new UX (auto-read+confirm, pieces menu, defer, badges, segmented bar) and his answer on
+the glue spend policy (asked in the closing report: no ceiling but ledger+display, vs a cap).
+G2's named fast-follow: per-chunk rubric eval (register + faithfulness floor) on two dogfood
+subjects — revisit default-on if the floor fails. Evidence-gated watches: #100, #21, #27,
+#58 (now partially addressed by narration-chunk-1's point-don't-assert — re-evidence before
+acting), #92, #107, #112, #116 (+ the review doc's MED/LOWs). Standing guidance holds: keep
+options open (R-025); Tim scopes milestones; PR-versions (R-038–R-041) deferred.
 Dogfood target: languageforge/lexbox (C# + Svelte/TS); repo-agnostic (R-025). lexbox clone
 lives at /home/user/lexbox this container (refs pr-2309, pr-2357 fetched; ranges
 c0448522..pr-2309, 277e418d8~1..277e418d8, 8dd70ba~1..8dd70ba).
