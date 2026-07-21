@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { NARRATION_PROMPT_VERSION, openerNarrationPrompt, sectionNarrationPrompt } from './narration-prompt.js';
+import {
+  CHUNK_NARRATION_PROMPT_VERSION,
+  chunkNarrationPrompt,
+  NARRATION_PROMPT_VERSION,
+  openerNarrationPrompt,
+  sectionNarrationPrompt,
+} from './narration-prompt.js';
 
 describe('narration prompts', () => {
   it('carries a version constant', () => {
@@ -20,6 +26,24 @@ describe('narration prompts', () => {
     expect(prompt).toContain('STRICT JSON');
     expect(prompt).toContain('"opener"');
     expect(prompt).toContain('1 pinned tail section');
+    expect(prompt).toMatchSnapshot();
+  });
+
+  it('carries a distinct chunk-narration version constant', () => {
+    expect(CHUNK_NARRATION_PROMPT_VERSION).toBe('narration-chunk-1');
+    expect(CHUNK_NARRATION_PROMPT_VERSION).not.toBe(NARRATION_PROMPT_VERSION);
+  });
+
+  it('renders the chunk prompt with the batch, badge + point-don\'t-assert rules, and strict-JSON contract', () => {
+    const prompt = chunkNarrationPrompt('File: a.ts\n\nc1 — foo (method, ~3 lines)\n+added');
+    expect(prompt).toContain('STRICT JSON');
+    expect(prompt).toContain('"badge"');
+    expect(prompt).toContain('"line"');
+    expect(prompt).toContain('File: a.ts');
+    expect(prompt).toContain('c1 — foo');
+    // Point-don't-assert (#58) and the badge caps must be stated to the model.
+    expect(prompt).toContain('POINT the reviewer at what to check');
+    expect(prompt).toContain('never more than 4');
     expect(prompt).toMatchSnapshot();
   });
 });

@@ -1,19 +1,37 @@
-import type { ReviewFile } from '@code-story/core';
+import type { Deferral, ReviewFile } from '@code-story/core';
 import { useEffect, useState } from 'react';
-import { type BookResponse, type NarrationResponse, type OrderResponse, fetchBook, fetchNarration, fetchOrder, fetchReview } from './api.js';
+import {
+  type BookResponse,
+  type NarrationResponse,
+  type OrderResponse,
+  fetchBook,
+  fetchDeferrals,
+  fetchNarration,
+  fetchOrder,
+  fetchReview,
+} from './api.js';
 import { BookPage } from './BookPage.js';
 
 type State =
   | { phase: 'loading' }
   | { phase: 'error'; message: string }
-  | { phase: 'ready'; data: BookResponse; review: ReviewFile; order: OrderResponse; narration: NarrationResponse };
+  | {
+      phase: 'ready';
+      data: BookResponse;
+      review: ReviewFile;
+      order: OrderResponse;
+      narration: NarrationResponse;
+      deferrals: Deferral[];
+    };
 
 export function App() {
   const [state, setState] = useState<State>({ phase: 'loading' });
 
   useEffect(() => {
-    Promise.all([fetchBook(), fetchReview(), fetchOrder(), fetchNarration()])
-      .then(([data, review, order, narration]) => setState({ phase: 'ready', data, review, order, narration }))
+    Promise.all([fetchBook(), fetchReview(), fetchOrder(), fetchNarration(), fetchDeferrals()])
+      .then(([data, review, order, narration, deferrals]) =>
+        setState({ phase: 'ready', data, review, order, narration, deferrals: deferrals.deferrals }),
+      )
       .catch((e: unknown) => setState({ phase: 'error', message: e instanceof Error ? e.message : String(e) }));
   }, []);
 
@@ -46,6 +64,7 @@ export function App() {
       initialReview={state.review}
       initialOrder={state.order}
       initialNarration={state.narration}
+      initialDeferrals={state.deferrals}
     />
   );
 }

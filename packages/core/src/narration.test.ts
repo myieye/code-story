@@ -3,11 +3,15 @@ import { describe, expect, it } from 'vitest';
 import { type Book } from './model.js';
 import {
   BANNED_PHRASES,
+  checkBadgeText,
   checkNarrationText,
+  chunkNarrationFingerprint,
   filterFreshNarration,
+  filterFreshNarrationV2,
   fleschScore,
   narrationOpenerKey,
   type NarrationOverlay,
+  type NarrationOverlayV2,
   type NarrationSectionEntry,
   sectionFingerprint,
 } from './narration.js';
@@ -168,11 +172,76 @@ describe('fleschScore backtick collapse', () => {
   });
 });
 
+describe('chunkNarrationFingerprint', () => {
+  it('is order-independent and changes only with head, CORE_VERSION, or chunk id', () => {
+    expect(chunkNarrationFingerprint('h1', 'a.ts::x::1')).toBe(chunkNarrationFingerprint('h1', 'a.ts::x::1'));
+    expect(chunkNarrationFingerprint('h2', 'a.ts::x::1')).not.toBe(chunkNarrationFingerprint('h1', 'a.ts::x::1'));
+    expect(chunkNarrationFingerprint('h1', 'a.ts::x::2')).not.toBe(chunkNarrationFingerprint('h1', 'a.ts::x::1'));
+  });
+});
+
+describe('filterFreshNarrationV2', () => {
+  const overlay = (chunks: NarrationOverlayV2['chunks']): NarrationOverlayV2 => ({
+    version: 2,
+    model: 'test',
+    promptVersion: 'narration-chunk-1',
+    chunks,
+  });
+
+  it('keeps entries whose fingerprint matches the head and drops the rest', () => {
+    const filtered = filterFreshNarrationV2('h1', overlay({
+      'a.ts::x::1': { fingerprint: chunkNarrationFingerprint('h1', 'a.ts::x::1'), line: 'keep', generatedAt: 't' },
+      'b.ts::y::2': { fingerprint: 'stale', badge: 'Drop me', generatedAt: 't' },
+    }));
+    expect(Object.keys(filtered.chunks)).toEqual(['a.ts::x::1']);
+    expect(filtered.chunks['a.ts::x::1']!.line).toBe('keep');
+  });
+
+  it('fail-open drops everything on a malformed overlay', () => {
+    const filtered = filterFreshNarrationV2('h1', { version: 2, model: 'm', promptVersion: 'p' } as never);
+    expect(filtered.chunks).toEqual({});
+  });
+});
+
+describe('checkBadgeText', () => {
+  it('passes a calm two-word sentence-case badge', () => {
+    expect(checkBadgeText('New endpoint')).toEqual([]);
+    expect(checkBadgeText('Minor refactor')).toEqual([]);
+  });
+
+  it('tolerates up to four words and rejects a fifth', () => {
+    expect(checkBadgeText('New public API route')).toEqual([]);
+    expect(checkBadgeText('One two three four five').some((f) => f.includes('words'))).toBe(true);
+  });
+
+  it('rejects a non-sentence-case start and shouting, exempting acronyms and code tokens', () => {
+    expect(checkBadgeText('new endpoint').some((f) => f.includes('sentence-case'))).toBe(true);
+    expect(checkBadgeText('Big REFACTORING').some((f) => f.includes('all-caps'))).toBe(true);
+    expect(checkBadgeText('New JSON parser')).toEqual([]);
+    expect(checkBadgeText('New `useState` hook')).toEqual([]);
+  });
+
+  it('enforces the char cap and rejects empty', () => {
+    expect(checkBadgeText('A'.repeat(31)).some((f) => f.includes('chars'))).toBe(true);
+    expect(checkBadgeText('   ')).toEqual(['badge is empty']);
+  });
+});
+
 describe('filterFreshNarration fail-open direction', () => {
   it('drops all narration on a malformed overlay instead of passing it through', () => {
     const malformed = { version: 1, model: 'm', promptVersion: 'p', opener: { text: 'stale', key: 'k' } } as never;
     const filtered = filterFreshNarration(book('h1', sample), 'h1', malformed);
     expect(filtered.sections).toEqual({});
     expect(filtered.opener.text).toBe('');
+  });
+});
+
+describe('checkBadgeText placeholders', () => {
+  it('rejects placeholder badges', () => {
+    expect(checkBadgeText('None')).toEqual(['badge "None" is a placeholder']);
+    expect(checkBadgeText('n/a').length).toBe(1);
+  });
+  it('accepts real badges', () => {
+    expect(checkBadgeText('Minor refactor')).toEqual([]);
   });
 });

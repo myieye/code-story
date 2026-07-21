@@ -53,14 +53,27 @@ function buildState(file: string, lines: UnifiedLine[]): EditorState {
   });
 }
 
-export const DiffView = memo(function DiffView({ file, lines }: { file: string; lines: UnifiedLine[] }) {
+export const DiffView = memo(function DiffView({
+  file,
+  lines,
+  onViewReady,
+}: {
+  file: string;
+  lines: UnifiedLine[];
+  /** Hands the live EditorView to the parent so a Defer popover can read the current selection (spec 06 slice 6). */
+  onViewReady?: (view: EditorView | null) => void;
+}) {
   const host = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!host.current) return;
     const view = new EditorView({ state: buildState(file, lines), parent: host.current });
-    return () => view.destroy();
-  }, [file, lines]);
+    onViewReady?.(view);
+    return () => {
+      onViewReady?.(null);
+      view.destroy();
+    };
+  }, [file, lines, onViewReady]);
 
   if (lines.length === 0) {
     return <div className="diff-empty">content not available (binary or submodule)</div>;

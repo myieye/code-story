@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { AnyOrderOverlay } from '@code-story/core';
 import type { ResolvedRange } from './git.js';
+import { loadJobRecordFile } from './job-runtime.js';
 
 export { saveJson } from './json-file.js';
 
@@ -39,15 +40,7 @@ export async function loadOverlay(file: string): Promise<AnyOrderOverlay | null>
   return null;
 }
 
-export async function loadJobRecord(file: string): Promise<OrderJobRecord | null> {
-  try {
-    const parsed = JSON.parse(await readFile(file, 'utf8')) as OrderJobRecord;
-    if (parsed.version === 1) return parsed;
-  } catch (e) {
-    if ((e as NodeJS.ErrnoException).code !== 'ENOENT') {
-      console.warn(`code-story: could not read order job record at ${file}:`, e);
-    }
-  }
-  return null;
+export function loadJobRecord(file: string): Promise<OrderJobRecord | null> {
+  return loadJobRecordFile<OrderJobRecord>(file, 'order job record');
 }
 

@@ -7,10 +7,13 @@ import { type ImportGraph } from './import-graph.js';
 import { type Chunk, type Section } from './model.js';
 import { type SymbolSpan } from './symbols.js';
 import {
+  buildChunkNarrationBatch,
   buildSectionNarrationInput,
   NARRATION_DEFINITIONS_TOKEN_CAP,
   NARRATION_INPUT_TOKEN_CAP,
+  parseChunkNarrationReply,
   parseNarrationReply,
+  renderChunkNarrationBatch,
   renderSectionNarrationInput,
 } from './narration.js';
 
@@ -209,6 +212,83 @@ describe('buildSectionNarrationInput', () => {
     expect(block.startsWith('context — not part of the diff')).toBe(true);
     expect(block).toContain('omitted — over context budget');
     expect(Math.ceil(block.length / 4)).toBeLessThanOrEqual(NARRATION_DEFINITIONS_TOKEN_CAP);
+  });
+});
+
+const twoChunkFile = () => {
+  const symbols: SymbolSpan[] = [
+    { name: 'first', kind: 'function', startLine: 1, endLine: 20, children: [] },
+    { name: 'second', kind: 'function', startLine: 280, endLine: 320, children: [] },
+  ];
+  return fileChunks(
+    'a.ts',
+    [
+      { baseStart: 300, baseCount: 2, headStart: 300, headCount: 2 },
+      { baseStart: 3, baseCount: 2, headStart: 3, headCount: 2 },
+    ],
+    400,
+    symbols,
+  );
+};
+
+describe('buildChunkNarrationBatch', () => {
+  it('aliases chunks c1..cN in file position order with their diffs', () => {
+    const { chunks, contents } = twoChunkFile();
+    expect(chunks.length).toBe(2);
+    const batch = buildChunkNarrationBatch('a.ts', chunks, contents);
+    expect(batch.file).toBe('a.ts');
+    expect(batch.chunks.map((c) => c.alias)).toEqual(['c1', 'c2']);
+    // c1 is the earlier-in-file chunk regardless of input array order.
+    expect(batch.chunks[0]!.id).toBe(chunks.find((c) => (c.headRange?.start ?? 0) < 100)!.id);
+    expect(batch.chunks.every((c) => c.diff !== undefined && c.diff.length > 0)).toBe(true);
+    expect(batch.omitted).toEqual([]);
+    expect(renderChunkNarrationBatch(batch)).toContain('File: a.ts');
+  });
+
+  it('drops diffs past the token budget into omitted and stays under the cap', () => {
+    const hunks = Array.from({ length: 80 }, (_, i) => ({
+      baseStart: 5 + i * 15,
+      baseCount: 10,
+      headStart: 5 + i * 15,
+      headCount: 10,
+    }));
+    const { chunks, contents } = fileChunks('big.ts', hunks, 1400);
+    const batch = buildChunkNarrationBatch('big.ts', chunks, contents);
+    expect(batch.omitted.length).toBeGreaterThan(0);
+    expect(Math.ceil(renderChunkNarrationBatch(batch).length / 4)).toBeLessThanOrEqual(NARRATION_INPUT_TOKEN_CAP);
+    const byId = new Map(batch.chunks.map((c) => [c.id, c]));
+    for (const id of batch.omitted) expect(byId.get(id)!.diff).toBeUndefined();
+    expect(batch.chunks.length).toBe(chunks.length);
+  });
+});
+
+describe('parseChunkNarrationReply', () => {
+  const { chunks, contents } = twoChunkFile();
+  const batch = buildChunkNarrationBatch('a.ts', chunks, contents);
+  const firstId = batch.chunks[0]!.id;
+
+  it('resolves aliases to chunk ids and keeps line + badge', () => {
+    const r = parseChunkNarrationReply(batch, { c1: { line: 'Check the guard.', badge: 'New guard' } });
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.entries).toEqual({ [firstId]: { line: 'Check the guard.', badge: 'New guard' } });
+  });
+
+  it('accepts a sparse reply and a line-only or badge-only entry', () => {
+    const r = parseChunkNarrationReply(batch, { c2: { badge: 'Test update' } });
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(Object.values(r.entries)[0]).toEqual({ badge: 'Test update' });
+  });
+
+  it('rejects a foreign alias', () => {
+    const r = parseChunkNarrationReply(batch, { c9: { line: 'nope' } });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toContain('unknown chunk alias');
+  });
+
+  it('rejects a non-string line or badge', () => {
+    expect(parseChunkNarrationReply(batch, { c1: { line: 5 } }).ok).toBe(false);
+    expect(parseChunkNarrationReply(batch, { c1: { badge: {} } }).ok).toBe(false);
+    expect(parseChunkNarrationReply(batch, { c1: 'not-an-object' }).ok).toBe(false);
   });
 });
 

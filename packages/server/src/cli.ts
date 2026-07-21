@@ -44,18 +44,24 @@ import {
   loadContextStore,
   persistContextPayload,
 } from './context-store.js';
+import { CHUNK_NARRATION_KIND, createChunkNarrationTask } from './chunk-narration-task.js';
 import { diffRange, fileAt, listTree, originUrl, resolveRange, type ResolvedRange, rootCommit } from './git.js';
+import { createGlueInvoker } from './glue/invoker.js';
+import { GlueLedger, glueLedgerFilePath } from './glue/ledger.js';
+import { createModelPolicy } from './glue/model-policy.js';
+import { GlueScheduler } from './glue/scheduler.js';
 import { runNarrationJob } from './narration-job.js';
 import { NARRATION_PROMPT_VERSION } from './narration-prompt.js';
 import {
+  loadChunkNarrationOverlay,
   loadNarrationOverlay,
   type NarrationJobRecord,
+  narrationChunksFilePath,
   narrationFilePath,
   narrationJobFilePath,
 } from './narration-store.js';
-import { runChapterOrderJob, runOrderJob } from './order-job.js';
-import { CHAPTER_ORDER_PROMPT_VERSION, ORDER_PROMPT_VERSION } from './order-prompt.js';
-import { loadOverlay, orderFilePath, orderJobFilePath, type OrderJobRecord, saveJson } from './order-store.js';
+import { createOrderTask, ORDER_KIND } from './order-task.js';
+import { loadOverlay, orderFilePath, orderJobFilePath, saveJson } from './order-store.js';
 import { defaultDataHome, repoIdFrom } from './review-store.js';
 import { startServer } from './server.js';
 
@@ -126,9 +132,12 @@ const dumpGraph = args.includes('--dump-graph');
 const dumpChunkGraph = args.includes('--dump-chunk-graph');
 const checkOrderFlag = args.includes('--check-order');
 const dumpManifest = args.includes('--dump-manifest');
+const dumpGlue = args.includes('--dump-glue');
 const aiOrder = args.includes('--ai-order');
 const noAiOrder = args.includes('--no-ai-order') || Boolean(process.env.CODE_STORY_NO_AI_ORDER);
 const narrate = args.includes('--narrate');
+const narrateChunks = args.includes('--narrate-chunks');
+const noAiNarration = args.includes('--no-ai-narration') || Boolean(process.env.CODE_STORY_NO_AI_NARRATION);
 const narration = args.includes('--narration');
 const contextFlag = args.includes('--context');
 const dumpContext = args.includes('--dump-context');
@@ -200,7 +209,7 @@ if (
   (testPlacementArg !== undefined && !['before', 'after', 'end'].includes(testPlacementArg))
 ) {
   console.error(
-    'Usage: code-story <base>..<head> [--export book.md] [--narration] [--order tier0|ai] [--ai-order] [--no-ai-order] [--narrate] [--context] [--dump-context [--verbose]] [--model <id>] [--port <n>] [--direction consumer-first|dependency-first] [--test-placement before|after|end] [--dump-diff] [--dump-chunks] [--dump-graph] [--dump-chunk-graph] [--check-order] [--dump-manifest] [--no-open]\n' +
+    'Usage: code-story <base>..<head> [--export book.md] [--narration] [--order tier0|ai] [--ai-order] [--no-ai-order] [--narrate] [--narrate-chunks] [--no-ai-narration] [--context] [--dump-context [--verbose]] [--model <id>] [--port <n>] [--direction consumer-first|dependency-first] [--test-placement before|after|end] [--dump-diff] [--dump-chunks] [--dump-graph] [--dump-chunk-graph] [--check-order] [--dump-manifest] [--dump-glue] [--no-open]\n' +
       '\n' +
       'AI reading order is the default: the daemon runs the ordering job in the background on\n' +
       'compile and applies it on the next book load. --no-ai-order (or CODE_STORY_NO_AI_ORDER)\n' +
@@ -315,6 +324,53 @@ if (dumpManifest) {
   process.exit(0);
 }
 
+if (dumpGlue) {
+  const dataHome = defaultDataHome();
+  const repoId = repoIdFrom(repo, await rootCommit(repo), await originUrl(repo));
+  const policy = createModelPolicy();
+  const ledger = new GlueLedger(glueLedgerFilePath(dataHome, repoId, resolved));
+  const invoker = createGlueInvoker({ policy, ledger, cwd: dataHome });
+  const scheduler = new GlueScheduler({ invoker, ledger, policy, enabled: !noAiOrder });
+  console.log(JSON.stringify(await scheduler.status(), null, 2));
+  process.exit(0);
+}
+
+// Run the chunk-narration glue task once (manual/CI). Kicks the scheduler, polls status until the
+// task drains, then reports the overlay size. Narration v2 is order-independent, so file-mode chunks
+// are the right input regardless of the reading order the daemon serves.
+if (narrateChunks) {
+  const { contents, compiled } = await withCompiled(resolved);
+  const dataHome = defaultDataHome();
+  const repoId = repoIdFrom(repo, await rootCommit(repo), await originUrl(repo));
+  const policy = createModelPolicy({ top: model });
+  const ledger = new GlueLedger(glueLedgerFilePath(dataHome, repoId, resolved));
+  const invoker = createGlueInvoker({ policy, ledger, cwd: dataHome });
+  const scheduler = new GlueScheduler({ invoker, ledger, policy, enabled: true });
+  const overlayFile = narrationChunksFilePath(dataHome, repoId, resolved);
+  scheduler.register(
+    createChunkNarrationTask({
+      headSha: resolved.head,
+      tier: 'top',
+      model: policy.resolve('top'),
+      overlayFile,
+      getInputs: async () => ({ chunks: compiled, contents }),
+    }),
+  );
+
+  console.log(`code-story: narrating chunks (${model})…`);
+  await scheduler.kick(CHUNK_NARRATION_KIND, { force: true });
+  for (;;) {
+    const task = (await scheduler.status()).tasks.find((t) => t.kind === CHUNK_NARRATION_KIND);
+    if (!task || (task.queued === 0 && task.running === 0)) break;
+    await new Promise((r) => setTimeout(r, 200));
+  }
+  await scheduler.shutdown();
+
+  const overlay = await loadChunkNarrationOverlay(overlayFile);
+  console.log(`code-story: chunk narration saved (${overlay ? Object.keys(overlay.chunks).length : 0} chunks)`);
+  process.exit(0);
+}
+
 if (contextFlag) {
   const { files, contents, graph, book, compiled } = await withCompiled(resolved);
   const dataHome = defaultDataHome();
@@ -421,47 +477,49 @@ if (aiOrder || narrate || exportPath) {
   const getChapterBits = async () => (chapterBitsCache ??= await buildChapterBits());
 
   if (aiOrder) {
-    const jobFile = orderJobFilePath(dataHome, repoId, resolved);
-    const record: OrderJobRecord = {
-      version: 1,
-      status: 'running',
-      model,
-      promptVersion: chapterMode ? CHAPTER_ORDER_PROMPT_VERSION : ORDER_PROMPT_VERSION,
-      startedAt: new Date().toISOString(),
-    };
-    await saveJson(jobFile, record);
+    // Drive the ordering glue task through a throwaway scheduler (same shape as --narrate-chunks):
+    // the task owns the overlay save, the `.order-job.json` lifecycle, and the retry loop, so this
+    // branch is just build-deps → kick → drain. The ledger records the spawn.
+    const policy = createModelPolicy({ top: model });
+    const ledger = new GlueLedger(glueLedgerFilePath(dataHome, repoId, resolved));
+    const invoker = createGlueInvoker({ policy, ledger, cwd: dataHome });
+    const scheduler = new GlueScheduler({ invoker, ledger, policy, enabled: true });
+    const bits = chapterMode ? await getChapterBits() : undefined;
+    scheduler.register(
+      createOrderTask({
+        tier: 'top',
+        chapterMode,
+        orderFile,
+        jobFile: orderJobFilePath(dataHome, repoId, resolved),
+        model: () => model,
+        getInputs: async () =>
+          bits
+            ? {
+                book: bits.chapter.book,
+                chunks: bits.chapter.chunks,
+                graph,
+                chunkGraph: bits.chunkGraph,
+                storyComposition: bits.chapter.storyComposition,
+                chapterInput: bits.chapterInput,
+                config,
+              }
+            : { book: compiledBook, chunks: compiledChunks, graph },
+      }),
+    );
+
     console.log(`code-story: running the AI ordering job (${model})…`);
-    try {
-      if (chapterMode) {
-        const { chunkGraph, chapterInput, chapter } = await getChapterBits();
-        const overlay = await runChapterOrderJob({
-          book: chapter.book,
-          chunks: chapter.chunks,
-          graph,
-          model,
-          cwd: dataHome,
-          input: chapterInput,
-          config,
-          chunkGraph,
-          storyComposition: chapter.storyComposition,
-        });
-        await saveJson(orderFile, overlay);
-        console.log(`code-story: AI order saved (${overlay.chapters.length} chapters)`);
-      } else {
-        const overlay = await runOrderJob({ book: compiledBook, graph, chunks: compiledChunks, model, cwd: dataHome });
-        await saveJson(orderFile, overlay);
-        console.log(`code-story: AI order saved (${overlay.permutation.length} story sections)`);
-      }
-      await saveJson(jobFile, { ...record, status: 'done', finishedAt: new Date().toISOString() });
-    } catch (e) {
-      await saveJson(jobFile, {
-        ...record,
-        status: 'failed',
-        finishedAt: new Date().toISOString(),
-        error: (e as Error).message,
-      });
-      throw e;
+    await scheduler.kick(ORDER_KIND, { force: true });
+    for (;;) {
+      const task = (await scheduler.status()).tasks.find((t) => t.kind === ORDER_KIND);
+      if (!task || (task.queued === 0 && task.running === 0)) break;
+      await new Promise((r) => setTimeout(r, 200));
     }
+    await scheduler.shutdown();
+
+    const overlay = await loadOverlay(orderFile);
+    if (overlay?.version === 2) console.log(`code-story: AI order saved (${overlay.chapters.length} chapters)`);
+    else if (overlay?.version === 1) console.log(`code-story: AI order saved (${overlay.permutation.length} story sections)`);
+    else console.error('code-story: AI ordering produced no overlay (see the .order-job.json record)');
   }
 
   if (narrate) {
@@ -568,13 +626,26 @@ if (aiOrder || narrate || exportPath) {
   }
 }
 
-const { url } = await startServer(
-  { repo, range: resolved, autoOrder: !noAiOrder, orderModel: model, storyConfig: await effectiveStoryConfig() },
+const { url, shutdownGlue } = await startServer(
+  {
+    repo,
+    range: resolved,
+    autoOrder: !noAiOrder,
+    autoNarration: !noAiNarration,
+    orderModel: model,
+    storyConfig: await effectiveStoryConfig(),
+  },
   port,
 );
 
 console.log(`code-story serving ${range} (${resolved.base.slice(0, 8)}..${resolved.head.slice(0, 8)}) at ${url}`);
 console.log('Ctrl+C to stop.');
+
+for (const signal of ['SIGINT', 'SIGTERM'] as const) {
+  process.once(signal, () => {
+    void shutdownGlue().finally(() => process.exit(0));
+  });
+}
 
 if (!noOpen) {
   await open(url);

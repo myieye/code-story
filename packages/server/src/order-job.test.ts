@@ -58,17 +58,8 @@ describe('runOrderJob', () => {
     expect(overlay.bookFingerprint).not.toBe('');
   });
 
-  test('invalid output retries once, then succeeds', async () => {
-    let calls = 0;
-    const overlay = await runOrderJob({
-      ...base,
-      invoke: async () => (++calls === 1 ? envelope(['a.ts', 'b.ts']) : envelope(['a.ts', 'b.ts', 'b.test.ts', 'p.ts'])),
-    });
-    expect(calls).toBe(2);
-    expect(overlay.permutation).toHaveLength(4);
-  });
-
-  test('invalid output twice fails invalid-output', async () => {
+  // Retry now lives in the glue scheduler (it re-runs the whole job); runOrderJob is one attempt.
+  test('invalid output fails invalid-output', async () => {
     await expect(runOrderJob({ ...base, invoke: async () => envelope(['a.ts']) })).rejects.toMatchObject({
       failure: 'invalid-output',
     });
@@ -190,17 +181,7 @@ describe('runChapterOrderJob (#77)', () => {
     expect(overlay.bookFingerprint).not.toBe('');
   });
 
-  test('an invalid composition retries once, then succeeds', async () => {
-    let calls = 0;
-    const overlay = await runChapterOrderJob({
-      ...chapterBase,
-      invoke: async () => (++calls === 1 ? chapterEnvelope([['c1', 'c2']]) : chapterEnvelope([['c1', 'c2', 'c3']])),
-    });
-    expect(calls).toBe(2);
-    expect(overlay.chapters).toEqual([[cid('a.ts'), cid('b.ts'), cid('c.ts')]]);
-  });
-
-  test('a composition missing a chunk twice fails invalid-output', async () => {
+  test('a composition missing a chunk fails invalid-output', async () => {
     await expect(
       runChapterOrderJob({ ...chapterBase, invoke: async () => chapterEnvelope([['c1', 'c2']]) }),
     ).rejects.toMatchObject({ failure: 'invalid-output' });

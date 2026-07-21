@@ -357,6 +357,87 @@ function renderDefinitionsBlock(definitions: ContextDefinition[], omitted: numbe
   return ['context — not part of the diff', ...entries].join('\n\n');
 }
 
+/** Per-chunk narration entry (spec 06 slice 5). Order-independent — the order overlay never touches it. */
+export interface NarrationEntryV2 {
+  /** fnv1a(headSha + CORE_VERSION + chunkId) — independent of where the chunk sits in the book. */
+  fingerprint: string;
+  line?: string;
+  /** Usually 2 words, never more than 4; sentence-case. Absent when the badge gate dropped it. */
+  badge?: string;
+  generatedAt: string;
+  /** Register/badge-gate failures or a budget omission; presence still counts the chunk "handled" on resume. */
+  gateFailures?: string[];
+}
+
+/**
+ * Chunk-keyed narration (spec 06 slice 5) — its own file, the v1 section overlay untouched. Chapter
+ * mode reads only this; file mode keeps the v1 section intros.
+ */
+export interface NarrationOverlayV2 {
+  version: 2;
+  model: string;
+  promptVersion: string;
+  /** Keyed by chunk id. */
+  chunks: Record<string, NarrationEntryV2>;
+}
+
+/** Per-chunk narration identity that survives reordering: fnv1a over head + CORE_VERSION + chunk id. */
+export function chunkNarrationFingerprint(headSha: string, chunkId: string): string {
+  return fnv1a([headSha, CORE_VERSION, chunkId].join('\0'));
+}
+
+/**
+ * Drops v2 entries whose fingerprint no longer matches the current head (stale head or CORE_VERSION
+ * bump). Fail-open means "no narration", never "unvalidated narration": an unexpected shape drops
+ * everything ("faithful or silent", spec 03).
+ */
+export function filterFreshNarrationV2(headSha: string, overlay: NarrationOverlayV2): NarrationOverlayV2 {
+  try {
+    const chunks: Record<string, NarrationEntryV2> = {};
+    for (const [chunkId, entry] of Object.entries(overlay.chunks)) {
+      if (chunkNarrationFingerprint(headSha, chunkId) === entry.fingerprint) chunks[chunkId] = entry;
+    }
+    return { ...overlay, chunks };
+  } catch {
+    return { ...overlay, chunks: {} };
+  }
+}
+
+export const BADGE_MAX_WORDS = 4;
+export const BADGE_MAX_CHARS = 30;
+// Models answer "no badge fits" with a placeholder word instead of omitting the field.
+const BADGE_PLACEHOLDERS = new Set(['none', 'n/a', 'na', 'no change', 'nothing', 'misc', 'other']);
+
+/**
+ * All-caps word the badge gate rejects as shouting. Code-ish tokens (any non-letter char — digits,
+ * dots, underscores, backticks) and short acronyms (≤5 letters, e.g. API/JSON/HTTPS) are exempt.
+ */
+function isShout(word: string): boolean {
+  if (/[^A-Za-z]/.test(word)) return false;
+  if (word.length <= 5) return false;
+  return word === word.toUpperCase() && word !== word.toLowerCase();
+}
+
+/**
+ * The lighter badge gate (spec 06 slice 5): length + word-count caps and sentence-case only — no
+ * judgment-lint (deferred). Empty = pass. A failing badge is dropped; the chunk's line may survive.
+ */
+export function checkBadgeText(text: string): string[] {
+  const trimmed = text.trim();
+  const failures: string[] = [];
+  if (trimmed.length === 0) return ['badge is empty'];
+  if (BADGE_PLACEHOLDERS.has(trimmed.toLowerCase())) return [`badge "${trimmed}" is a placeholder`];
+  if (trimmed.length > BADGE_MAX_CHARS) failures.push(`badge is ${trimmed.length} chars (max ${BADGE_MAX_CHARS})`);
+
+  const words = trimmed.split(/\s+/);
+  if (words.length > BADGE_MAX_WORDS) failures.push(`badge has ${words.length} words (max ${BADGE_MAX_WORDS})`);
+  if (!/^[A-Z]/.test(trimmed)) failures.push('badge is not sentence-case (first letter must be uppercase)');
+  for (const word of words) {
+    if (isShout(word)) failures.push(`badge word "${word}" is all-caps`);
+  }
+  return failures;
+}
+
 export interface ParsedNarrationReply {
   intro: string;
   /** Sparse by design: a subset of the section's chunk ids, each mapped to its one-line orientation. */
@@ -402,4 +483,105 @@ function resolveChunkId(key: string, validIds: string[]): string | undefined {
   if (validIds.includes(bare)) return bare;
   const matches = validIds.filter((id) => id.endsWith(`::${bare}`));
   return matches.length === 1 ? matches[0] : undefined;
+}
+
+export interface ChunkNarrationBatchChunk {
+  /** `c1..cN` — the model never sees a raw chunk id (#44). */
+  alias: string;
+  id: string;
+  title: string;
+  kind: ChunkKind;
+  lines: number;
+  /** Absent when the diff was dropped for budget (see `omitted`) or the chunk has no content. */
+  diff?: string;
+}
+
+export interface ChunkNarrationBatch {
+  file: string;
+  chunks: ChunkNarrationBatchChunk[];
+  /** Chunk ids whose diff didn't fit the budget — the task records these as gateFailures (never narrate unseen code). */
+  omitted: string[];
+}
+
+function chunkRangeStart(chunk: Chunk): number {
+  return chunk.headRange?.start ?? chunk.baseRange?.start ?? 0;
+}
+
+/**
+ * One file's chunks as an aliased, budgeted prompt input (spec 06 slice 5): sorted by file position,
+ * aliased `c1..cN`, each with its diff under the shared ~6k-token cap. Chunks past the cap keep alias
+ * and metadata but lose their diff and land in `omitted`, so the task records them rather than
+ * narrate code the model never saw. Order-independent by design — it groups by file, not section, so
+ * the order overlay can never invalidate a run.
+ */
+export function buildChunkNarrationBatch(
+  file: string,
+  chunks: Chunk[],
+  contents: FileContents | undefined,
+): ChunkNarrationBatch {
+  const ordered = [...chunks].sort((a, b) => chunkRangeStart(a) - chunkRangeStart(b));
+  const entries: ChunkNarrationBatchChunk[] = ordered.map((c, i) => ({
+    alias: `c${i + 1}`,
+    id: c.id,
+    title: chunkTitle(c),
+    kind: c.kind,
+    lines: chunkLineCount(c),
+  }));
+  const diffs = ordered.map((c) => chunkDiffText(c, contents));
+
+  const omitted: string[] = [];
+  let overBudget = false;
+  for (let i = 0; i < entries.length; i++) {
+    if (overBudget) {
+      omitted.push(entries[i]!.id);
+      continue;
+    }
+    entries[i]!.diff = diffs[i];
+    const rendered = renderChunkNarrationBatch({ file, chunks: entries, omitted });
+    if (Math.ceil(rendered.length / 4) > NARRATION_INPUT_TOKEN_CAP) {
+      entries[i]!.diff = undefined;
+      overBudget = true;
+      omitted.push(entries[i]!.id);
+    }
+  }
+  return { file, chunks: entries, omitted };
+}
+
+/**
+ * Deterministic plain-text rendering of one file batch: a `File:` header then one block per chunk
+ * with its alias, metadata, and diff. Plain text — the model reads it, it does not parse it back.
+ */
+export function renderChunkNarrationBatch(batch: ChunkNarrationBatch): string {
+  const blocks = batch.chunks.map((chunk) => {
+    const meta = `${chunk.alias} — ${chunk.title} (${chunk.kind}, ~${chunk.lines} lines)`;
+    if (chunk.diff === undefined) return `${meta}\n  (diff omitted — over token budget)`;
+    if (chunk.diff === '') return `${meta}\n  (no diff content available)`;
+    return `${meta}\n${chunk.diff}`;
+  });
+  return [`File: ${batch.file}`, ...blocks].join('\n\n');
+}
+
+/**
+ * Validates one chunk-narration reply against a batch: every key must be one of the batch's aliases
+ * (a foreign alias rejects the whole reply — never attach text to a chunk the batch doesn't own), and
+ * each entry's `line`/`badge` must be strings when present. Sparse is fine; register/badge gates are
+ * the task's job. Returns chunk-id-keyed entries.
+ */
+export function parseChunkNarrationReply(
+  batch: ChunkNarrationBatch,
+  json: unknown,
+): { ok: true; entries: Record<string, { line?: string; badge?: string }> } | { ok: false; error: string } {
+  if (typeof json !== 'object' || json === null) return { ok: false, error: 'reply is not an object' };
+  const idOf = new Map(batch.chunks.map((c) => [c.alias, c.id]));
+  const entries: Record<string, { line?: string; badge?: string }> = {};
+  for (const [alias, value] of Object.entries(json as Record<string, unknown>)) {
+    const id = idOf.get(alias);
+    if (id === undefined) return { ok: false, error: `unknown chunk alias in reply: ${alias}` };
+    if (typeof value !== 'object' || value === null) return { ok: false, error: `entry for ${alias} is not an object` };
+    const { line, badge } = value as { line?: unknown; badge?: unknown };
+    if (line !== undefined && typeof line !== 'string') return { ok: false, error: `line for ${alias} is not a string` };
+    if (badge !== undefined && typeof badge !== 'string') return { ok: false, error: `badge for ${alias} is not a string` };
+    entries[id] = { ...(line !== undefined ? { line } : {}), ...(badge !== undefined ? { badge } : {}) };
+  }
+  return { ok: true, entries };
 }

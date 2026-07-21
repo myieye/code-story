@@ -1,6 +1,6 @@
 import type { NarrationOverlay, NarrationSectionEntry } from '@code-story/core';
 import { describe, expect, it } from 'vitest';
-import { chunkAiLine, narrationIndicator, sectionAiLine } from './narration-logic.js';
+import { chunkAiLine, chunkBadge, chunkLineV2, chunkNarrationIndicator, narrationIndicator, sectionAiLine } from './narration-logic.js';
 
 function entry(fields: Partial<NarrationSectionEntry> = {}): NarrationSectionEntry {
   return { fingerprint: 'fp', intro: '', chunks: {}, generatedAt: '2026-07-17T00:00:00Z', ...fields };
@@ -61,6 +61,58 @@ describe('chunkAiLine', () => {
     expect(chunkAiLine('a.ts', 'a.ts::f::1', overlay({ 'a.ts': entry() }))).toBeUndefined();
     expect(chunkAiLine('a.ts', 'x', overlay({ 'a.ts': entry({ chunks: { x: '  ' } }) }))).toBeUndefined();
     expect(chunkAiLine('a.ts', 'a.ts::f::1', null)).toBeUndefined();
+  });
+});
+
+describe('chunkLineV2 — v2 entry preferred, v1 line as fallback', () => {
+  it('prefers a fresh v2 line over the v1 section-keyed line', () => {
+    expect(chunkLineV2('a.ts::f::1', { 'a.ts::f::1': { line: 'v2 line' } }, 'v1 line')).toBe('v2 line');
+  });
+
+  it('falls back to the v1 line when the v2 entry has no line', () => {
+    expect(chunkLineV2('a.ts::f::1', { 'a.ts::f::1': { badge: 'Renames field' } }, 'v1 line')).toBe('v1 line');
+    expect(chunkLineV2('a.ts::f::1', undefined, 'v1 line')).toBe('v1 line');
+    expect(chunkLineV2('a.ts::f::1', { 'a.ts::f::1': { line: '  ' } }, 'v1 line')).toBe('v1 line');
+  });
+
+  it('is undefined when neither v2 nor v1 has a line', () => {
+    expect(chunkLineV2('a.ts::f::1', {}, undefined)).toBeUndefined();
+  });
+});
+
+describe('chunkBadge', () => {
+  it('returns a trimmed badge from the v2 overlay', () => {
+    expect(chunkBadge('c1', { c1: { badge: '  Adds guard  ' } })).toBe('Adds guard');
+  });
+
+  it('is undefined for a missing, blank, or v2-absent badge', () => {
+    expect(chunkBadge('c1', { c1: { line: 'x' } })).toBeUndefined();
+    expect(chunkBadge('c1', { c1: { badge: '   ' } })).toBeUndefined();
+    expect(chunkBadge('c1', undefined)).toBeUndefined();
+  });
+});
+
+describe('chunkNarrationIndicator — v2 coverage (N of M chunks)', () => {
+  const ids = ['c1', 'c2', 'c3'];
+
+  it('is null when the v2 overlay is absent or nothing is narratable', () => {
+    expect(chunkNarrationIndicator(ids, undefined, undefined)).toBeNull();
+    expect(chunkNarrationIndicator([], {}, 'running')).toBeNull();
+  });
+
+  it('is partial while a job runs or entries are missing', () => {
+    expect(chunkNarrationIndicator(ids, { c1: { line: 'x' } }, 'running')).toEqual({ kind: 'partial', narrated: 1, narratable: 3 });
+    expect(chunkNarrationIndicator(ids, { c1: { line: 'x' }, c2: { badge: 'y' } }, 'done')).toEqual({
+      kind: 'partial',
+      narrated: 2,
+      narratable: 3,
+    });
+  });
+
+  it('is complete when every narratable chunk carries a line or badge and no job runs', () => {
+    expect(chunkNarrationIndicator(ids, { c1: { line: 'x' }, c2: { badge: 'y' }, c3: { line: 'z' } }, 'done')).toEqual({
+      kind: 'complete',
+    });
   });
 });
 

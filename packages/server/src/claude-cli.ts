@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process';
+import type { GlueUsage } from './glue/types.js';
 
 /**
  * One place for how code-story talks to `claude -p` (the only sanctioned route to the user's
@@ -57,4 +58,43 @@ export function extractJsonBlock(envelopeStdout: string): unknown {
     }
   }
   throw new Error('unbalanced JSON object in model result');
+}
+
+/**
+ * The CLI JSON envelope's token/cost accounting, when the installed `claude` reports it. Best-effort
+ * by design — the fields are CLI-version-dependent, so a missing or malformed shape yields
+ * `undefined` rather than throwing. Usage is observability, never on the critical path.
+ */
+export function parseUsage(envelopeStdout: string): GlueUsage | undefined {
+  let envelope: unknown;
+  try {
+    envelope = JSON.parse(envelopeStdout);
+  } catch {
+    return undefined;
+  }
+  if (typeof envelope !== 'object' || envelope === null) return undefined;
+  const record = envelope as Record<string, unknown>;
+  const usage =
+    typeof record.usage === 'object' && record.usage !== null ? (record.usage as Record<string, unknown>) : undefined;
+  const inputTokens = typeof usage?.input_tokens === 'number' ? usage.input_tokens : undefined;
+  const outputTokens = typeof usage?.output_tokens === 'number' ? usage.output_tokens : undefined;
+  if (inputTokens === undefined || outputTokens === undefined) return undefined;
+  const costUsd = typeof record.total_cost_usd === 'number' ? record.total_cost_usd : undefined;
+  return { inputTokens, outputTokens, ...(costUsd !== undefined ? { costUsd } : {}) };
+}
+
+/**
+ * `invokeClaudeJson` plus best-effort usage harvest off the same envelope. `text` is the raw
+ * envelope stdout, so callers keep using `extractJsonBlock` unchanged; `usage` is omitted when the
+ * CLI didn't report it.
+ */
+export async function invokeClaudeJsonWithUsage(
+  prompt: string,
+  model: string,
+  cwd: string,
+  timeoutMs: number,
+): Promise<{ text: string; usage?: GlueUsage }> {
+  const text = await invokeClaudeJson(prompt, model, cwd, timeoutMs);
+  const usage = parseUsage(text);
+  return { text, ...(usage ? { usage } : {}) };
 }

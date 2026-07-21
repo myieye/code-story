@@ -28,6 +28,7 @@ body {
 
 .top-bar {
   display: flex;
+  flex-wrap: wrap;
   align-items: baseline;
   gap: 14px;
   padding: 8px 16px;
@@ -70,18 +71,52 @@ body {
   font-weight: 600;
 }
 
-.progress-bar {
-  width: 140px;
-  height: 4px;
-  border-radius: 2px;
-  background: #e5e2dc;
+/* Chapter-segmented progress bar (spec 06 slice 4a): one segment per section, flex-widthed by chunk
+   count, tri-state and readable without colour. 1px gaps; a min width keeps sliver chapters visible. */
+.progress-bar.segmented {
+  display: flex;
+  align-items: stretch;
+  gap: 1px;
+  width: 180px;
+  height: 8px;
+}
+
+.seg {
+  position: relative;
+  min-width: 3px;
+  border-radius: 1px;
+  background: #e5e2dc; /* untouched track */
   overflow: hidden;
 }
 
-.progress-fill {
-  display: block;
-  height: 100%;
+.seg-fill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
   background: #3fa661;
+  transition: width 180ms ease; /* only the active (partial) segment's fill ever changes */
+}
+
+.seg-complete {
+  background: #3fa661;
+}
+
+/* Complete "lock" tick — a shape cue so a full segment reads distinct from a near-full partial one. */
+.seg-complete::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: rgb(0 0 0 / 22%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .seg-fill {
+    transition: none;
+  }
 }
 
 .bar-button {
@@ -163,6 +198,19 @@ body {
   border-radius: 9px;
   padding: 1px 8px;
   white-space: nowrap;
+}
+
+/* Auto-read confirm (spec 06 slice 3): a passive count plus one clickable Confirm — never nags, and
+   hidden at zero. The count is neutral text; only the button carries affordance styling. */
+.autoread-cluster {
+  font-size: 12px;
+  color: #6b675f;
+  white-space: nowrap;
+}
+
+.autoread-confirm {
+  font-size: 11px;
+  padding: 1px 8px;
 }
 
 .top-bar .spacer {
@@ -288,6 +336,12 @@ body.resizing-outline {
   color: #1c3a6e;
 }
 
+/* Viewport-range rail: sections with any chunk in the feed's virtual window. Faint, and distinct
+   from the filled `.current` highlight — "what's on screen" vs the single "you are here". */
+.outline-item.in-view {
+  box-shadow: inset 2px 0 0 #c3cde0;
+}
+
 .outline-disclosure {
   flex: none;
   border: 0;
@@ -366,6 +420,11 @@ body.resizing-outline {
 .state-dot.reviewed {
   color: #3fa661;
   font-weight: 700;
+}
+
+/* Auto-read (◑): seen at reading pace, awaiting confirm — a neutral tone distinct from seen's blue. */
+.state-dot.auto {
+  color: #8a8578;
 }
 
 .outline-path {
@@ -506,6 +565,17 @@ body.resizing-outline {
   background: #3fa661;
 }
 
+/* Auto-read rail: a dashed neutral pattern — reads distinct from solid green reviewed without relying
+   on hue (WCAG 1.4.1). Overrides the seen blue since an auto-read chunk is technically `seen`. */
+.chunk.autoread .state-rail {
+  background: repeating-linear-gradient(to bottom, #b0a99c 0 5px, transparent 5px 11px);
+}
+
+/* Faint neutral header tint — a quieter cue than reviewed's green, still legible in dark theme. */
+.chunk.autoread .chunk-header {
+  background: #f4f2ec;
+}
+
 .chunk-main {
   flex: 1;
   min-width: 0;
@@ -596,6 +666,104 @@ body.resizing-outline {
   font-size: 11px;
   color: var(--muted, #888);
   white-space: nowrap;
+}
+
+/* File-position indicator: which piece of its file this chunk is (spec 06 slice 2). The button opens
+   the pieces menu; single-piece files render `only piece` as inert muted text (no dead control). */
+.piece-indicator {
+  flex: none;
+  font-size: 11px;
+  white-space: nowrap;
+  color: #6b675f;
+}
+button.piece-indicator {
+  padding: 1px 8px;
+  border: 1px solid #cfcabf;
+  border-radius: 999px;
+  background: #fff;
+  cursor: pointer;
+}
+button.piece-indicator:hover {
+  border-color: #7d9bd1;
+  color: #24405f;
+}
+button.piece-indicator[aria-expanded='true'] {
+  border-color: #7d9bd1;
+  background: #eceff7;
+}
+.piece-indicator.only-piece {
+  color: #a39e94;
+  font-style: italic;
+}
+
+/* File-pieces menu: a document-level portal so the virtualized feed can never clip it. */
+.piece-menu {
+  position: fixed;
+  z-index: 40;
+  min-width: 260px;
+  max-width: 420px;
+  max-height: 70vh;
+  overflow-y: auto;
+  padding: 4px;
+  background: #fff;
+  border: 1px solid #cfcabf;
+  border-radius: 8px;
+  box-shadow: 0 8px 28px #2b2a2833;
+}
+.piece-menu-header {
+  padding: 6px 10px;
+  font-family: Consolas, monospace;
+  font-size: 11.5px;
+  color: #6b675f;
+  border-bottom: 1px solid #eeece7;
+}
+.piece-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 5px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: #2b2a28;
+  font-size: 12.5px;
+  text-align: left;
+  cursor: pointer;
+}
+.piece-menu-item:hover,
+.piece-menu-item:focus-visible {
+  background: #eceff7;
+  outline: none;
+}
+.piece-menu-item[aria-current='true'] {
+  font-weight: 600;
+  color: #1c3a6e;
+}
+.piece-menu-label {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: Consolas, monospace;
+  font-size: 11.5px;
+}
+.piece-menu-size {
+  flex: none;
+  font-size: 10.5px;
+  color: #8a857b;
+}
+.piece-menu-footer {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 4px;
+  padding: 5px 6px 2px;
+  border-top: 1px solid #eeece7;
+}
+.piece-menu-footer .link-button {
+  text-align: left;
+  padding: 4px 4px;
 }
 
 /* Neighbor strip (spec 05 slice 5): the focused chunk's direct graph neighbors, one row, scrolls. */
@@ -858,6 +1026,13 @@ body.resizing-outline {
   margin: 4px 0 0;
 }
 
+/* Bulk-confirm provenance (spec 06 slice 3 / R-026): says plainly that some marks came from
+   auto-read confirmed in bulk — muted, not the celebratory green. */
+.done-provenance {
+  color: #6b675f;
+  margin: 4px 0 0;
+}
+
 .done-table {
   margin: 12px 0 16px;
   border-collapse: collapse;
@@ -936,4 +1111,274 @@ body.resizing-outline {
   font-size: 12px;
   color: #1c3a6e;
   white-space: nowrap;
+}
+
+/* Per-mark micro-feedback (spec 06 slice 4a): a one-shot top→bottom wipe on the rail when a chunk
+   flips to reviewed. transform-only, non-looping; the advancing bar is the primary reward. */
+.chunk.just-reviewed .state-rail {
+  position: relative;
+  overflow: hidden;
+}
+
+.chunk.just-reviewed .state-rail::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: #3fa661;
+  transform-origin: top;
+  animation: rail-wipe 220ms ease-out;
+}
+
+@keyframes rail-wipe {
+  from {
+    transform: scaleY(0);
+  }
+  to {
+    transform: scaleY(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chunk.just-reviewed .state-rail::after {
+    animation: none;
+  }
+}
+
+/* Two-word AI chunk badge (spec 06 slice 5): a small neutral chip, calmer than the kind badges. */
+.badge-chip {
+  flex: none;
+  font-style: normal;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: #eef1f5;
+  color: #4a5568;
+}
+
+/* Anchored, non-modal popover in a document-level portal (spec 06 slice 4c/4d): why-this-order, the
+   AI ▾ collapse, and the ⋯ overflow all share this shell so nothing is ever clipped by the feed. */
+.anchored-popover {
+  position: fixed;
+  z-index: 40;
+  min-width: 220px;
+  max-width: 340px;
+  padding: 12px 14px;
+  background: #fff;
+  border: 1px solid #d8d4cc;
+  border-radius: 8px;
+  box-shadow: 0 8px 28px #2b2a2833;
+  font-size: 12.5px;
+  color: #4a463f;
+  outline: none;
+}
+
+.why-popover-head {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.why-popover-text {
+  margin: 0;
+  line-height: 1.5;
+}
+
+.overflow-popover,
+.ai-popover {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.ai-popover-line {
+  color: #4a463f;
+}
+
+/* ---- Deferral (spec 06 slice 6) ---------------------------------------------------------- */
+
+/* The Defer button sits beside Mark reviewed; disabled once a chunk is reviewed (nothing to park). */
+.defer-button {
+  color: #6b675f;
+}
+.defer-button:hover:not(:disabled) {
+  border-color: #b58a3c;
+  color: #8a5a12;
+}
+.defer-button[aria-expanded='true'] {
+  border-color: #b58a3c;
+  background: #fbf3e2;
+  color: #8a5a12;
+}
+
+/* The inline Defer popover grows the row (never a floating layer) — the DefinitionPanel precedent. */
+.defer-popover {
+  margin: 6px 0 4px;
+  padding: 10px 12px;
+  border: 1px solid #e2dccb;
+  border-radius: 8px;
+  background: #fbf9f3;
+}
+.defer-popover-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #5c584f;
+  margin-bottom: 6px;
+}
+.defer-close {
+  border: none;
+  background: none;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  color: #8a857b;
+}
+.defer-line-range {
+  font-size: 11.5px;
+  color: #8a5a12;
+  margin-bottom: 6px;
+}
+.defer-textarea {
+  width: 100%;
+  min-height: 52px;
+  resize: vertical;
+  box-sizing: border-box;
+  padding: 6px 8px;
+  border: 1px solid #d8d2c5;
+  border-radius: 6px;
+  font: inherit;
+  font-size: 12.5px;
+}
+.defer-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+.defer-split {
+  display: inline-flex;
+}
+.defer-primary {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+.defer-caret {
+  margin-left: -1px;
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+  padding-left: 7px;
+  padding-right: 7px;
+}
+.defer-inline {
+  margin-top: 8px;
+  align-self: flex-start;
+}
+
+/* Passive progress-cluster count (position 4) — click scrolls to the Deferred section, never a nag. */
+.deferred-cluster {
+  border: none;
+  background: none;
+  padding: 0 2px;
+  color: #8a5a12;
+  cursor: pointer;
+}
+.deferred-cluster:hover {
+  text-decoration: underline;
+}
+
+/* Deferred-section cards. Greyed once the chunk is marked reviewed (resolved). */
+.deferred-card {
+  max-width: 1120px;
+  margin: 6px auto;
+  padding: 10px 16px;
+  border: 1px solid #e2dccb;
+  border-radius: 8px;
+  background: #fbf9f3;
+}
+.deferred-card.resolved {
+  opacity: 0.55;
+}
+.deferred-card-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.deferred-card-head .spacer {
+  flex: 1;
+}
+.deferred-goto {
+  font-family: Consolas, monospace;
+  font-weight: 600;
+}
+.deferral-list {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.deferral-item-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 12.5px;
+}
+.deferral-prompt {
+  flex: 1;
+  color: #4a463f;
+}
+.deferral-remove,
+.inline-deferral-remove {
+  color: #a05252;
+}
+.line-range-badge {
+  background: #f2ead8;
+  color: #8a5a12;
+}
+.deferral-answer {
+  margin-top: 4px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: #4a463f;
+}
+.deferral-answer.answering {
+  font-style: italic;
+  color: #8a857b;
+}
+.deferral-answer.failed {
+  color: #a05252;
+}
+.deferred-card-diff {
+  margin-top: 8px;
+}
+
+/* Inline AI answer (answer-in-place) — a sibling region below the diff, never inside the CM6 view. */
+.inline-deferrals {
+  margin-top: 6px;
+  border-top: 1px dashed #e2dccb;
+  padding-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.inline-deferral-prompt {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 12px;
+  color: #6b675f;
+}
+.inline-deferral-prompt .link-button {
+  margin-left: auto;
+}
+
+.outline-item.deferred .outline-path {
+  color: #8a5a12;
 }

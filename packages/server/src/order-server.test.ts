@@ -4,7 +4,9 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { FILE_MODE_STORY_CONFIG, type OrderResponse } from '@code-story/core';
 import { afterAll, describe, expect, test } from 'vitest';
-import { type ResolvedRange } from './git.js';
+import { originUrl, type ResolvedRange, rootCommit } from './git.js';
+import { type OrderJobRecord, orderJobFilePath, saveJson } from './order-store.js';
+import { repoIdFrom } from './review-store.js';
 import { startServer } from './server.js';
 
 const dataHome = await mkdtemp(path.join(tmpdir(), 'cs-order-home-'));
@@ -61,6 +63,56 @@ describe('order server auto-kick (#71)', () => {
       expect(book.aiBook).toBeUndefined();
     } finally {
       server.close();
+    }
+  });
+
+  // G4 route-compat: POST codes derive from the scheduler (started vs already-running), byte-stable.
+  test('POST /api/order-job is 202 to start, 200 while that job is still running', async () => {
+    const home = await mkdtemp(path.join(tmpdir(), 'cs-order-post-'));
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    const gated = async (prompt: string) => {
+      await gate;
+      return echoOrderInvoke(prompt);
+    };
+    const server = await startServer(
+      { repo, range, dataHome: home, autoOrder: false, storyConfig: FILE_MODE_STORY_CONFIG, orderInvoke: gated },
+      0,
+    );
+    try {
+      const first = await fetch(`${server.url}/api/order-job`, { method: 'POST' });
+      expect(first.status).toBe(202);
+      const second = await fetch(`${server.url}/api/order-job`, { method: 'POST' });
+      expect(second.status).toBe(200);
+      release();
+      const body = await waitForTerminal(server.url);
+      expect(body.job?.status).toBe('done');
+    } finally {
+      server.close();
+      await rm(home, { recursive: true, force: true });
+    }
+  });
+
+  // G4 route-compat: a persisted running record with no scheduler activity reads as an orphan.
+  test('a persisted running record with no live job reads as failed (orphan)', async () => {
+    const home = await mkdtemp(path.join(tmpdir(), 'cs-order-orphan-'));
+    const repoId = repoIdFrom(repo, await rootCommit(repo), await originUrl(repo));
+    const orphan: OrderJobRecord = {
+      version: 1,
+      status: 'running',
+      model: 'test-model',
+      promptVersion: 'order-1',
+      startedAt: new Date().toISOString(),
+    };
+    await saveJson(orderJobFilePath(home, repoId, range), orphan);
+    const server = await startServer({ repo, range, dataHome: home, autoOrder: false }, 0);
+    try {
+      const body = await getOrder(server.url);
+      expect(body.job?.status).toBe('failed');
+      expect(body.job?.error).toContain('orphaned');
+    } finally {
+      server.close();
+      await rm(home, { recursive: true, force: true });
     }
   });
 

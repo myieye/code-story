@@ -9,7 +9,6 @@ import {
   applyReviewPatch,
   type Book,
   type BookResponse,
-  bookFingerprint,
   type Chunk,
   type ChunkGraph,
   type CompileChapterBookInput,
@@ -19,6 +18,10 @@ import {
   type ContextJobResponse,
   type ContextPayload,
   type ContextResponse,
+  type Deferral,
+  type DeferralRequest,
+  type DeferralsResponse,
+  type DeferralStoreFile,
   DEFAULT_STORY_CONFIG,
   exportBookMarkdown,
   type FileContents,
@@ -27,8 +30,10 @@ import {
   filterFreshGraph,
   type ImportGraph,
   filterFreshNarration,
+  filterFreshNarrationV2,
   isFileModeConfig,
   isOverlayFresh,
+  type LineRange,
   type NarrationResponse,
   type OrderOverlayV2,
   type OrderPatch,
@@ -45,7 +50,8 @@ import { buildChunkGraph } from './chunk-graph-build.js';
 import { chunkGraphFilePath, loadChunkGraph } from './chunk-graph-store.js';
 import { computeChunks } from './chunks.js';
 import { createContextResolver } from './context-resolve.js';
-import { eligibleContextChunks, runContextJob } from './context-job.js';
+import { eligibleContextChunks } from './context-job.js';
+import { CONTEXT_KIND, createContextTask } from './context-task.js';
 import {
   type ContextJobRecord,
   contextFilePath,
@@ -55,64 +61,72 @@ import {
   loadContextStore,
   persistContextPayload,
 } from './context-store.js';
-import { JobRuntime } from './job-runtime.js';
+import { createDeferralTask, DEFERRAL_KIND } from './deferral-task.js';
+import { deferralsFilePath, loadDeferralStore } from './deferral-store.js';
+import { createGlueInvoker, type GlueSpawn } from './glue/invoker.js';
+import { GlueLedger, glueLedgerFilePath } from './glue/ledger.js';
+import { createModelPolicy } from './glue/model-policy.js';
+import { GlueScheduler } from './glue/scheduler.js';
+import { JobRuntime, ORPHAN_ERROR, resolveJobRecord } from './job-runtime.js';
 import { diffRange, fileAt, listTree, originUrl, type ResolvedRange, rootCommit } from './git.js';
+import { CHUNK_NARRATION_KIND, createChunkNarrationTask } from './chunk-narration-task.js';
 import { runNarrationJob } from './narration-job.js';
 import { NARRATION_PROMPT_VERSION } from './narration-prompt.js';
 import {
+  loadChunkNarrationOverlay,
   loadNarrationJobRecord,
   loadNarrationOverlay,
   type NarrationJobRecord,
+  narrationChunksFilePath,
   narrationFilePath,
   narrationJobFilePath,
 } from './narration-store.js';
-import { runChapterOrderJob, runOrderJob, shouldAutoKickOrder } from './order-job.js';
-import { CHAPTER_ORDER_PROMPT_VERSION, ORDER_PROMPT_VERSION } from './order-prompt.js';
+import { createOrderTask, ORDER_KIND } from './order-task.js';
 import { loadJobRecord, loadOverlay, orderFilePath, orderJobFilePath, type OrderJobRecord, saveJson } from './order-store.js';
 import { defaultDataHome, loadReview, repoIdFrom, reviewFilePath, saveReview } from './review-store.js';
 
 const webDist = fileURLToPath(new URL('../../web/dist', import.meta.url));
 
+// The three job GETs share this envelope (status/timestamps/error); each summary adds its own extra
+// fields. One home for the conditional-spread so a shape tweak can't drift across the three copies.
+function jobSummaryBase<S extends string>(record: { status: S; startedAt: string; finishedAt?: string; error?: string }) {
+  const { status, startedAt, finishedAt, error } = record;
+  return { status, startedAt, ...(finishedAt ? { finishedAt } : {}), ...(error ? { error } : {}) };
+}
+
 function jobSummary(record: OrderJobRecord): NonNullable<OrderResponse['job']> {
-  const { status, model, promptVersion, startedAt, finishedAt, error } = record;
-  return {
-    status,
-    model,
-    promptVersion,
-    startedAt,
-    ...(finishedAt ? { finishedAt } : {}),
-    ...(error ? { error } : {}),
-  };
+  return { ...jobSummaryBase(record), model: record.model, promptVersion: record.promptVersion };
 }
 
 function narrationJobSummary(record: NarrationJobRecord): NonNullable<NarrationResponse['job']> {
-  const { status, model, promptVersion, startedAt, finishedAt, error, sectionsTotal, sectionsDone } = record;
-  return {
-    status,
-    model,
-    promptVersion,
-    startedAt,
-    sectionsTotal,
-    sectionsDone,
-    ...(finishedAt ? { finishedAt } : {}),
-    ...(error ? { error } : {}),
-  };
+  const { model, promptVersion, sectionsTotal, sectionsDone } = record;
+  return { ...jobSummaryBase(record), model, promptVersion, sectionsTotal, sectionsDone };
 }
 
 function contextJobSummary(record: ContextJobRecord): NonNullable<ContextJobResponse['job']> {
-  const { status, startedAt, finishedAt, error, chunksTotal, chunksDone, computed, skipped, capped, cappedCount } =
-    record;
+  const { chunksTotal, chunksDone, computed, skipped, capped, cappedCount } = record;
+  return { ...jobSummaryBase(record), chunksTotal, chunksDone, computed, skipped, capped, cappedCount };
+}
+
+function isLineRange(v: unknown): v is LineRange {
+  return typeof v === 'object' && v !== null && typeof (v as LineRange).start === 'number' && typeof (v as LineRange).end === 'number';
+}
+
+/** POST /api/deferrals body → a validated request, or null (400). Answer fields are server-owned. */
+function validateDeferralRequest(body: unknown): DeferralRequest | null {
+  if (typeof body !== 'object' || body === null) return null;
+  const b = body as Record<string, unknown>;
+  if (typeof b.id !== 'string' || b.id.length === 0) return null;
+  if (typeof b.chunkId !== 'string' || b.chunkId.length === 0) return null;
+  if (b.kind !== 'note' && b.kind !== 'ai') return null;
+  if (typeof b.text !== 'string') return null;
   return {
-    status,
-    startedAt,
-    chunksTotal,
-    chunksDone,
-    computed,
-    skipped,
-    capped,
-    cappedCount,
-    ...(finishedAt ? { finishedAt } : {}),
-    ...(error ? { error } : {}),
+    id: b.id,
+    chunkId: b.chunkId,
+    kind: b.kind,
+    text: b.text,
+    ...(b.inline === true ? { inline: true } : {}),
+    ...(isLineRange(b.lineRange) ? { lineRange: b.lineRange } : {}),
   };
 }
 
@@ -128,6 +142,18 @@ export interface ServerOptions {
   storyConfig?: StoryConfig;
   /** Auto-run the ordering job on compile when no fresh overlay exists (default true; #71). */
   autoOrder?: boolean;
+  /**
+   * Master switch for the AI glue pipeline (spec 07). `autoOrder` aliases to it
+   * (`glue ?? autoOrder ?? true`), so a test passing `autoOrder:false` disables all glue auto-kicks
+   * with zero edits. No glue task auto-kicks yet (G2/G3), so this is wiring only in G1.
+   */
+  glue?: boolean;
+  /**
+   * Auto-kick the chunk-narration glue task on compile (default true; spec 06 slice 5). Narration-
+   * only opt-out (`--no-ai-narration` / `CODE_STORY_NO_AI_NARRATION`); the master `glue`/`autoOrder`
+   * switch gates it too, so an existing test passing `autoOrder:false` never spawns for narration.
+   */
+  autoNarration?: boolean;
   /** Model for the auto-kicked ordering job and the default for POST /api/order-job. */
   orderModel?: string;
   /** Test seam: replaces the claude subprocess the order job spawns. */
@@ -136,12 +162,16 @@ export interface ServerOptions {
   narrationInvoke?: (prompt: string, model: string, cwd: string) => Promise<string>;
   /** Byte cap for the context payload store (default ~2 MB); a tiny value exercises cap behavior. */
   contextStoreCapBytes?: number;
+  /** Test seam: replaces the raw `claude -p` spawn the glue invoker drives. */
+  glueInvoke?: GlueSpawn;
 }
 
 export interface RunningServer {
   port: number;
   url: string;
   close: () => void;
+  /** Aborts in-flight glue work and flushes the ledger; safe to call when no glue ever ran. */
+  shutdownGlue: () => Promise<void>;
 }
 
 export function startServer(options: ServerOptions, requestedPort = 0): Promise<RunningServer> {
@@ -276,8 +306,11 @@ export function startServer(options: ServerOptions, requestedPort = 0): Promise<
         graphFile: string;
         narrationFile: string;
         narrationJobFile: string;
+        narrationChunksFile: string;
         contextFile: string;
         contextJobFile: string;
+        deferralsFile: string;
+        glueLedgerFile: string;
       }>
     | undefined;
   const getStore = () =>
@@ -293,8 +326,11 @@ export function startServer(options: ServerOptions, requestedPort = 0): Promise<
           graphFile: chunkGraphFilePath(dataHome, repoId, options.range),
           narrationFile: narrationFilePath(dataHome, repoId, options.range),
           narrationJobFile: narrationJobFilePath(dataHome, repoId, options.range),
+          narrationChunksFile: narrationChunksFilePath(dataHome, repoId, options.range),
           contextFile: contextFilePath(dataHome, repoId, options.range),
           contextJobFile: contextJobFilePath(dataHome, repoId, options.range),
+          deferralsFile: deferralsFilePath(dataHome, repoId, options.range),
+          glueLedgerFile: glueLedgerFilePath(dataHome, repoId, options.range),
         };
       })(),
       () => (storeCache = undefined),
@@ -320,7 +356,141 @@ export function startServer(options: ServerOptions, requestedPort = 0): Promise<
   // Serializes saves so concurrent PATCHes never interleave the write-temp/rename pair.
   let saveChain = Promise.resolve();
 
+  // The one save-chain for the deferral store: POST (append/upsert), DELETE (remove), the GET orphan
+  // rewrite, and the deferral task's answer fills ALL funnel through here (read-modify-write, fresh
+  // load each turn), so a concurrent DELETE and answer arrival can never clobber each other.
+  let deferralChain = Promise.resolve();
+  const mutateDeferrals = <T>(fn: (store: DeferralStoreFile) => T): Promise<T> => {
+    const op = deferralChain.then(async () => {
+      const { deferralsFile } = await getStore();
+      const store = await loadDeferralStore(deferralsFile, options.range);
+      const result = fn(store);
+      await saveJson(deferralsFile, store);
+      return result;
+    });
+    deferralChain = op.then(
+      () => undefined,
+      () => undefined,
+    );
+    return op;
+  };
+
+  // The AI glue pipeline (spec 07). `autoOrder:false` aliases to `glue:false` so the existing test
+  // corpus disables all glue auto-kicks unchanged. The chunk-narration task (G2) registers here; its
+  // auto-kick is gated on `glueEnabled`, so an `autoOrder:false` server spawns zero `claude` children.
+  const glueEnabled = options.glue ?? options.autoOrder ?? true;
+  const autoNarration = options.autoNarration ?? true;
+  const autoOrder = options.autoOrder ?? true;
+  // Order-job model: the daemon default; POST /api/order-job overwrites it with `body.model` before
+  // kicking (single-flight, so the running task reads the intended model). ModelPolicy's per-task
+  // override keeps this order-only — narration is unaffected (survey §4).
+  let orderJobModel = options.orderModel ?? 'opus';
+  const contextStoreCapBytes = options.contextStoreCapBytes ?? DEFAULT_CONTEXT_STORE_CAP_BYTES;
+  let glueCache: Promise<{ scheduler: GlueScheduler; ledger: GlueLedger }> | undefined;
+  const getGlue = () =>
+    (glueCache ??= uncacheOnError(
+      (async () => {
+        const store = await getStore();
+        const policy = createModelPolicy();
+        const ledger = new GlueLedger(store.glueLedgerFile);
+        const invoker = createGlueInvoker({ policy, ledger, cwd: store.dataHome, spawn: options.glueInvoke });
+        const scheduler = new GlueScheduler({ invoker, ledger, policy, enabled: glueEnabled });
+        scheduler.register(
+          createChunkNarrationTask({
+            headSha: options.range.head,
+            tier: 'top',
+            model: policy.resolve('top'),
+            overlayFile: store.narrationChunksFile,
+            getInputs: async () => {
+              const built = await getBook();
+              return { chunks: built.chunks, contents: built.contents };
+            },
+          }),
+        );
+        scheduler.register(
+          createOrderTask({
+            tier: 'top',
+            chapterMode,
+            orderFile: store.orderFile,
+            jobFile: store.jobFile,
+            model: () => orderJobModel,
+            getInputs: async () => {
+              const built = await getBook();
+              return {
+                book: built.book,
+                chunks: built.chunks,
+                graph: built.graph,
+                chunkGraph: built.chunkGraph,
+                storyComposition: built.storyComposition,
+                chapterInput: built.chapterInput,
+                config: storyConfig,
+              };
+            },
+            rawInvoke: options.orderInvoke
+              ? (prompt) => options.orderInvoke!(prompt, orderJobModel, store.dataHome)
+              : undefined,
+          }),
+        );
+        scheduler.register(
+          createContextTask({
+            headSha: options.range.head,
+            jobFile: store.contextJobFile,
+            prepare: async () => {
+              const { chunks, graph, book } = await getBook();
+              const freshIds = new Set(
+                Object.keys(filterFreshContext(options.range.head, book, await loadContextStore(store.contextFile))),
+              );
+              const { resolver, changedFiles } = await contextResolveInputs();
+              return {
+                eligibleChunks: eligibleContextChunks(book, chunks),
+                freshIds,
+                resolve: (chunk) => resolver.resolve(chunk, changedFiles, graph),
+                persist: (payload) => persistPayload(store.contextFile, payload),
+              };
+            },
+          }),
+        );
+        scheduler.register(
+          createDeferralTask({
+            tier: 'top',
+            loadDeferrals: async () => (await loadDeferralStore(store.deferralsFile, options.range)).deferrals,
+            getChunk: async (chunkId) => {
+              const built = await getBook();
+              const chunk = built.chunks.find((ch) => ch.id === chunkId);
+              return chunk ? { chunk, contents: built.contents.get(chunk.file) } : undefined;
+            },
+            saveAnswer: (id, patch) =>
+              mutateDeferrals((s) => {
+                const deferral = s.deferrals.find((d) => d.id === id);
+                if (deferral) Object.assign(deferral, patch);
+              }),
+          }),
+        );
+        return { scheduler, ledger };
+      })(),
+      () => (glueCache = undefined),
+    ));
+
+  // Auto-kick the chunk-narration task on compile, in the scheduler's background lane (serial after
+  // order). Double-gated: `glueEnabled` (the master switch the test corpus disables) AND the
+  // narration-only `autoNarration` opt-out. Fail-open — a store/scheduler hiccup just means no auto
+  // narration this compile.
+  async function maybeAutoKickChunkNarration(): Promise<void> {
+    if (!glueEnabled || !autoNarration) return;
+    try {
+      const { scheduler } = await getGlue();
+      await scheduler.kick(CHUNK_NARRATION_KIND);
+    } catch {
+      // no auto narration this compile
+    }
+  }
+
   app.get('/api/health', (c) => c.json({ ok: true, name: 'code-story', core: CORE_VERSION }));
+
+  app.get('/api/glue', async (c) => {
+    const { scheduler } = await getGlue();
+    return c.json(await scheduler.status());
+  });
 
   app.get('/api/diff', async (c) => {
     return c.json({ ...options.range, files: await getDiff() });
@@ -363,100 +533,48 @@ export function startServer(options: ServerOptions, requestedPort = 0): Promise<
     return c.json(response);
   });
 
-  const autoOrder = options.autoOrder ?? true;
-  const orderModel = options.orderModel ?? 'opus';
-
-  const orderRuntime = new JobRuntime<OrderJobRecord>();
-  // Fingerprints whose job already failed this daemon lifetime: a broken claude CLI must not
-  // retry-storm on every compile. A plain restart clears it and re-tries.
-  const failedFingerprints = new Set<string>();
-
-  type OrderStore = Awaited<ReturnType<typeof getStore>>;
-  // Starts the ordering job unless one is already in flight. Synchronous up to `run`'s handle
-  // assignment (no await between the guard and it) so two concurrent callers can't both spawn.
-  function kickOrderJob(store: OrderStore, model: string): { record: OrderJobRecord | undefined; started: boolean } {
-    if (orderRuntime.running) return { record: orderRuntime.liveRecord, started: false };
-    const record: OrderJobRecord = {
-      version: 1,
-      status: 'running',
-      model,
-      promptVersion: chapterMode ? CHAPTER_ORDER_PROMPT_VERSION : ORDER_PROMPT_VERSION,
-      startedAt: new Date().toISOString(),
-    };
-    let fingerprint: string | undefined;
-    orderRuntime.run(
-      record,
-      store.jobFile,
-      async () => {
-        const built = await getBook();
-        fingerprint = bookFingerprint(built.book);
-        const overlay =
-          chapterMode && built.chapterInput
-            ? await runChapterOrderJob({
-                book: built.book,
-                chunks: built.chunks,
-                graph: built.graph,
-                model,
-                cwd: store.dataHome,
-                invoke: options.orderInvoke,
-                input: built.chapterInput,
-                config: storyConfig,
-                chunkGraph: built.chunkGraph ?? { edges: [] },
-                storyComposition: built.storyComposition ?? [],
-              })
-            : await runOrderJob({
-                book: built.book,
-                graph: built.graph,
-                chunks: built.chunks,
-                model,
-                cwd: store.dataHome,
-                invoke: options.orderInvoke,
-              });
-        await saveJson(store.orderFile, overlay);
-        return {};
-      },
-      () => {
-        if (fingerprint !== undefined) failedFingerprints.add(fingerprint);
-      },
-    );
-    return { record, started: true };
-  }
+  // Running, or queued behind a background sibling — the one signal GET /api/order's `job` field and
+  // its orphan resolution read, since the scheduler (not a per-job handle) owns the lifecycle.
+  const orderActive = async (): Promise<boolean> => {
+    const a = (await getGlue()).scheduler.activity(ORDER_KIND);
+    return a.running > 0 || a.queued > 0;
+  };
 
   app.get('/api/order', async (c) => {
     const { orderFile, jobFile } = await getStore();
-    const [overlay, stored, { book }] = await Promise.all([loadOverlay(orderFile), loadJobRecord(jobFile), getBook()]);
+    const [overlay, stored, { book }, active] = await Promise.all([
+      loadOverlay(orderFile),
+      loadJobRecord(jobFile),
+      getBook(),
+      orderActive(),
+    ]);
     const fresh = overlay !== null && isOverlayFresh(book, overlay) ? overlay : null;
-    const job = await orderRuntime.resolve(stored, () => loadJobRecord(jobFile));
+    const job = await resolveJobRecord(stored, active, () => loadJobRecord(jobFile));
     const response: OrderResponse = { overlay: fresh, job: job && jobSummary(job) };
     return c.json(response);
   });
 
   app.post('/api/order-job', async (c) => {
     const body = (await c.req.json().catch(() => ({}))) as { model?: string };
-    const store = await getStore();
-    const { record, started } = kickOrderJob(store, body.model ?? orderModel);
-    return c.json({ job: record && jobSummary(record) }, started ? 202 : 200);
+    const { jobFile } = await getStore();
+    // Task-scoped model override (order-only): the running task reads this getter (single-flight).
+    orderJobModel = body.model ?? (options.orderModel ?? 'opus');
+    // Forced kick: an explicit POST retries a fingerprint the failed set parked under auto-kick (#71),
+    // and 202/200 derives from whether it enqueued (started) or found the job already running.
+    const result = await (await getGlue()).scheduler.kick(ORDER_KIND, { force: true });
+    const record = await loadJobRecord(jobFile);
+    return c.json({ job: record && jobSummary(record) }, result.enqueued.length > 0 ? 202 : 200);
   });
 
-  // Default-on (#71): on compile, run the ordering job in the background when no fresh overlay
-  // exists. Never blocks the book — the daemon serves tier 0 immediately, the overlay applies on
-  // the next book load per order-logic's rules. Fail-open: a broken store/compile just means no
-  // auto order, never a startup failure.
+  // Default-on (#71): kick the ordering job on compile. A bare kick suffices — the scheduler's
+  // isFresh check, dedupe and per-lifetime failed set gate it (no fresh overlay, not in flight, not
+  // already failed this lifetime). Fail-open: a hiccup just means no auto order; the book serves tier 0.
   async function maybeAutoKickOrder(): Promise<void> {
     if (!autoOrder) return;
     try {
-      const store = await getStore();
-      const [overlay, { book }] = await Promise.all([loadOverlay(store.orderFile), getBook()]);
-      const decision = {
-        enabled: autoOrder,
-        hasFreshOverlay: overlay !== null && isOverlayFresh(book, overlay),
-        jobInFlight: orderRuntime.running,
-        fingerprint: bookFingerprint(book),
-        failedFingerprints,
-      };
-      if (shouldAutoKickOrder(decision)) kickOrderJob(store, orderModel);
+      await (await getGlue()).scheduler.kick(ORDER_KIND);
     } catch {
-      // Fail-open: no auto order this compile; the book still serves tier 0.
+      // no auto order this compile
     }
   }
 
@@ -487,15 +605,30 @@ export function startServer(options: ServerOptions, requestedPort = 0): Promise<
   const narrationRuntime = new JobRuntime<NarrationJobRecord>();
 
   app.get('/api/narration', async (c) => {
-    const { narrationFile, narrationJobFile } = await getStore();
-    const [overlay, stored, { book }] = await Promise.all([
+    const { narrationFile, narrationJobFile, narrationChunksFile } = await getStore();
+    const [overlay, stored, { book }, chunkOverlay] = await Promise.all([
       loadNarrationOverlay(narrationFile),
       loadNarrationJobRecord(narrationJobFile),
       getBook(),
+      loadChunkNarrationOverlay(narrationChunksFile),
     ]);
     const filtered = overlay !== null ? filterFreshNarration(book, options.range.head, overlay) : null;
     const job = await narrationRuntime.resolve(stored, () => loadNarrationJobRecord(narrationJobFile));
-    const response: NarrationResponse = { overlay: filtered, job: job && narrationJobSummary(job) };
+    // Chunk narration v2 (spec 06 slice 5): fresh-filter the separate overlay and project it to
+    // line/badge; the v1 fields above are unchanged.
+    const chunkEntries = chunkOverlay
+      ? Object.fromEntries(
+          Object.entries(filterFreshNarrationV2(options.range.head, chunkOverlay).chunks).map(([id, e]) => [
+            id,
+            { ...(e.line !== undefined ? { line: e.line } : {}), ...(e.badge !== undefined ? { badge: e.badge } : {}) },
+          ]),
+        )
+      : undefined;
+    const response: NarrationResponse = {
+      overlay: filtered,
+      ...(chunkEntries ? { chunkEntries } : {}),
+      job: job && narrationJobSummary(job),
+    };
     return c.json(response);
   });
 
@@ -554,7 +687,71 @@ export function startServer(options: ServerOptions, requestedPort = 0): Promise<
     return c.json({ ok: true });
   });
 
-  const contextStoreCapBytes = options.contextStoreCapBytes ?? DEFAULT_CONTEXT_STORE_CAP_BYTES;
+  // Deferrals (spec 06 slice 6). Reviewer-authored state — no fingerprint, immune to CORE_VERSION.
+  // "Running or queued for the deferral kind" is the one signal the GET orphan rule reads (the
+  // scheduler, not a per-deferral handle, owns the answer lifecycle).
+  const deferralActive = async (): Promise<boolean> => {
+    const a = (await getGlue()).scheduler.activity(DEFERRAL_KIND);
+    return a.running > 0 || a.queued > 0;
+  };
+
+  app.post('/api/deferrals', async (c) => {
+    const req = validateDeferralRequest(await c.req.json().catch(() => null));
+    if (!req) return c.json({ error: 'invalid deferral' }, 400);
+    // Upsert by id: a re-POST of the same id is Retry — it resets the answer fields (an ai record
+    // starts `running`, since the kick below enqueues it in the same tick) and re-runs the task.
+    const stored = await mutateDeferrals((store): Deferral => {
+      const record: Deferral = {
+        ...req,
+        createdAt: new Date().toISOString(),
+        ...(req.kind === 'ai' ? { answerStatus: 'running' as const } : {}),
+      };
+      const idx = store.deferrals.findIndex((d) => d.id === req.id);
+      if (idx >= 0) store.deferrals[idx] = record;
+      else store.deferrals.push(record);
+      return { ...record };
+    });
+    // ai (inline or deferred) rides the interactive lane; force bypasses the master switch a test may
+    // have disabled (like order-job/context-job POSTs) — the deferral task never auto-kicks otherwise.
+    if (req.kind === 'ai') {
+      await (await getGlue()).scheduler.kick(DEFERRAL_KIND, { force: true });
+      return c.json(stored, 202);
+    }
+    return c.json(stored, 200);
+  });
+
+  app.get('/api/deferrals', async (c) => {
+    const { deferralsFile } = await getStore();
+    const [active, initial] = await Promise.all([deferralActive(), loadDeferralStore(deferralsFile, options.range)]);
+    let deferrals = initial.deferrals;
+    // Per-deferral orphan rule: a `running` answer with no live scheduler unit (idle after a restart)
+    // is rewritten to `failed`, one re-read first (the mutate re-loads inside the chain), so a fast
+    // answer that just landed is not clobbered and the poll never chases a dead spinner.
+    if (!active && deferrals.some((d) => d.answerStatus === 'running')) {
+      deferrals = await mutateDeferrals((store) => {
+        for (const d of store.deferrals) {
+          if (d.answerStatus === 'running') {
+            d.answerStatus = 'failed';
+            d.answerError = ORPHAN_ERROR;
+            d.answeredAt = new Date().toISOString();
+          }
+        }
+        return store.deferrals.map((d) => ({ ...d }));
+      });
+    }
+    return c.json({ deferrals } satisfies DeferralsResponse);
+  });
+
+  app.delete('/api/deferrals/:id', async (c) => {
+    const id = c.req.param('id');
+    const found = await mutateDeferrals((store) => {
+      const idx = store.deferrals.findIndex((d) => d.id === id);
+      if (idx < 0) return false;
+      store.deferrals.splice(idx, 1);
+      return true;
+    });
+    return c.json({ ok: found }, found ? 200 : 404);
+  });
 
   // Serializes the read-modify-write of the shared context store so a compute-on-miss GET and the
   // bulk job never clobber each other's payload. Persists only while under the byte cap: past it a
@@ -608,59 +805,29 @@ export function startServer(options: ServerOptions, requestedPort = 0): Promise<
     }
   });
 
-  // The bulk context fill, modeled on the order/narration jobs minus the model calls. One in flight
-  // per range.
-  const contextRuntime = new JobRuntime<ContextJobRecord>();
+  // The bulk context fill is a `none`-tier glue task on the scheduler's bulk lane (spec 07 G5); its
+  // deps (eligible chunks, resolver, cap-aware persist) are assembled in getGlue. GET-on-miss above
+  // stays inline. Active = running or queued behind a background sibling.
+  const contextActive = async (): Promise<boolean> => {
+    const a = (await getGlue()).scheduler.activity(CONTEXT_KIND);
+    return a.running > 0 || a.queued > 0;
+  };
 
   app.get('/api/context-job', async (c) => {
     const { contextJobFile } = await getStore();
-    const stored = await loadContextJobRecord(contextJobFile);
-    const job = await contextRuntime.resolve(stored, () => loadContextJobRecord(contextJobFile));
+    const [stored, active] = await Promise.all([loadContextJobRecord(contextJobFile), contextActive()]);
+    const job = await resolveJobRecord(stored, active, () => loadContextJobRecord(contextJobFile));
     return c.json({ job: job && contextJobSummary(job) } satisfies ContextJobResponse);
   });
 
   app.post('/api/context-job', async (c) => {
-    const { contextFile, contextJobFile } = await getStore();
-    const { chunks, graph, book } = await getBook();
-    // No awaits between this guard and `run`'s handle assignment — a second concurrent POST must see
-    // the first one's handle.
-    if (contextRuntime.running) {
-      return c.json(
-        {
-          job: contextRuntime.liveRecord ? contextJobSummary(contextRuntime.liveRecord) : null,
-        } satisfies ContextJobResponse,
-        200,
-      );
-    }
-    const record: ContextJobRecord = {
-      version: 1,
-      status: 'running',
-      startedAt: new Date().toISOString(),
-      chunksTotal: 0,
-      chunksDone: 0,
-      computed: 0,
-      skipped: 0,
-      capped: false,
-      cappedCount: 0,
-    };
-    contextRuntime.run(record, contextJobFile, async () => {
-      const eligible = eligibleContextChunks(book, chunks);
-      const freshIds = new Set(
-        Object.keys(filterFreshContext(options.range.head, book, await loadContextStore(contextFile))),
-      );
-      const { resolver, changedFiles } = await contextResolveInputs();
-      return runContextJob({
-        eligibleChunks: eligible,
-        freshIds,
-        resolve: (chunk) => resolver.resolve(chunk, changedFiles, graph),
-        persist: (payload) => persistPayload(contextFile, payload),
-        onProgress: (done, total) => {
-          record.chunksDone = done;
-          record.chunksTotal = total;
-        },
-      });
-    });
-    return c.json({ job: contextJobSummary(record) } satisfies ContextJobResponse, 202);
+    const { contextJobFile } = await getStore();
+    const result = await (await getGlue()).scheduler.kick(CONTEXT_KIND, { force: true });
+    const record = await loadContextJobRecord(contextJobFile);
+    return c.json(
+      { job: record && contextJobSummary(record) } satisfies ContextJobResponse,
+      result.enqueued.length > 0 ? 202 : 200,
+    );
   });
 
   // `?order=ai` must never silently fall back to tier 0 — an eval comparing "both orders"
@@ -698,7 +865,11 @@ export function startServer(options: ServerOptions, requestedPort = 0): Promise<
     const server = serve({ fetch: app.fetch, port: requestedPort, hostname: '127.0.0.1' }, (info) => {
       const url = `http://127.0.0.1:${info.port}`;
       void maybeAutoKickOrder();
-      resolve({ port: info.port, url, close: () => server.close() });
+      void maybeAutoKickChunkNarration();
+      const shutdownGlue = async () => {
+        if (glueCache) await (await glueCache).scheduler.shutdown();
+      };
+      resolve({ port: info.port, url, close: () => server.close(), shutdownGlue });
     });
   });
 }

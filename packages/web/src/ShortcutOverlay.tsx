@@ -9,6 +9,7 @@ export function ShortcutOverlay({ onClose }: { onClose: () => void }) {
     ['d', 'show / hide definitions for the chunk'],
     ['g', 'jump into the related-chunks strip (← / → between chips, Enter to follow)'],
     ['b', 'back to where you jumped from'],
+    ['[ / ]', 'previous / next piece of the current file'],
     ['Ctrl+Home / Ctrl+End', 'top / end of book'],
     ['Esc', 'leave the editor, definitions, or the strip, back to the chunk'],
     ['?', 'this overlay'],

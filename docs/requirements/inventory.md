@@ -3,7 +3,10 @@
 Every requirement extracted from the [original prompt](../vision/original-prompt.md) and its
 addenda ([2026-07-16](../vision/addendum-2026-07-16.md),
 [PR versions](../vision/addendum-2026-07-16-pr-versions.md),
-[editor features](../vision/addendum-2026-07-16-editor-features.md)), numbered for traceability. Future passes over the
+[editor features](../vision/addendum-2026-07-16-editor-features.md),
+[ordering preferences](../vision/addendum-2026-07-17-ordering-preferences.md),
+[review-UX feedback](../vision/addendum-2026-07-20-review-ux-feedback.md),
+[AI pipeline](../vision/addendum-2026-07-20-ai-pipeline.md)), numbered for traceability. Future passes over the
 prompts should check each tidbit against this list and against the implementation. Each entry: the requirement, its source in the prompt (paraphrased quote), and
 open questions to resolve during spec work.
 
@@ -412,3 +415,81 @@ paths (a path/story is a first-class value derived from graph + policy — consu
 dependency-first, test-first, AI-refined — switchable, not a single hardcoded order).
 Generalizes R-044/R-045/R-048; spec 05's ChunkEdge.kind and config axes are the seed.
 > "yeah, we should have a model that supports various graphs and paths."
+
+## M. Review-UX feedback, 2026-07-20 ([verbatim source](../vision/addendum-2026-07-20-review-ux-feedback.md))
+
+### R-051 — In-file piece orientation and navigation
+Every chunk must make obvious which piece of its file it is (e.g. 1 / X), so the reviewer knows
+whether there is more of that file and how much; the reviewer can jump between that file's
+pieces — probably in place (step through, with a jump back to the primary chunk the piece
+represents) — or instead say "show all the chunks like GitHub does, right here".
+> "It should be more obvious what piece (e.g. 1 / X) Each segment is in its respective file …
+> so I know if there's more and how much and so I can jump to different pieces in that file
+> (probably in place e.g. step through? with a jump back to the primary chunk that this piece
+> represents. or I can just say 'Show all the chunks like GitHub does right here'."
+
+### R-052 — Visual linking between the feed and the sidebar
+What the reviewer sees in the reading pane and the items in the outline sidebar must be
+visibly linked (which outline items are on screen / current).
+> "there should also be some sort of visual linking between what I see and the items in the sidebar"
+
+### R-053 — Automatic review marking as the reviewer goes through content
+A designed pattern (not an accident) for chunks becoming reviewed automatically as the
+reviewer moves through the content. Interacts with R-001's ledger honesty and R-026.
+> "Design and build a good pattern for things being automatically reviewed as a reviewer goes
+> through content."
+
+### R-054 — Mouse navigation is a first-class citizen
+Keyboard shortcuts are handy but secondary; never assume the reviewer uses them. Every
+capability needs a mouse path. (Strengthens the 2026-07-18 steer that amended R-004.)
+> "keyboard shortcuts are handy, but I want mouse navigation to be a first-class citizen.
+> don't assume a user will use keyboard shortcuts."
+
+### R-055 — Narration on chunks is wanted (decision)
+Tim definitely wants narration on chunks. This closes the "is narration wanted?" half of the
+narration gate (#54) and demands the #115 unblock: narration must be visible in the default
+(chapter) mode. Quality gates (faithfulness floor, R-047/#58) still apply.
+> "I definitely want narration on chunks. what's blacking that?"
+
+### R-056 — Two-word chunk badge
+Each chunk gets a short blurb/tag — a badge summarizing the chunk in usually two words
+(e.g. "Minor refactor", "Simple Optimization").
+> "also a short blurb or tag like 'Minor refactor', 'Simple Optimization'. e.g. a badge that
+> summarizes the chunk into usually 2 words."
+
+### R-057 — Reviewing should feel satisfying
+Clear progress indicators; nothing too distracting, but something that wows the reviewer is
+worth considering — reviewing is a drag and the product should counter that.
+> "Also reviewing can be a drag, so think of great ways to make it more satisfying. e.g. clear
+> progress indicators. nothing too distracting, but something that wows the reviewer is
+> definitely worth considering."
+
+### R-058 — The WHY of the order must be visible
+It should be clear why the chunks landed in the order they're in — via narration or a quick
+blurb connecting each two sections.
+> "It would also be really helpful if it was somehow clear WHY the chunks landed in the order
+> they're in. maybe narration handles that, maybe we need a quick blurb that connects each 2
+> sections."
+
+### R-059 — Defer lines/chunks to the end of the story (note-to-self or background AI)
+The reviewer can defer specific lines to the end of the story, sometimes with a comment for
+themselves, sometimes with a prompt for AI that runs in the background and is ready when they
+reach the end. For AI prompts, deferring is probably the default but not required — it can
+also happen inline.
+> "We still need tools for deferring specific lines to the end of the story sometimes with a
+> comment for myself and sometimes with a promt for AI that runs in the background and is then
+> ready for me when I get to the end. (deferring in that case should probably be the default,
+> but not required i.e. it can also just happen inline)"
+
+## N. AI pipeline, 2026-07-20 ([verbatim source](../vision/addendum-2026-07-20-ai-pipeline.md))
+
+### R-060 — The AI glue pipeline (critical architecture)
+All AI "glue" (annotations, narration, ordering, badges, deferral answers, …) flows through
+one pipeline that optimizes which agent gets called when, with what context, for what task.
+Built with the best initial pieces for the final goals, but modular, so pieces can be tweaked
+and moved as the tool improves. Critical architecture — build carefully.
+> "a good pipeline that optimizes what agents gets called when with what context for what
+> task is probably something that would be really valuable. that's something you should
+> build. it should be built with the best initial pieces you can think of for our final
+> goals, but be modular so that we can tweak and move pieces around later as we learn and
+> improve the tool. that's a critical piece of architecture. build it carefully."
