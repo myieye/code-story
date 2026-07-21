@@ -93,6 +93,11 @@ function StoryCard({ story, active }: { story: StorySummary; active: boolean }) 
   const stats = statsLabel(story.stats);
 
   async function onOpen() {
+    // Already the active range — just go to the reader, no need to re-switch the daemon.
+    if (active) {
+      goToReader();
+      return;
+    }
     setOpening(true);
     setError(null);
     try {
@@ -128,7 +133,7 @@ function StoryCard({ story, active }: { story: StorySummary; active: boolean }) 
       </div>
       <div className="story-card-actions">
         <button className="bar-button" onClick={() => void onOpen()} disabled={opening}>
-          {active ? 'Open now' : opening ? 'Opening…' : 'Open'}
+          {active ? 'Reading now →' : opening ? 'Opening…' : 'Open'}
         </button>
         {error && <span className="form-error">{error}</span>}
       </div>
