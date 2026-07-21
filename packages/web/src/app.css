@@ -1382,3 +1382,251 @@ button.piece-indicator[aria-expanded='true'] {
 .outline-item.deferred .outline-path {
   color: #8a5a12;
 }
+
+/* ---- Story library (R-061) --------------------------------------------------------------- */
+
+.library {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 24px 20px 60px;
+}
+
+.new-review-form {
+  border: 1px solid #e5e2dc;
+  border-radius: 8px;
+  padding: 16px 18px;
+  background: #fff;
+  margin-bottom: 28px;
+}
+
+.new-review-form h2 {
+  font-size: 15px;
+  margin: 0 0 12px;
+}
+
+.new-review-fields {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 14px;
+}
+
+.new-review-fields input[type='text'] {
+  font-size: 13px;
+  padding: 5px 8px;
+  border: 1px solid #d8d4cc;
+  border-radius: 5px;
+  min-width: 220px;
+  font-family: Consolas, monospace;
+}
+
+.new-review-fields label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12.5px;
+  color: #4a463f;
+}
+
+.new-review-fields select {
+  font-size: 12.5px;
+  padding: 3px 6px;
+  border: 1px solid #d8d4cc;
+  border-radius: 5px;
+  background: #fff;
+}
+
+.ai-order-check {
+  flex-direction: row !important;
+  align-items: center;
+  gap: 6px !important;
+}
+
+.form-error {
+  color: #a05252;
+  font-size: 12.5px;
+  margin: 8px 0 0;
+}
+
+.story-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.story-card {
+  border: 1px solid #e5e2dc;
+  border-radius: 8px;
+  padding: 14px 18px;
+  background: #fff;
+}
+
+.story-card.active {
+  border-color: #1c3a6e;
+  box-shadow: 0 0 0 1px #1c3a6e inset;
+}
+
+.story-card-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.story-card-head h3 {
+  font-size: 14.5px;
+  margin: 0;
+  flex: 1;
+}
+
+.version-badge {
+  font-size: 11px;
+  color: #6b675f;
+  font-family: Consolas, monospace;
+}
+
+.story-card-range {
+  font-family: Consolas, monospace;
+  font-size: 12px;
+  color: #6b675f;
+  margin: 4px 0;
+}
+
+.story-card-meta {
+  font-size: 12px;
+  color: #8a857b;
+  margin: 0 0 10px;
+}
+
+.config-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.config-chip {
+  font-size: 11.5px;
+  padding: 2px 8px;
+  border-radius: 9px;
+  background: #f4f2ee;
+  color: #4a463f;
+  cursor: default;
+}
+
+.config-chip.cost-regenerates {
+  background: #fbf3e2;
+  color: #8a5a12;
+}
+
+.config-chip.cost-free {
+  background: #eef1f5;
+  color: #1c3a6e;
+}
+
+.story-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* ---- Changelog (R-063) -------------------------------------------------------------------- */
+
+.changelog {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 24px 20px 60px;
+}
+
+.changelog-entry {
+  margin-bottom: 28px;
+}
+
+.changelog-entry h2 {
+  font-size: 15px;
+  margin: 0 0 4px;
+}
+
+.changelog-date {
+  font-size: 12px;
+  color: #8a857b;
+  margin: 0 0 8px;
+}
+
+.changelog-entry ul {
+  margin: 0;
+  padding-left: 20px;
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: #4a463f;
+}
+
+/* ---- In-book "How this story was generated" panel (R-062) --------------------------------- */
+
+/* The range in the top bar is now a button that opens this panel; keep it looking like the old label. */
+.top-bar button.range {
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+.story-options-popover {
+  min-width: 300px;
+  max-width: 380px;
+}
+
+.story-options-head {
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.story-options-panel {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.story-option dt {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.story-option dd {
+  margin: 2px 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.story-option .option-value {
+  font-size: 12.5px;
+  color: #4a463f;
+}
+
+.story-option .option-meaning {
+  font-size: 12px;
+  color: var(--muted, #888);
+  line-height: 1.45;
+}
+
+.cost-badge {
+  font-size: 10.5px;
+  font-weight: 500;
+  padding: 1px 7px;
+  border-radius: 9px;
+  white-space: nowrap;
+}
+
+.cost-badge.cost-regenerates {
+  background: #fbf3e2;
+  color: #8a5a12;
+}
+
+.cost-badge.cost-free {
+  background: #eef1f5;
+  color: #1c3a6e;
+}

@@ -43,6 +43,7 @@ import { frontierCount, interactionCount } from './frontier-logic.js';
 import { batchableSections, cursorAfterMark, findUnreviewed, pendingStubCount } from './review-logic.js';
 import { estimateRowHeight, RowView, type SectionAck } from './RowView.js';
 import { AnchoredPopover } from './AnchoredPopover.js';
+import { StoryOptionsPanel } from './StoryOptionsPanel.js';
 import { whyThisOrderCopy } from './order-explain-logic.js';
 import {
   chaptersRemaining,
@@ -159,6 +160,7 @@ export function BookPage({
   const headerRef = useRef<HTMLElement>(null);
   const [compact, setCompact] = useState(false);
   const [whyAnchor, setWhyAnchor] = useState<HTMLElement | null>(null);
+  const [optionsAnchor, setOptionsAnchor] = useState<HTMLElement | null>(null);
   const [overflowAnchor, setOverflowAnchor] = useState<HTMLElement | null>(null);
   const [aiAnchor, setAiAnchor] = useState<HTMLElement | null>(null);
   const [aiWhyExpanded, setAiWhyExpanded] = useState(false);
@@ -893,9 +895,27 @@ export function BookPage({
     <div className="app">
       <header className="top-bar" ref={headerRef}>
         <h1>code-story</h1>
-        <span className="range" title={`${data.base}..${data.head}`}>
-          {data.base.slice(0, 8)}..{data.head.slice(0, 8)}
-        </span>
+        <button
+          className="bar-button library-link"
+          title="All stories — pick or start a review"
+          onClick={() => {
+            location.hash = '#/library';
+          }}
+        >
+          ☰ Library
+        </button>
+        <button
+          className="bar-button range"
+          title="How this story was generated"
+          aria-haspopup="dialog"
+          aria-expanded={optionsAnchor !== null}
+          onClick={(e) => {
+            const t = e.currentTarget;
+            setOptionsAnchor((a) => (a ? null : t));
+          }}
+        >
+          {data.base.slice(0, 8)}..{data.head.slice(0, 8)} ▾
+        </button>
         <span className="progress-cluster">
           <span className={done ? 'progress-text done' : 'progress-text'}>
             {done ? (
@@ -1206,6 +1226,17 @@ export function BookPage({
             />
           );
         })()}
+      {optionsAnchor && (
+        <AnchoredPopover
+          anchorEl={optionsAnchor}
+          ariaLabel="How this story was generated"
+          className="story-options-popover"
+          onClose={() => setOptionsAnchor(null)}
+        >
+          <div className="story-options-head">How this story was generated</div>
+          <StoryOptionsPanel config={bookResponse.config} mode={grouping === 'files' ? 'file' : 'chapter'} aiOrder={orderApplied} />
+        </AnchoredPopover>
+      )}
       {whyAnchor && (
         <AnchoredPopover anchorEl={whyAnchor} ariaLabel="Why this order?" className="why-popover" onClose={() => setWhyAnchor(null)}>
           <div className="why-popover-head">
