@@ -17,7 +17,7 @@ display. **Do not re-derive — this table is the source of truth for the UI cop
 | Option | Feeds AI prompt? | Changing after generation |
 |---|---|---|
 | `direction` (consumer/dependency-first) | Yes — a hard-rule sentence differs by direction | **Regenerates** — changes book structure → `bookFingerprint` changes → order overlay dropped → free tier-0 until a paid re-run |
-| `testPlacement` (before/after/end) | No — prompt never receives it | **Regenerates (wastefully)** — changes `book.sections` so overlay is dropped, but the re-run prompt is byte-identical. Efficiency bug → **#TBD** (skip re-order when only test-weave changed) |
+| `testPlacement` (before/after/end) | No — prompt never receives it | **Regenerates (wastefully)** — changes `book.sections` so overlay is dropped, but the re-run prompt is byte-identical. Efficiency bug → **#130** (skip re-order when only test-weave changed) |
 | file-mode vs chapter-mode | Yes, wholesale (different prompt + overlay shape) | **Regenerates**; also fixed at daemon launch, not AI-live-toggleable |
 | order model / narration model | No (same prompt, different answerer) | **Free** until a deliberate re-run. Narration re-run on a model change repays *all* sections, not just changed ones |
 | narration on/off, AI-order on/off | No (scheduling gates) | **Free** — existing overlays keep serving |
