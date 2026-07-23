@@ -48,6 +48,40 @@ body {
   color: #6b675f;
 }
 
+.top-bar .range-link {
+  color: #1a5fb4;
+  text-decoration: none;
+}
+
+.top-bar .range-link:hover {
+  text-decoration: underline;
+}
+
+/* The one tinted element in the left cluster: a running build of the PR's app. */
+.app-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12.5px;
+  padding: 3px 10px;
+  border-radius: 5px;
+  text-decoration: none;
+  color: #1e5c2a;
+  background: #e9f3ea;
+  border: 1px solid #b9d4bc;
+}
+
+.app-link:hover {
+  background: #d9ebdb;
+}
+
+.app-link-label {
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .top-bar .counts,
 .top-bar .hint {
   font-size: 12px;

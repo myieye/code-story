@@ -50,6 +50,7 @@ import { createGlueInvoker } from './glue/invoker.js';
 import { GlueLedger, glueLedgerFilePath } from './glue/ledger.js';
 import { createModelPolicy } from './glue/model-policy.js';
 import { GlueScheduler } from './glue/scheduler.js';
+import { buildLinks } from './links.js';
 import { runNarrationJob } from './narration-job.js';
 import { NARRATION_PROMPT_VERSION } from './narration-prompt.js';
 import {
@@ -154,10 +155,24 @@ const directionIndex = args.indexOf('--direction');
 const directionArg = directionIndex >= 0 ? args[directionIndex + 1] : undefined;
 const testPlacementIndex = args.indexOf('--test-placement');
 const testPlacementArg = testPlacementIndex >= 0 ? args[testPlacementIndex + 1] : undefined;
+const prUrlIndex = args.indexOf('--pr-url');
+const prUrl = prUrlIndex >= 0 ? args[prUrlIndex + 1] : undefined;
+const appUrlIndex = args.indexOf('--app-url');
+const appUrl = appUrlIndex >= 0 ? args[appUrlIndex + 1] : undefined;
+const appLabelIndex = args.indexOf('--app-label');
+const appLabel = appLabelIndex >= 0 ? args[appLabelIndex + 1] : undefined;
 const valueIndexes = new Set(
-  [exportIndex + 1, portIndex + 1, modelIndex + 1, orderIndex + 1, directionIndex + 1, testPlacementIndex + 1].filter(
-    (i) => i > 0,
-  ),
+  [
+    exportIndex + 1,
+    portIndex + 1,
+    modelIndex + 1,
+    orderIndex + 1,
+    directionIndex + 1,
+    testPlacementIndex + 1,
+    prUrlIndex + 1,
+    appUrlIndex + 1,
+    appLabelIndex + 1,
+  ].filter((i) => i > 0),
 );
 const range = args.find((a, i) => !a.startsWith('--') && !valueIndexes.has(i));
 const repo = process.cwd();
@@ -209,7 +224,7 @@ if (
   (testPlacementArg !== undefined && !['before', 'after', 'end'].includes(testPlacementArg))
 ) {
   console.error(
-    'Usage: code-story <base>..<head> [--export book.md] [--narration] [--order tier0|ai] [--ai-order] [--no-ai-order] [--narrate] [--narrate-chunks] [--no-ai-narration] [--context] [--dump-context [--verbose]] [--model <id>] [--port <n>] [--direction consumer-first|dependency-first] [--test-placement before|after|end] [--dump-diff] [--dump-chunks] [--dump-graph] [--dump-chunk-graph] [--check-order] [--dump-manifest] [--dump-glue] [--no-open]\n' +
+    'Usage: code-story <base>..<head> [--export book.md] [--narration] [--order tier0|ai] [--ai-order] [--no-ai-order] [--narrate] [--narrate-chunks] [--no-ai-narration] [--context] [--dump-context [--verbose]] [--model <id>] [--port <n>] [--direction consumer-first|dependency-first] [--test-placement before|after|end] [--pr-url <url>] [--app-url <url>] [--app-label <text>] [--dump-diff] [--dump-chunks] [--dump-graph] [--dump-chunk-graph] [--check-order] [--dump-manifest] [--dump-glue] [--no-open]\n' +
       '\n' +
       'AI reading order is the default: the daemon runs the ordering job in the background on\n' +
       'compile and applies it on the next book load. --no-ai-order (or CODE_STORY_NO_AI_ORDER)\n' +
@@ -219,7 +234,10 @@ if (
       '--direction / --test-placement (or a per-repo .code-story.json) tune the chapter\n' +
       'linearizer: call-path chapters that may span files. The defaults are consumer-first, tests\n' +
       'before their impl (R-043/R-044). Select the file-section linearizer with --direction\n' +
-      'dependency-first --test-placement after. Honoured by the daemon, --export, and --check-order.',
+      'dependency-first --test-placement after. Honoured by the daemon, --export, and --check-order.\n' +
+      '\n' +
+      '--pr-url / --app-url / --app-label add book-level links to the UI: the pull request page, its\n' +
+      "GitHub Files-changed tab (derived from --pr-url), and a locally running build of the PR's app.",
   );
   process.exit(1);
 }
@@ -634,6 +652,7 @@ const { url, shutdownGlue } = await startServer(
     autoNarration: !noAiNarration,
     orderModel: model,
     storyConfig: await effectiveStoryConfig(),
+    links: buildLinks({ prUrl, appUrl, appLabel }),
   },
   port,
 );
