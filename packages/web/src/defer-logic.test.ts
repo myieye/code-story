@@ -8,12 +8,15 @@ import {
   deferredChunkIds,
   deferredSliceSummary,
   deferScope,
+  elapsedLabel,
   newlyAnswered,
+  newlyFailed,
+  pollIntervalMs,
   selectionLineRange,
   shouldPoll,
   sliceLinesToRange,
   splitButtonModel,
-  stubCopy,
+  stubModel,
 } from './defer-logic.js';
 
 function d(over: Partial<Deferral>): Deferral {
@@ -39,6 +42,44 @@ describe('newlyAnswered', () => {
   });
 });
 
+describe('newlyFailed', () => {
+  it('counts only new →failed transitions', () => {
+    const prev = [d({ id: 'a', kind: 'ai', answerStatus: 'running' }), d({ id: 'b', kind: 'ai', answerStatus: 'failed' })];
+    const next = [d({ id: 'a', kind: 'ai', answerStatus: 'failed' }), d({ id: 'b', kind: 'ai', answerStatus: 'failed' })];
+    expect(newlyFailed(prev, next)).toBe(1);
+    expect(newlyFailed(next, next)).toBe(0);
+  });
+});
+
+describe('pollIntervalMs', () => {
+  it('stops when nothing is pending, else tightens while the youngest question is fresh', () => {
+    const now = Date.parse('2026-07-20T00:01:00Z');
+    expect(pollIntervalMs([d({ kind: 'note' })], now)).toBeNull();
+    expect(pollIntervalMs([d({ kind: 'ai', answerStatus: 'done' })], now)).toBeNull();
+    // Youngest pending asked 10s ago → fresh → 3s.
+    expect(pollIntervalMs([d({ kind: 'ai', createdAt: '2026-07-20T00:00:50Z' })], now)).toBe(3000);
+    // Youngest pending asked 45s ago → 8s.
+    expect(pollIntervalMs([d({ kind: 'ai', createdAt: '2026-07-20T00:00:15Z' })], now)).toBe(8000);
+    // Takes the youngest of several — the 5s-old one keeps it at 3s.
+    expect(
+      pollIntervalMs(
+        [d({ id: 'a', kind: 'ai', createdAt: '2026-07-20T00:00:00Z' }), d({ id: 'b', kind: 'ai', createdAt: '2026-07-20T00:00:55Z' })],
+        now,
+      ),
+    ).toBe(3000);
+  });
+});
+
+describe('elapsedLabel', () => {
+  it('formats seconds, then minutes with zero-padded seconds', () => {
+    const start = Date.parse('2026-07-20T00:00:00Z');
+    expect(elapsedLabel('2026-07-20T00:00:00Z', start + 12_000)).toBe('12s');
+    expect(elapsedLabel('2026-07-20T00:00:00Z', start + 65_000)).toBe('1m 05s');
+    expect(elapsedLabel('2026-07-20T00:00:00Z', start - 5_000)).toBe('0s'); // never negative
+    expect(elapsedLabel('not-a-date', start)).toBe('0s');
+  });
+});
+
 describe('deferredChunkIds', () => {
   it('is distinct non-inline chunk ids in first-appearance order', () => {
     const list = [d({ chunkId: 'c2' }), d({ chunkId: 'c1' }), d({ chunkId: 'c2' }), d({ chunkId: 'c3', inline: true })];
@@ -55,6 +96,27 @@ describe('deferCluster', () => {
     // Inline deferrals never count toward the Deferred section.
     expect(deferCluster([d({ chunkId: 'c1', inline: true, kind: 'ai', answerStatus: 'running' })]).deferredCount).toBe(0);
   });
+
+  it('surfaces failed alongside ready, and shows answering only when both are 0 (spec 138 Q4)', () => {
+    // ready + failed both present; answering suppressed.
+    const c = deferCluster([
+      d({ id: 'a', chunkId: 'c1', kind: 'ai', answerStatus: 'done' }),
+      d({ id: 'b', chunkId: 'c2', kind: 'ai', answerStatus: 'failed' }),
+      d({ id: 'c', chunkId: 'c3', kind: 'ai', answerStatus: 'running' }),
+    ]);
+    expect(c.text).toBe('3 deferred · 1 answer ready · 1 failed');
+    expect(c.mainText).toBe('3 deferred · 1 answer ready');
+    expect(c.failedText).toBe(' · 1 failed');
+    expect(c.showAnswering).toBe(false);
+    // failed present, no ready → answering still suppressed, only failed shown.
+    const c2 = deferCluster([d({ id: 'a', chunkId: 'c1', kind: 'ai', answerStatus: 'failed' }), d({ id: 'b', chunkId: 'c2', kind: 'ai', answerStatus: 'running' })]);
+    expect(c2.text).toBe('2 deferred · 1 failed');
+    expect(c2.showAnswering).toBe(false);
+    // only answering → shown, flagged for the animated dots.
+    const c3 = deferCluster([d({ chunkId: 'c1', kind: 'ai', answerStatus: 'running' })]);
+    expect(c3.showAnswering).toBe(true);
+    expect(c3.failedText).toBe('');
+  });
 });
 
 describe('answersStillArriving', () => {
@@ -65,12 +127,27 @@ describe('answersStillArriving', () => {
   });
 });
 
-describe('stubCopy', () => {
-  it('reflects the strongest state: ready > answering > note', () => {
-    expect(stubCopy([d({ kind: 'ai', answerStatus: 'done' }), d({ kind: 'ai', answerStatus: 'running' })])).toBe('Deferred — AI answer ready ↓');
-    expect(stubCopy([d({ kind: 'ai', answerStatus: 'running' })])).toBe('Deferred — AI answering… ↓');
-    expect(stubCopy([d({ kind: 'note', text: 'look at the retry path here' })])).toBe('Deferred — look at the retry path here · resolve at end ↓');
-    expect(stubCopy([d({ kind: 'note', text: '' })])).toBe('Deferred — resolve at end · resolve at end ↓');
+describe('stubModel', () => {
+  it('reflects the strongest state: ready > answering > failed > note', () => {
+    expect(stubModel([d({ kind: 'ai', answerStatus: 'done' }), d({ kind: 'ai', answerStatus: 'running' })])).toEqual({
+      kind: 'ready',
+      text: 'Deferred — AI answer ready ↓',
+    });
+    expect(stubModel([d({ kind: 'ai', answerStatus: 'running', createdAt: '2026-07-20T00:00:00Z' })])).toEqual({
+      kind: 'answering',
+      text: 'Deferred — AI answering',
+      createdAtIso: '2026-07-20T00:00:00Z',
+    });
+    // Q4: a lone failed answer must surface, not fall through to the plain note branch.
+    expect(stubModel([d({ kind: 'ai', answerStatus: 'failed' })])).toEqual({
+      kind: 'failed',
+      text: "Deferred — AI couldn't answer · retry at end ↓",
+    });
+    expect(stubModel([d({ kind: 'note', text: 'look at the retry path here' })])).toEqual({
+      kind: 'other',
+      text: 'Deferred — look at the retry path here · resolve at end ↓',
+    });
+    expect(stubModel([d({ kind: 'note', text: '' })])).toEqual({ kind: 'other', text: 'Deferred — resolve at end · resolve at end ↓' });
   });
 });
 

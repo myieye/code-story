@@ -1,7 +1,7 @@
 /**
- * Pure model for deferrals (spec 06 slice 6): poll decision, cluster copy, in-place stub copy, the
- * split-button action model, and the CM6-selection → head-line mapping. No React, no DOM — every
- * string and threshold is unit-tested headlessly.
+ * Pure model for deferrals (spec 06 slice 6 / spec 138): poll cadence, cluster copy, in-place stub
+ * model, progress/elapsed labels, the split-button action model, and the CM6-selection → head-line
+ * mapping. No React, no DOM — every string and threshold is unit-tested headlessly.
  */
 import type { Deferral, LineRange, UnifiedLine } from '@code-story/core';
 
@@ -12,10 +12,39 @@ export function shouldPoll(deferrals: readonly Deferral[]): boolean {
   return deferrals.some((d) => d.kind === 'ai' && !isTerminal(d));
 }
 
+/**
+ * Adaptive poll cadence (spec 138 Q2): `null` = nothing pending, stop; else 3s while the youngest
+ * pending answer is still fresh (< 30s), 8s after that. Drives a self-rescheduling setTimeout, not a
+ * fixed interval — the deferrals list stays the single source of truth (no server ordering surface).
+ */
+export function pollIntervalMs(deferrals: readonly Deferral[], now: number): number | null {
+  const pending = deferrals.filter((d) => d.kind === 'ai' && !isTerminal(d));
+  if (pending.length === 0) return null;
+  const youngest = Math.max(...pending.map((d) => Date.parse(d.createdAt) || 0));
+  return now - youngest < 30_000 ? 3000 : 8000;
+}
+
 /** How many ai answers newly arrived (a running→done transition) between two snapshots — for the polite announce. */
 export function newlyAnswered(prev: readonly Deferral[], next: readonly Deferral[]): number {
   const wasDone = new Set(prev.filter((d) => d.answerStatus === 'done').map((d) => d.id));
   return next.filter((d) => d.answerStatus === 'done' && !wasDone.has(d.id)).length;
+}
+
+/** How many ai answers newly failed between two snapshots — the failure mirror of newlyAnswered (spec 138 Q4). */
+export function newlyFailed(prev: readonly Deferral[], next: readonly Deferral[]): number {
+  const wasFailed = new Set(prev.filter((d) => d.answerStatus === 'failed').map((d) => d.id));
+  return next.filter((d) => d.answerStatus === 'failed' && !wasFailed.has(d.id)).length;
+}
+
+/**
+ * Honest elapsed since a deferral was asked (spec 138 Q1): "12s", "1m 05s". `Date.now() − createdAt`
+ * is always true even while queued behind another question — it reads as "time since you asked".
+ */
+export function elapsedLabel(createdAtIso: string, now: number): string {
+  const start = Date.parse(createdAtIso);
+  const secs = Number.isNaN(start) ? 0 : Math.max(0, Math.floor((now - start) / 1000));
+  if (secs < 60) return `${secs}s`;
+  return `${Math.floor(secs / 60)}m ${String(secs % 60).padStart(2, '0')}s`;
 }
 
 /** Distinct chunk ids parked in the Deferred section (non-inline), in first-appearance order. */
@@ -46,21 +75,35 @@ export interface DeferCluster {
   deferredCount: number;
   answersReady: number;
   answering: number;
-  /** The passive cluster text, e.g. `3 deferred · 1 answer ready`. '' when nothing is deferred. */
+  failed: number;
+  /** True while the answering segment is the one shown (drives the animated dots). */
+  showAnswering: boolean;
+  /** The `N deferred · M answers ready` part, without the failed tail (rendered plain). */
+  mainText: string;
+  /** ` · F failed` or '' — rendered red (`.cluster-failed`); split out so the tone can differ. */
+  failedText: string;
+  /** The full composed line (mainText + failedText) — for the aria-label and unit tests. */
   text: string;
 }
 
-/** The passive progress-cluster item (position 4): `N deferred` + `· M answers ready` / `· M answering`. */
+/**
+ * The passive progress-cluster item (position 4): `N deferred` + a ready/answering tail + a failed
+ * tail (spec 138 Q3/Q4). Ready and failed each show whenever > 0; answering shows only when both are
+ * 0 (a finished/failed answer is the more actionable news). E.g. `3 deferred · 1 answer ready · 1 failed`.
+ */
 export function deferCluster(deferrals: readonly Deferral[]): DeferCluster {
   const deferred = deferrals.filter((d) => !d.inline);
   const deferredCount = new Set(deferred.map((d) => d.chunkId)).size;
   const answersReady = deferred.filter((d) => d.kind === 'ai' && d.answerStatus === 'done').length;
   const answering = deferred.filter((d) => d.kind === 'ai' && !isTerminal(d)).length;
-  if (deferredCount === 0) return { deferredCount, answersReady, answering, text: '' };
-  let text = `${deferredCount} deferred`;
-  if (answersReady > 0) text += ` · ${answersReady} answer${answersReady === 1 ? '' : 's'} ready`;
-  else if (answering > 0) text += ` · ${answering} answering`;
-  return { deferredCount, answersReady, answering, text };
+  const failed = deferred.filter((d) => d.kind === 'ai' && d.answerStatus === 'failed').length;
+  if (deferredCount === 0) return { deferredCount, answersReady, answering, failed, showAnswering: false, mainText: '', failedText: '', text: '' };
+  const showAnswering = answersReady === 0 && failed === 0 && answering > 0;
+  let mainText = `${deferredCount} deferred`;
+  if (answersReady > 0) mainText += ` · ${answersReady} answer${answersReady === 1 ? '' : 's'} ready`;
+  else if (showAnswering) mainText += ` · ${answering} answering`;
+  const failedText = failed > 0 ? ` · ${failed} failed` : '';
+  return { deferredCount, answersReady, answering, failed, showAnswering, mainText, failedText, text: mainText + failedText };
 }
 
 /** ai answers still arriving across the whole set — the done-banner line (`M AI answers still arriving…`). */
@@ -73,14 +116,28 @@ function preview(text: string, max = 42): string {
   return one.length <= max ? one : `${one.slice(0, max - 1)}…`;
 }
 
-/** The one-line in-place stub copy for a deferred chunk, given its (non-inline) deferrals. */
-export function stubCopy(chunkDeferrals: readonly Deferral[]): string {
+/**
+ * The collapsed-stub model for a deferred chunk (spec 138 Q1/Q4). A discriminated union so the row
+ * can render a live indicator for `answering` (the count-up is the liveness signal) and the failure
+ * tone for `failed`; `ready`/`other` are plain copy. `answering` carries the createdAt to count from.
+ * Priority: ready > answering > failed > note — an actively answering deferral is the live truth; a
+ * failure that is still hidden behind it resurfaces the moment that answer resolves.
+ */
+export type StubModel =
+  | { kind: 'answering'; text: string; createdAtIso: string }
+  | { kind: 'ready'; text: string }
+  | { kind: 'failed'; text: string }
+  | { kind: 'other'; text: string };
+
+export function stubModel(chunkDeferrals: readonly Deferral[]): StubModel {
   const ai = chunkDeferrals.filter((d) => d.kind === 'ai');
-  if (ai.some((d) => d.answerStatus === 'done')) return 'Deferred — AI answer ready ↓';
-  if (ai.some((d) => !isTerminal(d))) return 'Deferred — AI answering… ↓';
+  if (ai.some((d) => d.answerStatus === 'done')) return { kind: 'ready', text: 'Deferred — AI answer ready ↓' };
+  const answering = ai.find((d) => !isTerminal(d));
+  if (answering) return { kind: 'answering', text: 'Deferred — AI answering', createdAtIso: answering.createdAt };
+  if (ai.some((d) => d.answerStatus === 'failed')) return { kind: 'failed', text: "Deferred — AI couldn't answer · retry at end ↓" };
   const first = chunkDeferrals[0];
   const body = first && first.text.trim() ? preview(first.text) : 'resolve at end';
-  return `Deferred — ${body} · resolve at end ↓`;
+  return { kind: 'other', text: `Deferred — ${body} · resolve at end ↓` };
 }
 
 export interface SplitButtonModel {
