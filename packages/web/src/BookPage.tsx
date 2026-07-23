@@ -26,8 +26,11 @@ import {
 } from './api.js';
 import {
   answersStillArriving,
+  chunkHeadSpan,
   deferCluster,
   deferredChunkIds,
+  deferredSliceSummary,
+  deferScope,
   newlyAnswered,
   shouldPoll,
   stubCopy,
@@ -470,16 +473,21 @@ export function BookPage({
   const changeDeferText = (text: string) => setDeferState((s) => (s ? { ...s, text } : s));
 
   // POST optimistically (an ai record starts `running` so the poll + stub react immediately), then
-  // reconcile with the server's stored record. Deferring collapses the chunk in place and banks
-  // `seen` if it was unseen — it's held, not un-encountered.
+  // reconcile with the server's stored record. A WHOLE defer collapses the chunk in place and banks
+  // `seen` if it was unseen (held, not un-encountered). A SLICE defer (a strict-subset selection)
+  // marks the parent reviewed and leaves it visible — selecting lines is engagement, so no
+  // markedUnseen — and it still gets a card in Deferred (leave it behind, come back). Inline is
+  // neither: the answer lands in place and the chunk stays mainline, untouched.
   const submitDefer = (chunk: Chunk, action: { kind: 'note' | 'ai'; inline: boolean }) => {
     if (!deferState) return;
+    const range = deferState.lineRange;
+    const scope = deferScope(range, chunkHeadSpan(bookData.diffs[chunk.id] ?? []));
     const req: DeferralRequest = {
       id: crypto.randomUUID(),
       chunkId: chunk.id,
       kind: action.kind,
       text: deferState.text,
-      ...(deferState.lineRange ? { lineRange: deferState.lineRange } : {}),
+      ...(range ? { lineRange: range } : {}),
       ...(action.inline ? { inline: true } : {}),
     };
     const optimistic: Deferral = {
@@ -489,12 +497,26 @@ export function BookPage({
     };
     setDeferrals((ds) => [...ds, optimistic]);
     closeDefer();
-    if (!action.inline) setCollapsed(chunk, true);
-    if (review.stateOf(chunk.id) === 'unseen') review.setSeen([chunk.id]);
+    if (action.inline) {
+      // no review or collapse change
+    } else if (scope === 'slice') {
+      review.setState(chunk.id, 'reviewed', undefined, 'explicit');
+      flashReviewed(chunk.id);
+    } else {
+      setCollapsed(chunk, true);
+      if (review.stateOf(chunk.id) === 'unseen') review.setSeen([chunk.id]);
+    }
     postDeferral(req)
       .then((stored) => setDeferrals((ds) => ds.map((d) => (d.id === stored.id ? stored : d))))
       .catch(() => say('Could not defer this chunk — try again.'));
-    say(action.kind === 'note' ? 'Deferred to the end.' : action.inline ? 'Asking AI here.' : 'Deferred — AI is answering.');
+    if (action.inline) {
+      say('Asking AI here.');
+    } else if (scope === 'slice' && range) {
+      const remaining = Math.max(0, distinctChunks - reviewedCount - 1);
+      say(`Lines ${range.start}–${range.end} deferred. The rest of this chunk is marked reviewed. ${remaining} remaining.`);
+    } else {
+      say(action.kind === 'note' ? 'Deferred to the end.' : 'Deferred — AI is answering.');
+    }
   };
 
   const retryDeferral = (d: Deferral) => {
@@ -526,11 +548,34 @@ export function BookPage({
 
   const goToChunk = (chunkId: string) => {
     const idx = flat.firstIndexByChunkId.get(chunkId);
-    if (idx !== undefined) moveCursor(idx);
+    if (idx === undefined) return;
+    moveCursor(idx);
+    const chunk = chunksById.get(chunkId);
+    const reviewed = review.stateOf(chunkId) === 'reviewed';
+    const slices = (deferralsByChunk.deferred.get(chunkId) ?? []).filter((d) => d.lineRange).length;
+    const bits = [reviewed ? 'reviewed' : 'unreviewed'];
+    if (slices > 0) bits.push(`${slices} slice${slices === 1 ? '' : 's'} deferred`);
+    say(`Jumped to ${chunk ? chunkTitle(chunk) : chunkId} — ${bits.join(', ')}.`);
   };
 
   const scrollToDeferred = () => {
     if (flat.deferredSectionRowIndex !== undefined) scrollToRow(flat.deferredSectionRowIndex);
+  };
+
+  // The parent pill's jump: straight to this chunk's card in the Deferred section.
+  const goToDeferredCard = (chunkId: string) => {
+    const idx = flat.deferredCardRowIndex.get(chunkId);
+    if (idx === undefined) return;
+    scrollToRow(idx);
+    const chunk = chunksById.get(chunkId);
+    say(`Jumped to Deferred: ${chunk ? chunkTitle(chunk) : chunkId}.`);
+  };
+
+  // Resolve = discard the deferral (existing DELETE). The parent is never auto-un-reviewed.
+  const resolveDeferral = (id: string) => {
+    const parked = deferredChunkIds(deferrals.filter((d) => d.id !== id)).length;
+    removeDeferral(id);
+    say(`Resolved. ${parked} parked.`);
   };
 
   const toggleDeferredDiff = (chunkId: string) =>
@@ -1171,7 +1216,7 @@ export function BookPage({
                       showDiff={deferredDiffShown.has(row.chunk.id)}
                       onToggleDiff={() => toggleDeferredDiff(row.chunk.id)}
                       onMarkReviewed={() => toggleChunkReviewed(row.chunk)}
-                      onRemove={removeDeferral}
+                      onResolve={resolveDeferral}
                       onRetry={retryDeferral}
                       onGoToChunk={() => goToChunk(row.chunk.id)}
                     />,
@@ -1235,6 +1280,7 @@ export function BookPage({
                       pieceMenuOpen={row.kind === 'chunk' && pieceMenu?.chunkId === row.chunk.id}
                       onOpenPieceMenu={(chunkId, anchorEl) => setPieceMenu({ chunkId, anchorEl })}
                       deferralsArriving={row.kind === 'end' ? deferralsArriving : 0}
+                      deferredParked={row.kind === 'end' ? deferredIds.length : 0}
                       deferOpen={row.kind === 'chunk' && deferState?.chunkId === row.chunk.id}
                       deferText={row.kind === 'chunk' && deferState?.chunkId === row.chunk.id ? deferState.text : ''}
                       deferLineRange={row.kind === 'chunk' && deferState?.chunkId === row.chunk.id ? deferState.lineRange : undefined}
@@ -1247,6 +1293,12 @@ export function BookPage({
                           ? stubCopy(deferralsByChunk.deferred.get(row.chunk.id)!)
                           : undefined
                       }
+                      deferredSummary={
+                        row.kind === 'chunk' && deferralsByChunk.deferred.has(row.chunk.id)
+                          ? deferredSliceSummary(deferralsByChunk.deferred.get(row.chunk.id)!)
+                          : undefined
+                      }
+                      onGoToDeferredCard={goToDeferredCard}
                       inlineDeferrals={row.kind === 'chunk' ? deferralsByChunk.inline.get(row.chunk.id) : undefined}
                       onRetryDeferral={retryDeferral}
                       onRemoveDeferral={removeDeferral}

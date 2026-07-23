@@ -24,7 +24,9 @@ const theme = EditorView.theme({
   '.cm-line-gap': { backgroundColor: '#f4f2ee', color: '#a39e94', textAlign: 'center' },
 });
 
-function buildState(file: string, lines: UnifiedLine[]): EditorState {
+type SelectionHandler = (docLines: { from: number; to: number } | undefined) => void;
+
+function buildState(file: string, lines: UnifiedLine[], onSelectionChange?: SelectionHandler): EditorState {
   const doc = lines.map((l) => (l.type === 'gap' ? '⋯' : l.text)).join('\n');
   const state = EditorState.create({ doc });
 
@@ -34,6 +36,20 @@ function buildState(file: string, lines: UnifiedLine[]): EditorState {
     const from = state.doc.line(i + 1).from;
     builder.add(from, from, Decoration.line({ class: `cm-line-${l.type}` }));
   });
+
+  const selectionListener = onSelectionChange
+    ? [
+        EditorView.updateListener.of((update) => {
+          if (!update.selectionSet) return;
+          const sel = update.state.selection.main;
+          if (sel.empty) {
+            onSelectionChange(undefined);
+            return;
+          }
+          onSelectionChange({ from: update.state.doc.lineAt(sel.from).number, to: update.state.doc.lineAt(sel.to).number });
+        }),
+      ]
+    : [];
 
   return EditorState.create({
     doc,
@@ -47,6 +63,7 @@ function buildState(file: string, lines: UnifiedLine[]): EditorState {
         },
       }),
       EditorView.decorations.of(builder.finish()),
+      ...selectionListener,
       languageFor(file),
       theme,
     ],
@@ -57,23 +74,26 @@ export const DiffView = memo(function DiffView({
   file,
   lines,
   onViewReady,
+  onSelectionChange,
 }: {
   file: string;
   lines: UnifiedLine[];
-  /** Hands the live EditorView to the parent so a Defer popover can read the current selection (spec 06 slice 6). */
+  /** Hands the live EditorView to the parent so the slice pill can position against the selection (spec 06 slice 6). */
   onViewReady?: (view: EditorView | null) => void;
+  /** Fires on every selection change — the mapped doc-line range, or undefined when the selection empties. */
+  onSelectionChange?: SelectionHandler;
 }) {
   const host = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!host.current) return;
-    const view = new EditorView({ state: buildState(file, lines), parent: host.current });
+    const view = new EditorView({ state: buildState(file, lines, onSelectionChange), parent: host.current });
     onViewReady?.(view);
     return () => {
       onViewReady?.(null);
       view.destroy();
     };
-  }, [file, lines, onViewReady]);
+  }, [file, lines, onViewReady, onSelectionChange]);
 
   if (lines.length === 0) {
     return <div className="diff-empty">content not available (binary or submodule)</div>;

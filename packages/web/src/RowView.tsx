@@ -1,9 +1,16 @@
 import { type Chunk, type ChunkReviewState, type Deferral, type LineRange, isLowSignal, lowSignalReason } from '@code-story/core';
 import type { EditorView } from '@codemirror/view';
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useLayoutEffect, useRef, useState } from 'react';
 import type { BookResponse } from './api.js';
 import { affordanceLabel, type PayloadState, visibleDefinitions } from './context-panel-logic.js';
-import { selectionLineRange, splitButtonModel } from './defer-logic.js';
+import {
+  chunkHeadSpan,
+  deferConsequenceCopy,
+  deferScope,
+  type DeferredSliceSummary,
+  selectionLineRange,
+  splitButtonModel,
+} from './defer-logic.js';
 import { DefinitionPanel } from './DefinitionPanel.js';
 import { DiffView } from './DiffView.js';
 import { NeighborStrip } from './NeighborStrip.js';
@@ -77,6 +84,7 @@ export function RowView({
   pieceMenuOpen,
   onOpenPieceMenu,
   deferralsArriving,
+  deferredParked,
   deferOpen,
   deferText,
   deferLineRange,
@@ -85,6 +93,8 @@ export function RowView({
   onDeferTextChange,
   onDeferSubmit,
   deferStub,
+  deferredSummary,
+  onGoToDeferredCard,
   inlineDeferrals,
   onRetryDeferral,
   onRemoveDeferral,
@@ -153,6 +163,8 @@ export function RowView({
   onOpenPieceMenu?: (chunkId: string, anchorEl: HTMLElement) => void;
   /** ai answers still arriving in Deferred (spec 06 slice 6) — the extra done-banner line when > 0. */
   deferralsArriving?: number;
+  /** Distinct chunks still parked in Deferred at done (slice defers keep their reviewed parent). */
+  deferredParked?: number;
   /** Defer popover (spec 06 slice 6): is it open for this chunk, and its captured selection to show. */
   deferOpen?: boolean;
   deferText?: string;
@@ -164,6 +176,10 @@ export function RowView({
   onDeferSubmit?: (chunk: Chunk, action: DeferSubmit) => void;
   /** When set, the collapsed stub shows this deferral copy instead of the generic collapsed note. */
   deferStub?: string;
+  /** Parked (non-inline) deferrals for this chunk — drives the "⏲ N deferred" parent header pill. */
+  deferredSummary?: DeferredSliceSummary;
+  /** Jump to this chunk's card in the Deferred section (the parent pill's click). */
+  onGoToDeferredCard?: (chunkId: string) => void;
   /** Inline ai deferrals (`inline:true`) for this chunk — rendered below the diff, never inside CM6. */
   inlineDeferrals?: Deferral[];
   onRetryDeferral?: (deferral: Deferral) => void;
@@ -173,7 +189,35 @@ export function RowView({
   const captureViewReady = useCallback((view: EditorView | null) => {
     diffViewRef.current = view;
   }, []);
+  const diffWrapRef = useRef<HTMLDivElement>(null);
   const [caretOpen, setCaretOpen] = useState(false);
+  // The live CM6 selection mapped to a line range — drives the floating "Defer lines N–M" pill.
+  const [sliceSel, setSliceSel] = useState<{ docFrom: number; range: LineRange } | undefined>();
+  const [pillTop, setPillTop] = useState<number | null>(null);
+
+  const rowDiffLines = row.kind === 'chunk' ? data.diffs[row.chunk.id] : undefined;
+  const onDiffSelectionChange = useCallback(
+    (docLines: { from: number; to: number } | undefined) => {
+      if (!docLines) {
+        setSliceSel(undefined);
+        return;
+      }
+      const range = selectionLineRange(docLines.from, docLines.to, rowDiffLines ?? []);
+      setSliceSel(range ? { docFrom: docLines.from, range } : undefined);
+    },
+    [rowDiffLines],
+  );
+  // Position the pill at the selection's vertical offset; corner-pin (pillTop=null) if coords don't compute.
+  useLayoutEffect(() => {
+    const view = diffViewRef.current;
+    const wrap = diffWrapRef.current;
+    if (!sliceSel || !view || !wrap) {
+      setPillTop(null);
+      return;
+    }
+    const coords = view.coordsAtPos(view.state.doc.line(sliceSel.docFrom).from);
+    setPillTop(coords ? Math.max(0, coords.top - wrap.getBoundingClientRect().top) : null);
+  }, [sliceSel]);
 
   if (row.kind === 'deferred-card') return null; // rendered by DeferredCard in BookPage
   if (row.kind === 'section') {
@@ -232,6 +276,11 @@ export function RowView({
               {deferralsArriving} AI answer{deferralsArriving === 1 ? '' : 's'} still arriving in Deferred.
             </p>
           )}
+          {deferredParked !== undefined && deferredParked > 0 && (
+            <p className="done-provenance">
+              {deferredParked} item{deferredParked === 1 ? '' : 's'} still parked in Deferred.
+            </p>
+          )}
           <table className="done-table">
             <tbody>
               {data.book.sections.map((section) => {
@@ -281,26 +330,20 @@ export function RowView({
   // reached as their own chunks (story order + neighbor strip), not shown as "context".
   const visibleDefs = visibleDefinitions(contextPayload, data.chunks);
   const split = splitButtonModel(deferText ?? '');
+  const scope = deferScope(deferLineRange, chunkHeadSpan(rowDiffLines ?? []));
+  const showSlicePill = isCursor && sliceSel !== undefined && !deferOpen;
 
-  // Opening Defer captures any non-empty CM6 selection as a descriptive line range (spec 06 slice 6).
+  // The header Defer button is whole-chunk only — the slice path is the floating pill, which seeds
+  // the same popover with the selected range. (A selection-reading header button silently deferred a
+  // slice with no cue: a slip generator, killed here per spec.)
   const toggleDefer = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (deferOpen) {
       onDeferClose?.();
       return;
     }
-    const view = diffViewRef.current;
-    let range: LineRange | undefined;
-    if (view) {
-      const sel = view.state.selection.main;
-      if (!sel.empty) {
-        const fromLine = view.state.doc.lineAt(sel.from).number;
-        const toLine = view.state.doc.lineAt(sel.to).number;
-        range = selectionLineRange(fromLine, toLine, data.diffs[chunk.id] ?? []);
-      }
-    }
     setCaretOpen(false);
-    onDeferOpen?.(chunk.id, range);
+    onDeferOpen?.(chunk.id, undefined);
   };
   const classes = ['chunk', `state-${state}`];
   if (autoRead) classes.push('autoread');
@@ -366,6 +409,21 @@ export function RowView({
             <span className="chunk-size">
               <span className="added">+{size.added}</span> <span className="removed">−{size.removed}</span>
             </span>
+            {/* Parent pill: this chunk is reviewed but a slice is parked in Deferred (spec 06 slice 6). */}
+            {!collapsed && deferredSummary && deferredSummary.count > 0 && (
+              <button
+                type="button"
+                className="bar-button parent-defer-pill"
+                title="Jump to this chunk's card in Deferred"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onGoToDeferredCard?.(chunk.id);
+                }}
+              >
+                ⏲ {deferredSummary.count} deferred
+                {deferredSummary.firstRange ? ` · lines ${deferredSummary.firstRange.start}–${deferredSummary.firstRange.end}` : ''} →
+              </button>
+            )}
             {/* Mouse mark (GitHub's per-file "Viewed" placement/semantics): marks in place, doubles as
                 the loudest reviewed-state cue. stopPropagation so it doesn't also fire article-select. */}
             <button
@@ -412,16 +470,13 @@ export function RowView({
               }}
             >
               <div className="defer-popover-head">
-                <span>Defer this chunk to the end</span>
+                <span>{scope === 'slice' ? 'Defer selected lines' : 'Defer this chunk to the end'}</span>
                 <button className="defer-close" aria-label="Close" onClick={() => onDeferClose?.()}>
                   ×
                 </button>
               </div>
-              {deferLineRange && (
-                <div className="defer-line-range">
-                  Deferring lines {deferLineRange.start}–{deferLineRange.end}
-                </div>
-              )}
+              {/* The consequence must be visible BEFORE submit — the auto-mark is the load-bearing bit. */}
+              <div className={scope === 'slice' ? 'defer-consequence slice' : 'defer-consequence'}>{deferConsequenceCopy(scope, deferLineRange)}</div>
               <textarea
                 className="defer-textarea"
                 autoFocus
@@ -508,7 +563,26 @@ export function RowView({
               )}
             </div>
           ) : (
-            <DiffView file={chunk.file} lines={data.diffs[chunk.id] ?? []} onViewReady={captureViewReady} />
+            <div className="diff-slice-wrap" ref={diffWrapRef}>
+              <DiffView file={chunk.file} lines={rowDiffLines ?? []} onViewReady={captureViewReady} onSelectionChange={onDiffSelectionChange} />
+              {showSlicePill && sliceSel && (
+                <button
+                  type="button"
+                  className="defer-slice-pill"
+                  style={pillTop !== null ? { top: pillTop } : undefined}
+                  // Preserve the selection/focus until onClick fires — mousedown would otherwise clear it.
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setCaretOpen(false);
+                    onDeferOpen?.(chunk.id, sliceSel.range);
+                  }}
+                  aria-label={`Defer lines ${sliceSel.range.start} to ${sliceSel.range.end} to the end`}
+                >
+                  Defer lines {sliceSel.range.start}–{sliceSel.range.end}
+                </button>
+              )}
+            </div>
           )}
           {inlineDeferrals && inlineDeferrals.length > 0 && (
             <section className="inline-deferrals" tabIndex={-1} aria-label="AI answers in place">
