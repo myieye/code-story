@@ -493,3 +493,43 @@ and moved as the tool improves. Critical architecture — build carefully.
 > build. it should be built with the best initial pieces you can think of for our final
 > goals, but be modular so that we can tweak and move pieces around later as we learn and
 > improve the tool. that's a critical piece of architecture. build it carefully."
+
+## O. Beauty & review flow, 2026-07-23 ([verbatim source](../vision/addendum-2026-07-23-beauty-and-review-flow.md))
+
+### R-061 — Review-state markers on neighbor callees (subconscious cues)
+It should be intuitive — without reading docs — that the neighbor strip only shows callees
+that are part of the review, via subtle markers of their review state (not yet reviewed,
+already reviewed, partially reviewed).
+> "It should be intuitive that only in-review callees are shown by somehow adding subconscious
+> markers that the code is not yet reviewed or already reviewed (or partially reviewed?) etc."
+
+### R-062 — Make the app beautiful (theme, texture, logo, fonts)
+A deliberate visual identity: theme, background, maybe texture, a really cool logo and
+favicon, and fonts chosen for flair and professionalism — not standard defaults.
+> "just make the whole app prettier! Make it beautiful in an appropriate ways: theme,
+> background, maybe some texture? Make a really cool logo and favicon. Don't settle with
+> standard fonts, find just the right fonts that give the app flair and make it professional"
+
+### R-063 — Partial-chunk deferral (sharpens R-059)
+Defer only a selected part of a chunk, so the reviewed majority stays behind forever and only
+the uncertain slice returns at the end. R-059's verbatim already said "specific lines"; the
+G3 slice shipped chunk-grained — this closes that gap.
+> "I really want to be able to defer only sections of a chunk so I can leave e.g. 80% behind
+> me forever and only have to comeback to the 20% I was unsure about."
+
+### R-064 — Ask-AI progress feedback
+Asking AI must show visible progress (thinking/running states), not silence until the answer
+lands.
+> "Asking AI needs more feedback UI e.g. thinking etc."
+
+### R-065 — Self-explanatory labels (no bare "+2")
+Compact counts like "(+2)" in definition/link labels must say what they count.
+> "the '+2' in the links e.g. 'Import from .... (+2)' are not self-explanatory. That should
+> be fixed somehow."
+
+### R-066 — Chunk gist gets forefront placement
+The brief ~2-word summary of a chunk is grounding — it belongs up front, before the reviewer
+faces a noisy diff.
+> "The brief 2-word summary of a chunk should get more forefront placement. It help a
+> reviewer ground themself before even looking at what could be an immensly noisy diff. It's
+> very helpful knowing the main theme in 2 words."
