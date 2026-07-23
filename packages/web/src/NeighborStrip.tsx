@@ -72,9 +72,9 @@ export function NeighborStrip({
             else onJump(chip.chunkId);
           }}
         >
-          {chip.state === 'reviewed' && (
-            <span className="chip-check" aria-hidden="true">
-              ✓
+          {chip.glyph && (
+            <span className={`chip-state state-dot ${chip.glyphClass}`} aria-hidden="true">
+              {chip.glyph}
             </span>
           )}
           <span className="chip-text">{chipText(chip)}</span>
@@ -84,8 +84,12 @@ export function NeighborStrip({
             </span>
           )}
           {chip.behind > 0 && (
-            <span className="chip-behind" aria-hidden="true">
-              +{chip.behind}
+            <span
+              className="chip-behind"
+              aria-hidden="true"
+              title={`${chip.behind} more unreviewed ${chip.behind === 1 ? 'chunk' : 'chunks'} reachable past this one`}
+            >
+              +{chip.behind} unreviewed
             </span>
           )}
         </button>

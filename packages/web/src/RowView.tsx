@@ -321,14 +321,19 @@ export function RowView({
         <div className="state-rail" title={state} />
         <div className="chunk-main">
           <div className="chunk-header">
-            <span className="chunk-title">{chunkTitle(chunk)}</span>
-            {/* Two-word AI summary chip (spec 06 slice 5). Never on a low-signal stub — it carries its
-                own reason badge, and an "AI note" on a lockfile is noise. */}
+            {/* AI gist leads the header (spec #140): serif book-voice lead-in, first-fixation before the
+                mono title. Inline, never its own line — a late-arriving gist must not change row height in
+                the virtualized feed. Never on a low-signal stub (its reason badge already speaks). */}
             {chunkBadge && !lowSignal && (
-              <span className="badge badge-chip" title="AI: summarizes this chunk">
-                {chunkBadge}
+              <span className="chunk-gist" title="AI summary of this chunk">
+                <span className="sr-only">AI summary: </span>
+                <span className="badge ai-badge" aria-hidden="true">
+                  AI
+                </span>
+                <span className="chunk-gist-text">{chunkBadge}</span>
               </span>
             )}
+            <span className="chunk-title">{chunkTitle(chunk)}</span>
             {/* File label as a transition marker: shown only where the file changes from the previous
                 chunk (BookPage dedupe). The sticky current-file bar carries it the rest of the time, so
                 repeating the basename down a same-file run is just noise. Subsumes the old "from …" cue. */}
