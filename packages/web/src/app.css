@@ -1213,15 +1213,22 @@ button.piece-indicator[aria-expanded='true'] {
 }
 
 /* Two-word AI chunk badge (spec 06 slice 5): a small neutral chip, calmer than the kind badges. */
-.badge-chip {
+/* AI gist lead-in (spec #140): the chunk's book-voice opener, first in the header. Inline-baseline so
+   a late arrival reflows horizontally, never the row height. Serif to sound like narration, not chrome. */
+.chunk-gist {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
   flex: none;
-  font-style: normal;
-  max-width: 180px;
+}
+.chunk-gist-text {
+  font-family: 'Fraunces', Georgia, serif;
+  font-size: 13.5px;
+  color: #6b675f;
+  max-width: 220px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  background: #eef1f5;
-  color: #4a5568;
 }
 
 /* Anchored, non-modal popover in a document-level portal (spec 06 slice 4c/4d): why-this-order, the
