@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { chunkFile } from './chunker.js';
 import { type FileDiff } from './diff.js';
 import { type Chunk } from './model.js';
-import { unifiedChunkLines } from './render.js';
+import { changedLinesByFile, unifiedChunkLines } from './render.js';
 
 const head = Array.from({ length: 30 }, (_, i) => `head ${i + 1}`);
 const base = Array.from({ length: 30 }, (_, i) => `base ${i + 1}`);
@@ -62,6 +62,29 @@ describe('unifiedChunkLines', () => {
       'add:8', 'add:9', 'add:10',
       'context:11', 'context:12', 'context:13',
     ]);
+  });
+
+  it('colours boundary context that another chunk added (a changed line reads the same everywhere)', () => {
+    // This chunk owns head 5–6; head 8–9 are added by the *next* chunk but fall in this chunk's
+    // trailing context. With the file's changed lines, they render as adds here too, not neutral.
+    const chunk = chunkOf([{ baseStart: 5, baseCount: 0, headStart: 5, headCount: 2 }]);
+    const changed = { head: new Set([5, 6, 8, 9]), base: new Set<number>() };
+    const lines = unifiedChunkLines(chunk, { head, base }, 3, changed);
+
+    expect(lines.map((l) => `${l.type}:${l.head ?? l.base ?? ''}`)).toEqual([
+      'context:2', 'context:3', 'context:4',
+      'add:5', 'add:6',
+      'context:7', 'add:8', 'add:9',
+    ]);
+  });
+
+  it('changedLinesByFile unions each file\'s chunk hunks', () => {
+    const map = changedLinesByFile([
+      { file: 'a.ts', hunks: [{ baseStart: 0, baseCount: 0, headStart: 5, headCount: 2 }] } as Chunk,
+      { file: 'a.ts', hunks: [{ baseStart: 8, baseCount: 1, headStart: 9, headCount: 0 }] } as Chunk,
+    ]);
+    expect([...map.get('a.ts')!.head!].sort((x, y) => x - y)).toEqual([5, 6]);
+    expect([...map.get('a.ts')!.base!]).toEqual([8]);
   });
 
   it('returns nothing without content', () => {

@@ -2,14 +2,14 @@ import { type Chunk, type ChunkReviewState, type Deferral, type LineRange, isLow
 import type { EditorView } from '@codemirror/view';
 import { useCallback, useRef, useState } from 'react';
 import type { BookResponse } from './api.js';
-import { affordanceLabel, hasDefinitions, type PayloadState } from './context-panel-logic.js';
+import { affordanceLabel, type PayloadState, visibleDefinitions } from './context-panel-logic.js';
 import { selectionLineRange, splitButtonModel } from './defer-logic.js';
 import { DefinitionPanel } from './DefinitionPanel.js';
 import { DiffView } from './DiffView.js';
 import { NeighborStrip } from './NeighborStrip.js';
 import type { NeighborChip } from './neighbor-strip-logic.js';
 import type { FilePiece } from './piece-nav-logic.js';
-import { chunkSize, chunkTitle, type Row } from './rows.js';
+import { chunkSize, chunkTitle, fileBasename, type Row } from './rows.js';
 
 /** The action a Defer popover submits (spec 06 slice 6). */
 export interface DeferSubmit {
@@ -53,6 +53,7 @@ export function RowView({
   autoRead,
   justReviewed,
   collapsed,
+  showFile,
   chapterCount,
   linesRead,
   bulkLowSignalCount,
@@ -119,6 +120,8 @@ export function RowView({
   /** Just flipped to reviewed — the one-shot rail wipe (spec 06 slice 4); reduced-motion → instant. */
   justReviewed: boolean;
   collapsed: boolean;
+  /** Show this chunk's file label — true only where the file changes from the previous chunk row. */
+  showFile: boolean;
   /** Done-banner figures (spec 06 slice 4b), only meaningful on the end row. */
   chapterCount: number;
   linesRead: { added: number; removed: number };
@@ -274,6 +277,9 @@ export function RowView({
   const { chunk } = row;
   const size = chunkSize(chunk);
   const lowSignal = isLowSignal(chunk);
+  // Only called code that isn't itself part of the diff belongs in the panel — in-diff callees are
+  // reached as their own chunks (story order + neighbor strip), not shown as "context".
+  const visibleDefs = visibleDefinitions(contextPayload, data.chunks);
   const split = splitButtonModel(deferText ?? '');
 
   // Opening Defer captures any non-empty CM6 selection as a descriptive line range (spec 06 slice 6).
@@ -323,8 +329,15 @@ export function RowView({
                 {chunkBadge}
               </span>
             )}
-            {/* Cross-file provenance for a chapter occurrence whose chunk lives outside the anchor file. */}
-            {row.occurrence.label && <span className="chunk-from">from {row.occurrence.label}</span>}
+            {/* File label as a transition marker: shown only where the file changes from the previous
+                chunk (BookPage dedupe). The sticky current-file bar carries it the rest of the time, so
+                repeating the basename down a same-file run is just noise. Subsumes the old "from …" cue. */}
+            {showFile && (
+              <span className="chunk-file" title={chunk.file}>
+                <span className="sr-only">in </span>
+                {fileBasename(chunk.file)}
+              </span>
+            )}
             {piece &&
               (piece.total > 1 ? (
                 <button
@@ -518,22 +531,19 @@ export function RowView({
               ))}
             </section>
           )}
-          {hasDefinitions(contextPayload) && (
+          {visibleDefs.length > 0 && (
             <div className="definitions-affordance">
               <button
                 className="link-button"
                 aria-expanded={panelExpanded}
                 onClick={() => onToggleDefinitions(chunk)}
               >
-                {affordanceLabel(contextPayload)}
+                {affordanceLabel(visibleDefs)}
               </button>
             </div>
           )}
-          {panelExpanded && hasDefinitions(contextPayload) && (
-            <DefinitionPanel
-              payload={contextPayload}
-              registerEl={(el) => registerPanelEl(chunk.id, el)}
-            />
+          {panelExpanded && visibleDefs.length > 0 && (
+            <DefinitionPanel definitions={visibleDefs} registerEl={(el) => registerPanelEl(chunk.id, el)} />
           )}
         </div>
       </div>

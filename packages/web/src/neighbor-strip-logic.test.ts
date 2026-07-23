@@ -96,14 +96,33 @@ describe('computeNeighborChips', () => {
 
 describe('chip text + aria', () => {
   const chips = computeNeighborChips(graph, 'a', chunksById, stateOf, inBook);
-  it('renders visible text with arrow, relation, name, and line', () => {
-    expect(chipText(chip(chips, 'b'))).toBe('→ calls bFn (L10)');
+  it('renders visible text with arrow, relation, and name (no raw line number)', () => {
+    expect(chipText(chip(chips, 'b'))).toBe('→ calls bFn');
     expect(chipText(chip(chips, 'z'))).toBe('← called by zFn');
   });
   it('spells out the accessible name including state, boundary, and behind', () => {
     // Focus 'a' is unreviewed, 'b' reviewed → the calls edge is a review boundary.
-    expect(chipAriaLabel(chip(chips, 'b'))).toBe('calls bFn, at line 10, reviewed, review boundary, 1 more unreviewed behind');
+    expect(chipAriaLabel(chip(chips, 'b'))).toBe('calls bFn, reviewed, review boundary, 1 more unreviewed behind');
     expect(chipAriaLabel(chip(chips, 'f'))).toBe('imports from helper.ts, (file-level), unreviewed');
+  });
+});
+
+describe('created (new-code) flag', () => {
+  it('flags a neighbor whose every hunk is a pure insertion, and voices it', () => {
+    const fresh: Chunk = {
+      id: 'n', file: 'src/n.ts', symbolPath: ['newFn'], displayPath: ['newFn'], kind: 'other',
+      changeTypes: [], hunks: [{ baseStart: 0, baseCount: 0, headStart: 1, headCount: 4 }],
+    };
+    const byId = new Map([...chunksById, ['n', fresh]]);
+    const g = assembleChunkGraph('H', [edge('a', 'n', 'calls', 3)]);
+    const c = chip(computeNeighborChips(g, 'a', byId, stateOf, (id) => byId.has(id)), 'n');
+    expect(c.created).toBe(true);
+    expect(chipAriaLabel(c)).toBe('calls newFn, newly added in this diff, unreviewed');
+  });
+
+  it('does not flag a neighbor that also deletes lines (changed, not created)', () => {
+    // Every existing fixture chunk has no hunks → created stays false.
+    expect(chip(computeNeighborChips(graph, 'a', chunksById, stateOf, inBook), 'b').created).toBe(false);
   });
 });
 

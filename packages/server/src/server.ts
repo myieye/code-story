@@ -43,6 +43,7 @@ import {
   resolveStoryConfig,
   type StoryConfig,
   storyConfigKey,
+  changedLinesByFile,
   unifiedChunkLines,
 } from '@code-story/core';
 import { Hono } from 'hono';
@@ -510,8 +511,11 @@ export function startServer(options: ServerOptions, requestedPort = 0): Promise<
     });
     const built = await getBookForConfig(requestConfig);
     const { book, chunks, contents, graph } = built;
+    // Colour each chunk's boundary context by the whole file's changed lines, so a line added by an
+    // adjacent chunk reads as an add wherever it shows — not neutral here and green in its owner (#bug2).
+    const changedByFile = changedLinesByFile(chunks);
     const diffs = Object.fromEntries(
-      chunks.map((chunk) => [chunk.id, unifiedChunkLines(chunk, contents.get(chunk.file))]),
+      chunks.map((chunk) => [chunk.id, unifiedChunkLines(chunk, contents.get(chunk.file), 3, changedByFile.get(chunk.file))]),
     );
     const response: BookResponse = {
       ...options.range,

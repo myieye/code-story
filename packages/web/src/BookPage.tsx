@@ -55,7 +55,7 @@ import {
 } from './progress-logic.js';
 import { chunkSize, chunkTitle, DEFERRED_SECTION_ID, flattenBook, type Row } from './rows.js';
 import { ShortcutOverlay } from './ShortcutOverlay.js';
-import { affordanceLabel, hasDefinitions, type PayloadState } from './context-panel-logic.js';
+import { affordanceLabel, type PayloadState, visibleDefinitions } from './context-panel-logic.js';
 import { useBookKeymap } from './useBookKeymap.js';
 import { useContextPanels } from './useContextPanels.js';
 import { useNarration } from './useNarration.js';
@@ -116,6 +116,20 @@ export function BookPage({
   }, [deferrals]);
 
   const flat = useMemo(() => flattenBook(bookData.book, bookData.chunks, deferredIds), [bookData, deferredIds]);
+  // A chunk shows its file label only where the file changes from the previous chunk row — a transition
+  // marker. The sticky current-file bar carries the file the rest of the time, so repeating it on every
+  // chunk of a same-file run is just noise. Computed over the full row list (spans off-screen rows).
+  const showFileForRow = useMemo(() => {
+    const show = new Set<string>();
+    let lastFile: string | undefined;
+    for (const row of flat.rows) {
+      if (row.kind === 'chunk' || row.kind === 'deferred-card') {
+        if (row.chunk.file !== lastFile) show.add(row.occurrenceKey);
+        lastFile = row.chunk.file;
+      }
+    }
+    return show;
+  }, [flat]);
   const chunksById = useMemo(() => new Map(bookData.chunks.map((c) => [c.id, c])), [bookData]);
   const fileOrder = useMemo(() => fileOrderIndex(bookData.chunks), [bookData]);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -260,13 +274,13 @@ export function BookPage({
   // Focus + announce the definition panel. Shared by the immediate expand and the deferred one (the
   // payload arriving after `d`) so keyboard/SR users get the same signal whether or not the fetch was warm.
   const focusAndAnnouncePanel = (chunkId: string, payload: PayloadState) => {
-    say(`Showing ${affordanceLabel(payload)}. Escape returns to the chunk.`);
+    say(`Showing ${affordanceLabel(visibleDefinitions(payload, data.chunks))}. Escape returns to the chunk.`);
     // Hand focus to the panel once the expand has rendered it (two frames, like row focus).
     requestAnimationFrame(() =>
       requestAnimationFrame(() => panelEls.current.get(chunkId)?.focus({ preventScroll: true })),
     );
   };
-  const context = useContextPanels(focusAndAnnouncePanel);
+  const context = useContextPanels(data.chunks, focusAndAnnouncePanel);
 
   useEffect(() => {
     if (!announce.msg) return;
@@ -401,7 +415,7 @@ export function BookPage({
       context.toggle(chunk.id);
       return;
     }
-    if (!hasDefinitions(payload)) {
+    if (visibleDefinitions(payload, data.chunks).length === 0) {
       say('No exercised definition we could pin down — it may be defined outside the files we can read, or an ambiguous overload.');
       return;
     }
@@ -1163,6 +1177,7 @@ export function BookPage({
                       autoRead={row.kind === 'chunk' && isAutoReadReview(review.reviewOf(row.chunk.id))}
                       justReviewed={row.kind === 'chunk' && justReviewed?.chunkId === row.chunk.id}
                       collapsed={row.kind === 'chunk' && isCollapsed(row.chunk)}
+                      showFile={row.kind === 'chunk' && showFileForRow.has(row.occurrenceKey)}
                       chapterCount={chapterCount}
                       linesRead={linesRead}
                       bulkLowSignalCount={bulkLowSignalCount}
