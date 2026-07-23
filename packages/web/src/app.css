@@ -98,6 +98,13 @@ body {
   height: 100vh;
 }
 
+/* One consistent keyboard-focus ring. :where() keeps specificity at zero, so components that style
+   their own :focus-visible (neighbor chips, the definition panel) still win. */
+:where(button, a, summary, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
 .notice {
   max-width: 640px;
   margin: 4rem auto;
@@ -122,8 +129,14 @@ body {
   flex: none;
 }
 
+/* The wordmark speaks in the book voice — the one serif in the top bar. */
 .top-bar h1 {
-  font-size: 15px;
+  font-family: var(--font-voice);
+  font-optical-sizing: auto;
+  font-weight: 600;
+  font-size: 17px;
+  letter-spacing: 0.01em;
+  color: var(--accent-deep);
   margin: 0;
 }
 
@@ -625,20 +638,25 @@ body.resizing-outline {
   color: var(--ink-faint);
 }
 
+/* Narration is set in the book voice (Fraunces italic) — the serif literally marks "the book is
+   speaking" vs. the sans UI chrome. Slightly larger than the sans it replaces so it reads as prose. */
 .section-rationale {
   display: flex;
   align-items: baseline;
   gap: 7px;
   padding: 0 24px 8px;
-  font-size: 12px;
+  font-family: var(--font-voice);
+  font-optical-sizing: auto;
+  font-size: 13.5px;
   font-style: italic;
   color: var(--ink-muted);
 }
 
 /* AI-written text (opener, section line, chunk line) reads quieter than code and never blue. */
 .ai-badge {
+  font-family: var(--font-ui);
   font-style: normal;
-  font-weight: 700;
+  font-weight: 600;
   background: var(--accent-tint);
   color: var(--accent-deep);
 }
@@ -648,7 +666,9 @@ body.resizing-outline {
   align-items: baseline;
   gap: 7px;
   padding: 2px 0 8px;
-  font-size: 12px;
+  font-family: var(--font-voice);
+  font-optical-sizing: auto;
+  font-size: 13.5px;
   font-style: italic;
   color: var(--ink-muted);
 }
@@ -660,7 +680,9 @@ body.resizing-outline {
   max-width: 1120px;
   margin: 10px auto 0;
   padding: 0 24px;
-  font-size: 13px;
+  font-family: var(--font-voice);
+  font-optical-sizing: auto;
+  font-size: 15px;
   font-style: italic;
   color: var(--ink-soft);
   flex: none;
@@ -1167,7 +1189,9 @@ button.piece-indicator[aria-expanded='true'] {
 }
 
 .end-of-book .done-headline {
-  font-size: 16px;
+  font-family: var(--font-voice);
+  font-optical-sizing: auto;
+  font-size: 19px;
   font-weight: 600;
   margin: 0 0 4px;
 }
@@ -1308,6 +1332,8 @@ button.piece-indicator[aria-expanded='true'] {
 }
 .chunk-gist-text {
   font-family: var(--font-voice);
+  font-optical-sizing: auto;
+  font-style: italic;
   font-size: 13.5px;
   color: var(--ink-muted);
   max-width: 220px;
