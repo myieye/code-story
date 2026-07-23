@@ -1,7 +1,7 @@
 import type { ChunkReview, ChunkReviewState } from '@code-story/core';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { BookResponse } from './api.js';
-import { chunkTitle, type FlatBook, occurrenceKey } from './rows.js';
+import { chunkTitle, fileBasename, type FlatBook, occurrenceKey } from './rows.js';
 import { isOutsideBox, resolveAutoExpand } from './scrollspy-logic.js';
 
 /** State glyph for the outline — shape differs per state so it doesn't rely on colour (WCAG 1.4.1). */
@@ -81,6 +81,12 @@ export function OutlineSidebar({
         const stats = sectionStats.get(section.id);
         const isOpen = expanded.has(section.id);
         const isCurrent = section.id === currentSectionId;
+        // A chapter is anchored on one file but can weave in chunks from others (occurrence.label =
+        // "lives outside the anchor file"). Count the distinct other files so the title stops reading
+        // as a pure single-file container. Zero for file-mode sections and single-file chapters.
+        const crossFiles = new Set<string>();
+        for (const o of section.occurrences) if (o.label) crossFiles.add(o.label);
+        const crossFileCount = crossFiles.size;
         const classes = ['outline-item'];
         if (isCurrent) classes.push('current');
         if (onScreenSectionIds.has(section.id)) classes.push('in-view');
@@ -109,6 +115,14 @@ export function OutlineSidebar({
                 }}
               >
                 <span className="outline-path">{shortPath(section.title)}</span>
+                {crossFileCount > 0 && (
+                  <span
+                    className="outline-anchor-note"
+                    title={`Chapter anchored on ${section.title}; also weaves in chunks from ${crossFileCount} other file${crossFileCount === 1 ? '' : 's'}`}
+                  >
+                    +{crossFileCount} file{crossFileCount === 1 ? '' : 's'}
+                  </span>
+                )}
                 <span className="outline-count">
                   {stats ? `${stats.done}/${stats.total}` : section.occurrences.length}
                 </span>
@@ -126,13 +140,20 @@ export function OutlineSidebar({
                     key={key}
                     className={current ? 'outline-chunk current' : 'outline-chunk'}
                     {...(current ? { 'aria-current': 'true' as const } : {})}
-                    title={chunkTitle(chunk)}
+                    title={occurrence.label ? `${chunkTitle(chunk)} — ${chunk.file}` : chunkTitle(chunk)}
+                    // A chunk woven in from another file is named so it doesn't read as the anchor file's.
+                    aria-label={occurrence.label ? `${chunkTitle(chunk)} in ${fileBasename(chunk.file)}` : undefined}
                     onClick={() => onJump(index)}
                   >
                     <span className={`state-dot ${reviewGlyphClass(reviewOf(chunk.id))}`} aria-hidden="true">
                       {reviewGlyph(reviewOf(chunk.id))}
                     </span>
                     <span className="outline-path">{chunkTitle(chunk)}</span>
+                    {occurrence.label && (
+                      <span className="outline-chunk-file" title={chunk.file}>
+                        {fileBasename(chunk.file)}
+                      </span>
+                    )}
                   </button>
                 );
               })}

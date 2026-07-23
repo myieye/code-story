@@ -78,6 +78,11 @@ export function NeighborStrip({
             </span>
           )}
           <span className="chip-text">{chipText(chip)}</span>
+          {chip.created && (
+            <span className="chip-new" aria-hidden="true">
+              new
+            </span>
+          )}
           {chip.behind > 0 && (
             <span className="chip-behind" aria-hidden="true">
               +{chip.behind}

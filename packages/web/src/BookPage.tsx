@@ -116,6 +116,20 @@ export function BookPage({
   }, [deferrals]);
 
   const flat = useMemo(() => flattenBook(bookData.book, bookData.chunks, deferredIds), [bookData, deferredIds]);
+  // A chunk shows its file label only where the file changes from the previous chunk row — a transition
+  // marker. The sticky current-file bar carries the file the rest of the time, so repeating it on every
+  // chunk of a same-file run is just noise. Computed over the full row list (spans off-screen rows).
+  const showFileForRow = useMemo(() => {
+    const show = new Set<string>();
+    let lastFile: string | undefined;
+    for (const row of flat.rows) {
+      if (row.kind === 'chunk' || row.kind === 'deferred-card') {
+        if (row.chunk.file !== lastFile) show.add(row.occurrenceKey);
+        lastFile = row.chunk.file;
+      }
+    }
+    return show;
+  }, [flat]);
   const chunksById = useMemo(() => new Map(bookData.chunks.map((c) => [c.id, c])), [bookData]);
   const fileOrder = useMemo(() => fileOrderIndex(bookData.chunks), [bookData]);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -1163,6 +1177,7 @@ export function BookPage({
                       autoRead={row.kind === 'chunk' && isAutoReadReview(review.reviewOf(row.chunk.id))}
                       justReviewed={row.kind === 'chunk' && justReviewed?.chunkId === row.chunk.id}
                       collapsed={row.kind === 'chunk' && isCollapsed(row.chunk)}
+                      showFile={row.kind === 'chunk' && showFileForRow.has(row.occurrenceKey)}
                       chapterCount={chapterCount}
                       linesRead={linesRead}
                       bulkLowSignalCount={bulkLowSignalCount}

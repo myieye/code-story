@@ -53,6 +53,7 @@ export function RowView({
   autoRead,
   justReviewed,
   collapsed,
+  showFile,
   chapterCount,
   linesRead,
   bulkLowSignalCount,
@@ -119,6 +120,8 @@ export function RowView({
   /** Just flipped to reviewed — the one-shot rail wipe (spec 06 slice 4); reduced-motion → instant. */
   justReviewed: boolean;
   collapsed: boolean;
+  /** Show this chunk's file label — true only where the file changes from the previous chunk row. */
+  showFile: boolean;
   /** Done-banner figures (spec 06 slice 4b), only meaningful on the end row. */
   chapterCount: number;
   linesRead: { added: number; removed: number };
@@ -326,13 +329,15 @@ export function RowView({
                 {chunkBadge}
               </span>
             )}
-            {/* Every chunk names its own file (basename; full path on hover). Always shown — even in
-                the anchor file — so an interleaved chapter never leaves the reviewer guessing which
-                file a chunk is from. Subsumes the old cross-file "from …" cue. */}
-            <span className="chunk-file" title={chunk.file}>
-              <span className="sr-only">in </span>
-              {fileBasename(chunk.file)}
-            </span>
+            {/* File label as a transition marker: shown only where the file changes from the previous
+                chunk (BookPage dedupe). The sticky current-file bar carries it the rest of the time, so
+                repeating the basename down a same-file run is just noise. Subsumes the old "from …" cue. */}
+            {showFile && (
+              <span className="chunk-file" title={chunk.file}>
+                <span className="sr-only">in </span>
+                {fileBasename(chunk.file)}
+              </span>
+            )}
             {piece &&
               (piece.total > 1 ? (
                 <button
