@@ -484,6 +484,27 @@ clone auth-blocked) — dogfood on code-story's own history (`a53e79f~1..a53e79f
 throughout); `pkill -f <pattern>` matching your own bash command kills the shell (exit 144) —
 kill by pgrep+pid; the review agent died on a session usage limit mid-smoke (quota is real —
 its server-seam sub-report survived and fed the review doc).
+**Ninth window (2026-07-23, Tim's Windows machine, live request): book-level links + two
+prepared reviews.** Tim asked for code-story books for lexbox PRs 2468 + 2470, with code-story
+gaining links (PR / Files changed / running app instance) first. **PR #131 merged**: `--pr-url
+--app-url --app-label` flags → `BookResponse.links` (config-independent passthrough; pure
+`filesChangedUrl` derives `/files` from GitHub PR URLs) → web: range span becomes the PR link
+(↗), green `▶` app pill right after it (THE only tinted element in the identity cluster —
+ux-expert pass; that's the whole "visual respect" budget), `Files changed ↗` before Export in
+both exit groups, `Open the pull request ↗` in the done banner. Deliberately rejected for v1
+(in the ux-expert report): liveness dot/health-check plumbing (static link + honest tooltip;
+add only if Tim actually hits dead-app tabs), per-section GitHub deep links (wrong grain in
+chapter mode + GitHub virtualizes big Files-changed pages + no MD5 in Web Crypto). App-instance
+policy (Tim's framing): provide one only when the PR's feature is actually triable locally AND
+we already know how to run it — 2470 (comments-panel redesign, Svelte) YES via lexbox worktree
++ fwl-up; 2468 (Windows MSIX updater proxy) NO (needs a packaged installed MSIX mid-update).
+**Windows ops notes (first run on Tim's machine)**: glue's `claude` spawn works on Windows
+as-is (28/28 calls ok); lexbox lives at D:\code\languageforge-lexbox (worktrees under
+D:\code\lexbox-claude-worktrees\...; fetch `pull/<n>/head` refs there); fwl-up skill runs
+FW Lite per-worktree on random ports; browser-pane screenshots still hang hidden — verify via
+read_page/JS instead; books served from the code-story worktree dist, state under
+`~/.code-story/languageforge-lexbox-32093c12aded/`. Costs ledgered: 2468 book $1.69/11 calls,
+2470 $2.43/17 calls (opus).
 Next (verify freshness on wake): **the feedback-round PR to main closes #115 + #120–#128;
 #54 closed by R-055 (Tim: "I definitely want narration")**. The next input is Tim driving
 the new UX (auto-read+confirm, pieces menu, defer, badges, segmented bar) and his answer on
