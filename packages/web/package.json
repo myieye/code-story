@@ -15,6 +15,9 @@
     "@codemirror/legacy-modes": "^6.5.3",
     "@codemirror/state": "^6.7.1",
     "@codemirror/view": "^6.43.6",
+    "@fontsource-variable/fraunces": "^5.3.0",
+    "@fontsource/ibm-plex-mono": "^5.3.0",
+    "@fontsource/ibm-plex-sans": "^5.3.0",
     "@tanstack/react-virtual": "^3.14.6",
     "react": "^19.2.7",
     "react-dom": "^19.2.7"

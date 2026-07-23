@@ -14,14 +14,15 @@ function languageFor(file: string): Extension {
   return [];
 }
 
+// Values read from the app.css design tokens so code surfaces stay in step with the theme.
 const theme = EditorView.theme({
   '&': { fontSize: '12.5px', backgroundColor: 'transparent' },
-  '.cm-content': { padding: '4px 0', fontFamily: "'Cascadia Code', Consolas, monospace" },
-  '.cm-gutters': { backgroundColor: 'transparent', borderRight: '1px solid #e5e2dc', color: '#a39e94' },
+  '.cm-content': { padding: '4px 0', fontFamily: 'var(--font-mono)' },
+  '.cm-gutters': { backgroundColor: 'transparent', borderRight: '1px solid var(--line)', color: 'var(--ink-dim)' },
   '.cm-lineNumbers .cm-gutterElement': { minWidth: '3.5em', padding: '0 8px 0 4px' },
-  '.cm-line-add': { backgroundColor: '#e6f4e6' },
-  '.cm-line-del': { backgroundColor: '#fbe9e9' },
-  '.cm-line-gap': { backgroundColor: '#f4f2ee', color: '#a39e94', textAlign: 'center' },
+  '.cm-line-add': { backgroundColor: 'var(--diff-add-bg)' },
+  '.cm-line-del': { backgroundColor: 'var(--diff-del-bg)' },
+  '.cm-line-gap': { backgroundColor: 'var(--surface-2)', color: 'var(--ink-dim)', textAlign: 'center' },
 });
 
 type SelectionHandler = (docLines: { from: number; to: number } | undefined) => void;
