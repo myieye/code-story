@@ -552,13 +552,13 @@ export function startServer(options: ServerOptions, requestedPort = 0): Promise<
 
   app.get('/api/order', async (c) => {
     const { orderFile, jobFile } = await getStore();
-    const [overlay, stored, { book }, active] = await Promise.all([
+    const [overlay, stored, { book, storyComposition }, active] = await Promise.all([
       loadOverlay(orderFile),
       loadJobRecord(jobFile),
       getBook(),
       orderActive(),
     ]);
-    const fresh = overlay !== null && isOverlayFresh(book, overlay) ? overlay : null;
+    const fresh = overlay !== null && isOverlayFresh(book, overlay, storyComposition) ? overlay : null;
     const job = await resolveJobRecord(stored, active, () => loadJobRecord(jobFile));
     const response: OrderResponse = { overlay: fresh, job: job && jobSummary(job) };
     return c.json(response);
@@ -849,7 +849,7 @@ export function startServer(options: ServerOptions, requestedPort = 0): Promise<
     if (c.req.query('order') === 'ai') {
       const overlay = await loadOverlay((await getStore()).orderFile);
       const stale = () => c.text('no fresh AI order overlay for this range (run the order job first)', 409);
-      if (overlay === null || !isOverlayFresh(book, overlay)) return stale();
+      if (overlay === null || !isOverlayFresh(book, overlay, built.storyComposition)) return stale();
       if (chapterMode) {
         if (overlay.version !== 2 || !built.chapterInput) return stale();
         const applied = applyChapterOverlay(built.chapterInput, storyConfig, overlay);

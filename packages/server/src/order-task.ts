@@ -1,6 +1,7 @@
 import {
   type Book,
   bookFingerprint,
+  chapterOrderFingerprint,
   type Chunk,
   type ChunkGraph,
   type CompileChapterBookInput,
@@ -58,14 +59,19 @@ export function createOrderTask(deps: OrderTaskDeps): GlueTask<void> {
     priority: 'startup',
 
     plan: async () => {
-      const { book } = await deps.getInputs();
-      return [{ key: 'book', fingerprint: bookFingerprint(book) }];
+      const { book, storyComposition } = await deps.getInputs();
+      // Key the glue unit off the same freshness key the overlay carries, so a pure testPlacement
+      // flip (which leaves the key stable, #130) is neither re-deduped as new nor parked in the
+      // failed set under a different fingerprint.
+      const fingerprint =
+        deps.chapterMode && storyComposition ? chapterOrderFingerprint(book.headSha, storyComposition) : bookFingerprint(book);
+      return [{ key: 'book', fingerprint }];
     },
 
     // The same predicate `shouldAutoKickOrder` used to gate the auto-kick: a fresh overlay ⇒ done.
     isFresh: async () => {
-      const [overlay, { book }] = await Promise.all([loadOverlay(deps.orderFile), deps.getInputs()]);
-      return overlay !== null && isOverlayFresh(book, overlay);
+      const [overlay, { book, storyComposition }] = await Promise.all([loadOverlay(deps.orderFile), deps.getInputs()]);
+      return overlay !== null && isOverlayFresh(book, overlay, storyComposition);
     },
 
     run: async (unit, invoke): Promise<GlueOutcome<void>> => {

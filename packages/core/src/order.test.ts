@@ -13,6 +13,8 @@ import {
   bookFingerprint,
   buildChunkOrderManifest,
   buildOrderManifest,
+  chapterOrderFingerprint,
+  isOverlayFresh,
   type OrderOverlay,
   type OrderOverlayV2,
   renderChunkOrderManifest,
@@ -259,7 +261,7 @@ describe('chapter-mode ordering (overlay v2)', () => {
       { fromId: 'a', toId: 'c', fromLine: 3 },
     ]);
     expect(manifest.tier0Chapters).toEqual(tier0.storyComposition);
-    expect(manifest.bookFingerprint).toBe(bookFingerprint(tier0.book));
+    expect(manifest.bookFingerprint).toBe(chapterOrderFingerprint('h', tier0.storyComposition));
   });
 
   it('renderChunkOrderManifest names each chunk, the calls, and the tier-0 chapters', () => {
@@ -272,7 +274,7 @@ describe('chapter-mode ordering (overlay v2)', () => {
 
   it('applyChapterOverlay recomposes when fresh and valid', () => {
     const tier0 = compileChapterBook(input, DEFAULT_STORY_CONFIG);
-    const overlay = overlayV2(bookFingerprint(tier0.book), [['a', 'c'], ['b']]);
+    const overlay = overlayV2(chapterOrderFingerprint('h', tier0.storyComposition), [['a', 'c'], ['b']]);
     const composed = applyChapterOverlay(input, DEFAULT_STORY_CONFIG, overlay);
     const storyIds = composed!.book.sections.filter((s) => s.id.startsWith('chapter:')).map((s) => s.id);
     expect(storyIds).toEqual(['chapter:a', 'chapter:b']);
@@ -281,8 +283,46 @@ describe('chapter-mode ordering (overlay v2)', () => {
   it('applyChapterOverlay fails open to undefined on a stale fingerprint or bad composition', () => {
     expect(applyChapterOverlay(input, DEFAULT_STORY_CONFIG, overlayV2('stale', [['a', 'b', 'c']]))).toBeUndefined();
     const tier0 = compileChapterBook(input, DEFAULT_STORY_CONFIG);
-    const fresh = bookFingerprint(tier0.book);
+    const fresh = chapterOrderFingerprint('h', tier0.storyComposition);
     expect(applyChapterOverlay(input, DEFAULT_STORY_CONFIG, overlayV2(fresh, [['a', 'b']]))).toBeUndefined(); // missing c
     expect(applyChapterOverlay(input, DEFAULT_STORY_CONFIG, overlayV2(fresh, [['a', 'b', 'c', 'ghost']]))).toBeUndefined();
+  });
+
+  // #130: the ordering prompt never sees testPlacement, so a pure test-weave change must reuse the
+  // overlay; direction/mode/chunk-set changes must still invalidate.
+  describe('chapter overlay freshness (#130)', () => {
+    const overlayFor = (config: typeof DEFAULT_STORY_CONFIG): OrderOverlayV2 => {
+      const tier0 = compileChapterBook(input, config);
+      return overlayV2(chapterOrderFingerprint('h', tier0.storyComposition), [['a', 'c'], ['b']]);
+    };
+
+    it('stays fresh across a testPlacement flip (before/after/end)', () => {
+      const overlay = overlayFor(DEFAULT_STORY_CONFIG); // tests before
+      for (const testPlacement of ['after', 'end'] as const) {
+        const flipped = { ...DEFAULT_STORY_CONFIG, testPlacement };
+        expect(applyChapterOverlay(input, flipped, overlay)).toBeDefined();
+      }
+    });
+
+    it('goes stale across a direction flip', () => {
+      const overlay = overlayFor(DEFAULT_STORY_CONFIG); // consumer-first
+      const flipped = { ...DEFAULT_STORY_CONFIG, direction: 'dependency-first' as const };
+      expect(applyChapterOverlay(input, flipped, overlay)).toBeUndefined();
+    });
+
+    it('goes stale across a chunk-set change (content fingerprint)', () => {
+      const overlay = overlayFor(DEFAULT_STORY_CONFIG);
+      const changed = { ...input, chunks: [chunkOf('a.ts', 'a2', ['a']), ...input.chunks.slice(1)] };
+      expect(applyChapterOverlay(changed, DEFAULT_STORY_CONFIG, overlay)).toBeUndefined();
+    });
+
+    it('a chapter (v2) overlay reads stale against a file-mode book (mode change)', () => {
+      const overlay = overlayFor(DEFAULT_STORY_CONFIG);
+      const fileBook = compileBook({ files, chunks, graph: graph(), headSha: 'h' });
+      // No storyComposition passed ⇒ a v2 overlay can never read fresh in file mode.
+      expect(isOverlayFresh(fileBook.book, overlay)).toBe(false);
+      // Even handed a composition, the file-mode book's chunk set still fails the v2 key.
+      expect(isOverlayFresh(fileBook.book, overlay, [['a'], ['b'], ['c']])).toBe(false);
+    });
   });
 });
