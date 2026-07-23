@@ -1,0 +1,205 @@
+{
+  "promptVersion": "chunk-narration-eval-1",
+  "subject": "codestory-a53e79f",
+  "range": "a53e79f~1..a53e79f",
+  "overlay": "/root/.code-story/code-story-d1bb1f88e238/reviews/799b9f0f51ea..a53e79f28872.narration-chunks.json",
+  "judgeModel": "sonnet",
+  "generatorModel": "opus",
+  "generatorPromptVersion": "narration-chunk-1",
+  "results": {
+    "packages/web/src/app.css::fragment 3::31vy4n": {
+      "title": "packages/web/src/app.css",
+      "kind": "other",
+      "badge": "New styles",
+      "line": null,
+      "gateFailures": [],
+      "scores": {
+        "register": 5,
+        "grounding": 1,
+        "faithfulness": "PASS",
+        "faithfulnessQuote": "",
+        "faithfulnessWhy": ""
+      },
+      "invalid": false
+    },
+    "packages/web/src/app.css::fragment 1::1pwgaps": {
+      "title": "packages/web/src/app.css",
+      "kind": "other",
+      "badge": "New styles",
+      "line": null,
+      "gateFailures": [],
+      "scores": {
+        "register": 5,
+        "grounding": 1,
+        "faithfulness": "PASS",
+        "faithfulnessQuote": "",
+        "faithfulnessWhy": ""
+      },
+      "invalid": false
+    },
+    "packages/web/src/app.css::fragment 2::wif3x9": {
+      "title": "packages/web/src/app.css",
+      "kind": "other",
+      "badge": "New styles",
+      "line": "The state-dot now expects a glyph — check where the ○/•/✓ text gets set, since this only styles it.",
+      "gateFailures": [],
+      "scores": {
+        "register": 5,
+        "grounding": 4,
+        "faithfulness": "PASS",
+        "faithfulnessQuote": "",
+        "faithfulnessWhy": ""
+      },
+      "invalid": false
+    },
+    "packages/web/src/BookPage.tsx::BookPage.fragment 1::y3uhnj": {
+      "title": "packages/web/src/BookPage.tsx :: BookPage",
+      "kind": "method-fragment",
+      "badge": "New feature",
+      "line": "Check how lastStoryConfig tracks and restores the prior chapter config across view toggles.",
+      "gateFailures": [],
+      "scores": {
+        "register": 5,
+        "grounding": 4,
+        "faithfulness": "PASS",
+        "faithfulnessQuote": "",
+        "faithfulnessWhy": ""
+      },
+      "invalid": false
+    },
+    "packages/web/src/BookPage.tsx::BookPage.toggleChunkReviewed::1nepgjj": {
+      "title": "packages/web/src/BookPage.tsx :: BookPage.toggleChunkReviewed",
+      "kind": "method",
+      "badge": "New method",
+      "line": "Check the unseen-vs-seen branch and the remaining count math.",
+      "gateFailures": [],
+      "scores": {
+        "register": 5,
+        "grounding": 4,
+        "faithfulness": "PASS",
+        "faithfulnessQuote": "",
+        "faithfulnessWhy": ""
+      },
+      "invalid": false
+    },
+    "packages/web/src/BookPage.tsx::BookPage.fragment 2::cyvd6c": {
+      "title": "packages/web/src/BookPage.tsx :: BookPage",
+      "kind": "method-fragment",
+      "badge": "New UI",
+      "line": "Check the aria-pressed values and disabled states tie to grouping and reordering.",
+      "gateFailures": [],
+      "scores": {
+        "register": 5,
+        "grounding": 4,
+        "faithfulness": "PASS",
+        "faithfulnessQuote": "",
+        "faithfulnessWhy": ""
+      },
+      "invalid": false
+    },
+    "packages/web/src/BookPage.tsx::BookPage.startResize::2c7ccl": {
+      "title": "packages/web/src/BookPage.tsx :: BookPage.startResize",
+      "kind": "method",
+      "badge": "New feature",
+      "line": null,
+      "gateFailures": [],
+      "scores": {
+        "register": 5,
+        "grounding": 1,
+        "faithfulness": "FLAG",
+        "faithfulnessQuote": "New feature",
+        "faithfulnessWhy": "The diff shows startResize's implementation being added, but the comment above indicates the resizable outline drag behavior already exists conceptually (documented pre-existing behavior), and the surrounding useBookKeymap/onMove/onUp logic suggests this is completing or wiring up an existing function rather than introducing a brand-new feature."
+      },
+      "invalid": false
+    },
+    "packages/web/src/BookPage.tsx::BookPage.startResize.onUp::hk5lml": {
+      "title": "packages/web/src/BookPage.tsx :: BookPage.startResize.onUp",
+      "kind": "method",
+      "badge": "New handler",
+      "line": "Check the localStorage write and the pointer listener cleanup on pointerup.",
+      "gateFailures": [],
+      "scores": {
+        "register": 5,
+        "grounding": 4,
+        "faithfulness": "PASS",
+        "faithfulnessQuote": "",
+        "faithfulnessWhy": ""
+      },
+      "invalid": false
+    },
+    "packages/web/src/OrderOptionsControl.tsx::OrderOptionsControl::i1iaqv": {
+      "title": "packages/web/src/OrderOptionsControl.tsx :: OrderOptionsControl",
+      "kind": "method",
+      "badge": "New prop",
+      "line": "New fileView prop gates the summary text, both select disables, and the note's nested ternary.",
+      "gateFailures": [],
+      "scores": {
+        "register": 4,
+        "grounding": 4,
+        "faithfulness": "PASS",
+        "faithfulnessQuote": "",
+        "faithfulnessWhy": ""
+      },
+      "invalid": false
+    },
+    "packages/web/src/OutlineSidebar.tsx::::d8vh6i": {
+      "title": "packages/web/src/OutlineSidebar.tsx",
+      "kind": "other",
+      "badge": "New constant",
+      "line": "STATE_GLYPH is keyed by ChunkReviewState — check that type is imported or in scope here.",
+      "gateFailures": [],
+      "scores": {
+        "register": 4,
+        "grounding": 4,
+        "faithfulness": "PASS",
+        "faithfulnessQuote": "",
+        "faithfulnessWhy": ""
+      },
+      "invalid": false
+    },
+    "packages/web/src/RowView.tsx::RowView::1aeiltx": {
+      "title": "packages/web/src/RowView.tsx :: RowView",
+      "kind": "method",
+      "badge": "New feature",
+      "line": "The old ✓ span is gone; check the button's stopPropagation against the row's article-select.",
+      "gateFailures": [],
+      "scores": {
+        "register": 4,
+        "grounding": 4,
+        "faithfulness": "PASS",
+        "faithfulnessQuote": "",
+        "faithfulnessWhy": ""
+      },
+      "invalid": false
+    },
+    "packages/web/src/OutlineSidebar.tsx::OutlineSidebar::1o74zbt": {
+      "title": "packages/web/src/OutlineSidebar.tsx :: OutlineSidebar",
+      "kind": "method",
+      "badge": "New prop",
+      "line": "New width prop drives nav style; check callers pass it and how the glyph sits with aria-hidden.",
+      "gateFailures": [],
+      "scores": {
+        "register": 4,
+        "grounding": 4,
+        "faithfulness": "PASS",
+        "faithfulnessQuote": "",
+        "faithfulnessWhy": ""
+      },
+      "invalid": false
+    }
+  },
+  "summary": {
+    "narratedCount": 12,
+    "judgedCount": 12,
+    "invalidCount": 0,
+    "missingIds": [],
+    "staleIds": [],
+    "hardGateFailures": [],
+    "registerMedian": 5,
+    "groundingMedian": 4,
+    "flagCount": 1,
+    "faithfulnessFloorMet": false,
+    "judgeCallsThisRun": 12,
+    "selfPreferenceNote": "single-family judge (Claude sonnet) vs Claude-opus generator: self-preference caveat applies (judge tier deliberately below the generator to blunt it, not remove it)."
+  }
+}
