@@ -1,5 +1,6 @@
 import type { Chunk, Deferral, UnifiedLine } from '@code-story/core';
 import { useRef } from 'react';
+import { AnsweringIndicator } from './AnsweringIndicator.js';
 import { sliceLinesToRange } from './defer-logic.js';
 import { chunkTitle } from './rows.js';
 import { DiffView } from './DiffView.js';
@@ -120,5 +121,10 @@ function renderAnswer(d: Deferral, onRetry: () => void) {
       </div>
     );
   }
-  return <div className="deferral-answer answering">AI answering…</div>;
+  return (
+    <div className="deferral-answer answering">
+      AI answering
+      <AnsweringIndicator createdAtIso={d.createdAt} />
+    </div>
+  );
 }

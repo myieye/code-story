@@ -3,6 +3,7 @@ import type { EditorView } from '@codemirror/view';
 import { useCallback, useLayoutEffect, useRef, useState } from 'react';
 import type { BookResponse } from './api.js';
 import { affordanceLabel, type PayloadState, visibleDefinitions } from './context-panel-logic.js';
+import { AnsweringIndicator } from './AnsweringIndicator.js';
 import {
   chunkHeadSpan,
   deferConsequenceCopy,
@@ -10,6 +11,7 @@ import {
   type DeferredSliceSummary,
   selectionLineRange,
   splitButtonModel,
+  type StubModel,
 } from './defer-logic.js';
 import { DefinitionPanel } from './DefinitionPanel.js';
 import { DiffView } from './DiffView.js';
@@ -174,8 +176,8 @@ export function RowView({
   onDeferClose?: () => void;
   onDeferTextChange?: (text: string) => void;
   onDeferSubmit?: (chunk: Chunk, action: DeferSubmit) => void;
-  /** When set, the collapsed stub shows this deferral copy instead of the generic collapsed note. */
-  deferStub?: string;
+  /** When set, the collapsed stub shows this deferral state instead of the generic collapsed note. */
+  deferStub?: StubModel;
   /** Parked (non-inline) deferrals for this chunk — drives the "⏲ N deferred" parent header pill. */
   deferredSummary?: DeferredSliceSummary;
   /** Jump to this chunk's card in the Deferred section (the parent pill's click). */
@@ -544,12 +546,14 @@ export function RowView({
           {collapsed ? (
             <div className="chunk-collapsed-note">
               {deferStub ? (
-                <>
-                  {deferStub}{' '}
+                <span className={deferStub.kind === 'failed' ? 'defer-stub failed' : 'defer-stub'}>
+                  {deferStub.text}
+                  {deferStub.kind === 'answering' && <AnsweringIndicator createdAtIso={deferStub.createdAtIso} />}
+                  {deferStub.kind === 'answering' && <span aria-hidden="true"> ↓</span>}{' '}
                   <button className="link-button" onClick={() => onExpand(chunk)}>
                     Show diff
                   </button>
-                </>
+                </span>
               ) : lowSignal ? (
                 <>
                   collapsed ({lowSignalReason(chunk)}) —{' '}
@@ -604,7 +608,10 @@ export function RowView({
                       </button>
                     </div>
                   ) : (
-                    <div className="deferral-answer answering">AI answering…</div>
+                    <div className="deferral-answer answering">
+                      AI answering
+                      <AnsweringIndicator createdAtIso={d.createdAt} />
+                    </div>
                   )}
                 </div>
               ))}
