@@ -851,7 +851,7 @@ export function BookPage({
   const cursorChips = useMemo(() => {
     const chunk = cursorRow?.chunk;
     if (!chunk) return [];
-    return computeNeighborChips(bookData.chunkGraph ?? { edges: [] }, chunk.id, chunksById, review.stateOf, (id) =>
+    return computeNeighborChips(bookData.chunkGraph ?? { edges: [] }, chunk.id, chunksById, review.reviewOf, (id) =>
       flat.firstIndexByChunkId.has(id),
     );
   }, [cursorRow, bookData, chunksById, review.states, flat]);

@@ -873,9 +873,10 @@ button.piece-indicator[aria-expanded='true'] {
   opacity: 0.62;
   border-style: dashed;
 }
-.chip-check {
-  color: #3fa661;
-  font-weight: 700;
+/* Leading review-state glyph, sharing the outline's .state-dot colours so the strip and the
+   outline read the same vocabulary. Reviewed keeps .state-dot.reviewed's bold-green weight. */
+.chip-state {
+  font-size: 11px;
 }
 .chip-behind {
   font-size: 10px;

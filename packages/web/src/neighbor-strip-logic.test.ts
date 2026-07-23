@@ -1,6 +1,7 @@
-import { assembleChunkGraph, type Chunk, type ChunkEdge, type ChunkEdgeKind, type ChunkReviewState } from '@code-story/core';
+import { assembleChunkGraph, type Chunk, type ChunkEdge, type ChunkEdgeKind } from '@code-story/core';
 import { describe, expect, it } from 'vitest';
 import { chipAriaLabel, chipText, computeNeighborChips, type NeighborChip } from './neighbor-strip-logic.js';
+import type { GlyphState } from './review-glyph-logic.js';
 
 function chunk(id: string, file: string, title: string): Chunk {
   return { id, file, symbolPath: [title], displayPath: [title], kind: 'other', changeTypes: [], hunks: [] };
@@ -33,7 +34,7 @@ const graph = assembleChunkGraph('H', [
 ]);
 
 // b is reviewed; everything else is unseen (i.e. not reviewed).
-const stateOf = (id: string): ChunkReviewState => (id === 'b' ? 'reviewed' : 'unseen');
+const reviewOf = (id: string): GlyphState => ({ state: id === 'b' ? 'reviewed' : 'unseen' });
 
 function chip(chips: NeighborChip[], chunkId: string): NeighborChip {
   const found = chips.find((c) => c.chunkId === chunkId);
@@ -42,7 +43,7 @@ function chip(chips: NeighborChip[], chunkId: string): NeighborChip {
 }
 
 describe('computeNeighborChips', () => {
-  const chips = computeNeighborChips(graph, 'a', chunksById, stateOf, inBook);
+  const chips = computeNeighborChips(graph, 'a', chunksById, reviewOf, inBook);
 
   it('drops neighbors that resolve to no book chunk', () => {
     expect(chips.some((c) => c.chunkId === 'ghost')).toBe(false);
@@ -83,27 +84,57 @@ describe('computeNeighborChips', () => {
     const frag: Chunk = { id: 'frag', file: 'test/QueryHelpers.cs', symbolPath: [], displayPath: [], kind: 'other', changeTypes: [], hunks: [], headRange: { start: 1, end: 6 } };
     const byId = new Map([...chunksById, ['frag', frag]]);
     const g = assembleChunkGraph('H', [edge('a', 'frag', 'calls', 12)]);
-    const c = chip(computeNeighborChips(g, 'a', byId, stateOf, (id) => byId.has(id)), 'frag');
+    const c = chip(computeNeighborChips(g, 'a', byId, reviewOf, (id) => byId.has(id)), 'frag');
     expect(c.name).toBe('QueryHelpers.cs');
     expect(c.name).not.toMatch(/lines/);
   });
 
   it('is empty for a chunk with no neighbors', () => {
-    expect(computeNeighborChips(graph, 'd', chunksById, stateOf, inBook).map((c) => c.chunkId)).toEqual(['b']);
-    expect(computeNeighborChips({ edges: [] }, 'a', chunksById, stateOf, inBook)).toEqual([]);
+    expect(computeNeighborChips(graph, 'd', chunksById, reviewOf, inBook).map((c) => c.chunkId)).toEqual(['b']);
+    expect(computeNeighborChips({ edges: [] }, 'a', chunksById, reviewOf, inBook)).toEqual([]);
   });
 });
 
 describe('chip text + aria', () => {
-  const chips = computeNeighborChips(graph, 'a', chunksById, stateOf, inBook);
+  const chips = computeNeighborChips(graph, 'a', chunksById, reviewOf, inBook);
   it('renders visible text with arrow, relation, and name (no raw line number)', () => {
     expect(chipText(chip(chips, 'b'))).toBe('→ calls bFn');
     expect(chipText(chip(chips, 'z'))).toBe('← called by zFn');
   });
   it('spells out the accessible name including state, boundary, and behind', () => {
     // Focus 'a' is unreviewed, 'b' reviewed → the calls edge is a review boundary.
-    expect(chipAriaLabel(chip(chips, 'b'))).toBe('calls bFn, reviewed, review boundary, 1 more unreviewed behind');
-    expect(chipAriaLabel(chip(chips, 'f'))).toBe('imports from helper.ts, (file-level), unreviewed');
+    expect(chipAriaLabel(chip(chips, 'b'))).toBe('calls bFn, reviewed, review boundary, 1 more unreviewed reachable past here');
+    expect(chipAriaLabel(chip(chips, 'f'))).toBe('imports from helper.ts, (file-level), unseen');
+  });
+});
+
+describe('review-state glyph (shared outline vocabulary)', () => {
+  // b reviewed, c seen, z auto-read (seen + evidence flag), everything else unseen.
+  const withStates = (id: string): GlyphState => {
+    if (id === 'b') return { state: 'reviewed' };
+    if (id === 'c') return { state: 'seen' };
+    if (id === 'z') return { state: 'seen', autoRead: true };
+    return { state: 'unseen' };
+  };
+  const chips = computeNeighborChips(graph, 'a', chunksById, withStates, inBook);
+
+  it('carries the target chunk glyph + class for each state, incl. auto-read → ◑', () => {
+    expect(chip(chips, 'b')).toMatchObject({ glyph: '✓', glyphClass: 'reviewed' });
+    expect(chip(chips, 'c')).toMatchObject({ glyph: '•', glyphClass: 'seen' });
+    expect(chip(chips, 'z')).toMatchObject({ glyph: '◑', glyphClass: 'auto' });
+    expect(chip(chips, 't')).toMatchObject({ glyph: '○', glyphClass: 'unseen' });
+  });
+
+  it('voices the precise state, including auto-read', () => {
+    expect(chipAriaLabel(chip(chips, 'c'))).toBe('calls cFn, seen');
+    expect(chipAriaLabel(chip(chips, 'z'))).toBe('called by zFn, auto-read, not yet confirmed');
+  });
+
+  it('a reveal chip has no glyph (no meaningful target review-state)', () => {
+    const g = assembleChunkGraph('H', [{ from: 't', to: 'a', kind: 'exercises', source: 'test-anchor', fromLines: [] }]);
+    const c = chip(computeNeighborChips(g, 't', chunksById, reviewOf, inBook), 'a');
+    expect(c.glyph).toBe('');
+    expect(c.glyphClass).toBe('');
   });
 });
 
@@ -115,14 +146,14 @@ describe('created (new-code) flag', () => {
     };
     const byId = new Map([...chunksById, ['n', fresh]]);
     const g = assembleChunkGraph('H', [edge('a', 'n', 'calls', 3)]);
-    const c = chip(computeNeighborChips(g, 'a', byId, stateOf, (id) => byId.has(id)), 'n');
+    const c = chip(computeNeighborChips(g, 'a', byId, reviewOf, (id) => byId.has(id)), 'n');
     expect(c.created).toBe(true);
-    expect(chipAriaLabel(c)).toBe('calls newFn, newly added in this diff, unreviewed');
+    expect(chipAriaLabel(c)).toBe('calls newFn, newly added in this diff, unseen');
   });
 
   it('does not flag a neighbor that also deletes lines (changed, not created)', () => {
     // Every existing fixture chunk has no hunks → created stays false.
-    expect(chip(computeNeighborChips(graph, 'a', chunksById, stateOf, inBook), 'b').created).toBe(false);
+    expect(chip(computeNeighborChips(graph, 'a', chunksById, reviewOf, inBook), 'b').created).toBe(false);
   });
 });
 
@@ -130,7 +161,7 @@ describe('file-level exercises (test-anchor) chip', () => {
   // A test→impl anchor edge: no method/line, its `to` is just the impl file's anchor chunk. Following
   // it should reveal the exercised code inline, not jump to that anchor.
   const g = assembleChunkGraph('H', [{ from: 't', to: 'a', kind: 'exercises', source: 'test-anchor', fromLines: [] }]);
-  const c = chip(computeNeighborChips(g, 't', chunksById, stateOf, inBook), 'a');
+  const c = chip(computeNeighborChips(g, 't', chunksById, reviewOf, inBook), 'a');
 
   it('is a reveal chip, file-level, with no behind/frontier hints', () => {
     expect(c.action).toBe('reveal');
@@ -144,12 +175,12 @@ describe('file-level exercises (test-anchor) chip', () => {
   });
 
   it('leaves a references-sourced exercises edge a jump chip', () => {
-    expect(chip(computeNeighborChips(graph, 'a', chunksById, stateOf, inBook), 't').action).toBe('jump');
+    expect(chip(computeNeighborChips(graph, 'a', chunksById, reviewOf, inBook), 't').action).toBe('jump');
   });
 });
 
 describe('frontier chips', () => {
-  const chips = computeNeighborChips(graph, 'a', chunksById, stateOf, inBook);
+  const chips = computeNeighborChips(graph, 'a', chunksById, reviewOf, inBook);
 
   it('flags an interaction edge whose endpoints differ in reviewed-state', () => {
     // Focus 'a' unreviewed, 'b' reviewed, calls edge → boundary.
@@ -168,7 +199,7 @@ describe('frontier chips', () => {
 
   it('flags the reverse split too — focused reviewed, neighbor unreviewed', () => {
     // Focus on 'b' (reviewed); its calls-out neighbor 'd' is unreviewed → boundary.
-    const fromB = computeNeighborChips(graph, 'b', chunksById, stateOf, inBook);
+    const fromB = computeNeighborChips(graph, 'b', chunksById, reviewOf, inBook);
     expect(chip(fromB, 'd').frontier).toBe(true);
     expect(chip(fromB, 'a').frontier).toBe(true); // a→b incoming, a unreviewed vs b reviewed
   });

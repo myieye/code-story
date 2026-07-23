@@ -8,6 +8,7 @@ import {
   neighborsOf,
 } from '@code-story/core';
 import { INTERACTION_KINDS } from './frontier-logic.js';
+import { type GlyphState, reviewGlyph, reviewGlyphClass } from './review-glyph-logic.js';
 
 /** A chip is reviewed (a free re-encounter glance) or unreviewed (still owes a mark). Never by colour alone. */
 export type ChipState = 'reviewed' | 'unreviewed';
@@ -43,6 +44,13 @@ export interface NeighborChip {
   /** The neighbor chunk is brand-new code (an added file/symbol), worth flagging over the common "changed". */
   created: boolean;
   state: ChipState;
+  /**
+   * The neighbor's precise review-state glyph (○ unseen / • seen / ◑ auto-read / ✓ reviewed) and its
+   * state-dot class, shared with the outline so the strip speaks the same vocabulary. Empty for a
+   * `reveal` chip — it opens a panel, so it has no meaningful target review-state.
+   */
+  glyph: string;
+  glyphClass: string;
   /** Count of further UNREVIEWED chunks reachable beyond this neighbor along the same relation — a wayfinding hint, never a completeness claim (R-048). */
   behind: number;
   /**
@@ -127,10 +135,13 @@ export function computeNeighborChips(
   graph: ChunkGraph,
   focusedChunkId: string,
   chunksById: Map<string, Chunk>,
-  stateOf: (id: string) => ChunkReviewState,
+  reviewOf: (id: string) => GlyphState,
   inBook: (id: string) => boolean,
 ): NeighborChip[] {
   const chips: NeighborChip[] = [];
+  // The chip carries the neighbor's precise glyph (from the full review), but its salience/frontier
+  // logic only needs the bare state — derive it so reachableUnreviewed/frontier stay untouched.
+  const stateOf = (id: string): ChunkReviewState => reviewOf(id)?.state ?? 'unseen';
   const focusedReviewed = stateOf(focusedChunkId) === 'reviewed';
   for (const nb of neighborsOf(graph, focusedChunkId)) {
     if (!inBook(nb.chunkId)) continue;
@@ -163,6 +174,10 @@ export function computeNeighborChips(
       ...(line !== undefined ? { line } : {}),
       created,
       state: neighborReviewed ? 'reviewed' : 'unreviewed',
+      // A jump chip mirrors the outline glyph for its target chunk; a reveal chip has no target
+      // review-state, so it shows no glyph (the renderer skips the span on '').
+      glyph: reveal ? '' : reviewGlyph(reviewOf(nb.chunkId)),
+      glyphClass: reveal ? '' : reviewGlyphClass(reviewOf(nb.chunkId)),
       // `behind`/`frontier` describe navigable chunks reachable along the edge; a reveal chip goes to
       // a panel, not a chunk, so neither applies.
       behind: reveal ? 0 : reachableUnreviewed(graph.edges, nb.chunkId, nb.kind, nb.direction, focusedChunkId, stateOf),
@@ -183,6 +198,14 @@ export function chipText(chip: NeighborChip): string {
   return `${chip.arrow} ${chip.relation} ${chip.name}`;
 }
 
+// The spoken review-state, keyed by the glyph class so it matches the visible glyph exactly.
+const STATE_WORD: Record<string, string> = {
+  unseen: 'unseen',
+  seen: 'seen',
+  auto: 'auto-read, not yet confirmed',
+  reviewed: 'reviewed',
+};
+
 /** Full-sentence accessible name — direction, relation, state, and the behind hint spelled out. */
 export function chipAriaLabel(chip: NeighborChip): string {
   const parts = [`${chip.relation} ${chip.name}`];
@@ -194,8 +217,8 @@ export function chipAriaLabel(chip: NeighborChip): string {
     return parts.join(', ');
   }
   if (chip.created) parts.push('newly added in this diff');
-  parts.push(chip.state);
+  parts.push(STATE_WORD[chip.glyphClass] ?? chip.state);
   if (chip.frontier) parts.push('review boundary');
-  if (chip.behind > 0) parts.push(`${chip.behind} more unreviewed behind`);
+  if (chip.behind > 0) parts.push(`${chip.behind} more unreviewed reachable past here`);
   return parts.join(', ');
 }
