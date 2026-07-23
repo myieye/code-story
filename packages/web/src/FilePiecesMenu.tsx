@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { reviewGlyph, reviewGlyphClass } from './OutlineSidebar.js';
+import { reviewGlyph, reviewGlyphClass } from './review-glyph-logic.js';
 import type { PieceMenuModel } from './piece-nav-logic.js';
 
 /**

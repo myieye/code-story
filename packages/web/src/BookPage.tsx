@@ -35,8 +35,9 @@ import {
 import { DeferredCard } from './DeferredCard.js';
 import { configSummary } from './order-options-logic.js';
 import { OrderOptionsControl } from './OrderOptionsControl.js';
-import { isAutoReadReview, OutlineSidebar } from './OutlineSidebar.js';
+import { OutlineSidebar } from './OutlineSidebar.js';
 import { computeNeighborChips } from './neighbor-strip-logic.js';
+import { isAutoReadReview } from './review-glyph-logic.js';
 import { FilePiecesMenu } from './FilePiecesMenu.js';
 import { fileOrderIndex, pieceMenuModel, stepPieceTarget } from './piece-nav-logic.js';
 import { frontierCount, interactionCount } from './frontier-logic.js';
