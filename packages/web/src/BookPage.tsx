@@ -32,8 +32,10 @@ import {
   deferredSliceSummary,
   deferScope,
   newlyAnswered,
+  newlyFailed,
+  pollIntervalMs,
   shouldPoll,
-  stubCopy,
+  stubModel,
 } from './defer-logic.js';
 import { DeferredCard } from './DeferredCard.js';
 import { configSummary } from './order-options-logic.js';
@@ -711,27 +713,60 @@ export function BookPage({
     if (copy) say(copy);
   }, [sectionStats]);
 
-  // Scoped, self-terminating poll (spec 06 slice 6): while any ai answer is pending, refresh the
-  // deferral store every ~10s; the effect tears the interval down the moment `shouldPoll` goes false.
+  // Scoped, self-terminating poll (spec 06 slice 6 / spec 138 Q2): while any ai answer is pending,
+  // refresh the deferral store on a self-rescheduling timer — 3s while a question is fresh, 8s after.
+  // Reads the latest deferrals through a ref so the tier recomputes each cycle; fails open (reschedules
+  // the same tier on a fetch error) and stops the moment nothing is pending. `shouldPoll` re-arms the
+  // loop when a new question is asked.
+  const deferralsRef = useRef(deferrals);
+  useEffect(() => {
+    deferralsRef.current = deferrals;
+  });
   const polling = shouldPoll(deferrals);
   useEffect(() => {
     if (!polling) return;
-    const t = window.setInterval(() => {
-      void fetchDeferrals()
-        .then((r) => setDeferrals(r.deferrals))
-        .catch(() => undefined);
-    }, 10000);
-    return () => window.clearInterval(t);
+    let cancelled = false;
+    let timer: number | undefined;
+    const schedule = () => {
+      const interval = pollIntervalMs(deferralsRef.current, Date.now());
+      if (interval === null) return;
+      timer = window.setTimeout(() => {
+        void fetchDeferrals()
+          .then((r) => {
+            if (!cancelled) setDeferrals(r.deferrals);
+          })
+          .catch(() => undefined)
+          .finally(() => {
+            if (!cancelled) schedule();
+          });
+      }, interval);
+    };
+    schedule();
+    return () => {
+      cancelled = true;
+      if (timer !== undefined) window.clearTimeout(timer);
+    };
   }, [polling]);
 
-  // Polite announce once per running→done transition — never a toast or modal (the reviewer deferred
-  // precisely to avoid interruption; the passive cluster count + this live-region are the whole signal).
+  // Polite announce once per running→done and running→failed transition — never a toast or modal (the
+  // reviewer deferred precisely to avoid interruption; the passive cluster count + this live-region are
+  // the whole signal). A newly-arrived answer also fires one subtle one-shot pulse of the cluster.
   const prevDeferralsRef = useRef(deferrals);
+  const [clusterPulse, setClusterPulse] = useState(false);
   useEffect(() => {
     const prev = prevDeferralsRef.current;
     prevDeferralsRef.current = deferrals;
-    if (newlyAnswered(prev, deferrals) > 0) say('An AI answer is ready in Deferred.');
+    if (newlyAnswered(prev, deferrals) > 0) {
+      say('An AI answer is ready in Deferred.');
+      setClusterPulse(true);
+    }
+    if (newlyFailed(prev, deferrals) > 0) say("An AI answer couldn't be completed — retry in Deferred.");
   }, [deferrals]);
+  useEffect(() => {
+    if (!clusterPulse) return;
+    const t = window.setTimeout(() => setClusterPulse(false), 1400);
+    return () => window.clearTimeout(t);
+  }, [clusterPulse]);
 
   // Grouping (View: Story vs Files) is derived from the config — file mode is the dependency-first +
   // tests-after combination (isFileModeConfig). The last chapter-mode config is remembered so toggling
@@ -1032,8 +1067,15 @@ export function BookPage({
             </span>
           )}
           {deferralCluster.deferredCount > 0 && (
-            <button className="bar-button deferred-cluster" title="Jump to the Deferred section" onClick={scrollToDeferred}>
-              · {deferralCluster.text}
+            <button
+              className={clusterPulse ? 'bar-button deferred-cluster pulse' : 'bar-button deferred-cluster'}
+              title="Jump to the Deferred section"
+              aria-label={deferralCluster.text}
+              onClick={scrollToDeferred}
+            >
+              · {deferralCluster.mainText}
+              {deferralCluster.showAnswering && <span className="answering-dots" aria-hidden="true" />}
+              {deferralCluster.failed > 0 && <span className="cluster-failed">{deferralCluster.failedText}</span>}
             </button>
           )}
           {compact ? (
@@ -1290,7 +1332,7 @@ export function BookPage({
                       onDeferSubmit={submitDefer}
                       deferStub={
                         row.kind === 'chunk' && deferralsByChunk.deferred.has(row.chunk.id)
-                          ? stubCopy(deferralsByChunk.deferred.get(row.chunk.id)!)
+                          ? stubModel(deferralsByChunk.deferred.get(row.chunk.id)!)
                           : undefined
                       }
                       deferredSummary={

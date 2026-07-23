@@ -1403,6 +1403,24 @@ button.piece-indicator[aria-expanded='true'] {
 .deferred-cluster:hover {
   text-decoration: underline;
 }
+/* Failed-answer count in the cluster tail (spec 138 Q4) — red, distinct from the amber deferred tone. */
+.cluster-failed {
+  color: #a05252;
+}
+/* One subtle one-shot flash when an answer newly arrives (spec 138 Q3). */
+.deferred-cluster.pulse {
+  animation: cluster-pulse 1.4s ease;
+  border-radius: 4px;
+}
+@keyframes cluster-pulse {
+  0%,
+  70% {
+    background: #fff6e2;
+  }
+  100% {
+    background: none;
+  }
+}
 
 /* Deferred-section cards. Greyed once the chunk is marked reviewed (resolved). */
 .deferred-card {
@@ -1475,6 +1493,37 @@ button.piece-indicator[aria-expanded='true'] {
 }
 .deferral-answer.failed {
   color: #a05252;
+}
+
+/* Live in-flight signal (spec 138 Q1): honest count-up + opacity-pulsed dots. Both aria-hidden. */
+.answering-live {
+  font-variant-numeric: tabular-nums;
+}
+.answering-dots::after {
+  content: '…';
+  animation: dot-pulse 1.2s ease-in-out infinite;
+}
+@keyframes dot-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
+}
+/* The collapsed-stub failure tone (spec 138 Q4). */
+.defer-stub.failed {
+  color: #a05252;
+}
+@media (prefers-reduced-motion: reduce) {
+  /* Kill the dot + cluster animations; the count-up carries the liveness signal on its own. */
+  .answering-dots::after {
+    animation: none;
+  }
+  .deferred-cluster.pulse {
+    animation: none;
+  }
 }
 .deferred-card-diff {
   margin-top: 8px;
