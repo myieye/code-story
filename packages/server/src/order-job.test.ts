@@ -11,7 +11,7 @@ import {
   renderChunkOrderManifest,
 } from '@code-story/core';
 import { describe, expect, test } from 'vitest';
-import { OrderJobError, runChapterOrderJob, runOrderJob, shouldAutoKickOrder } from './order-job.js';
+import { MANIFEST_TOKEN_LIMIT, OrderJobError, runChapterOrderJob, runOrderJob, shouldAutoKickOrder } from './order-job.js';
 
 function chunk(file: string, stub = false): Chunk {
   return {
@@ -220,29 +220,34 @@ describe('runChapterOrderJob (#77)', () => {
     expect(invoked).toBe(false);
   });
 
-  // Regression for the review's finding #1: the size guard must measure the aliased text the model
-  // receives, not the raw-id rendering. Long ids blow past the limit raw but fit once aliased.
-  test('the size guard measures the aliased prompt, not the raw ids', async () => {
-    const longFiles = Array.from({ length: 60 }, (_, i) => `src/${'segment/'.repeat(24)}module-${i}.ts`);
-    const longChunks = longFiles.map((f) => chunk(f));
-    const longDiffs: FileDiff[] = longFiles.map((path) => ({
+  function deepPathBook(count: number, segments: number) {
+    const files = Array.from({ length: count }, (_, i) => `src/${'segment/'.repeat(segments)}module-${i}.ts`);
+    const chunks = files.map((f) => chunk(f));
+    const diffs: FileDiff[] = files.map((path) => ({
       path,
       status: 'modified',
       binary: false,
       hunks: [{ baseStart: 0, baseCount: 0, headStart: 1, headCount: 3 }],
     }));
     const noEdges: ChunkGraph = { edges: [] };
-    const longInput: CompileChapterBookInput = {
-      files: longDiffs,
-      chunks: longChunks,
+    const input: CompileChapterBookInput = {
+      files: diffs,
+      chunks,
       graph: { edges: [], unresolved: 0 },
       chunkGraph: noEdges,
       headSha: 'deadbeef',
     };
-    const tier0 = compileChapterBook(longInput, DEFAULT_STORY_CONFIG);
+    const tier0 = compileChapterBook(input, DEFAULT_STORY_CONFIG);
     const manifest = buildChunkOrderManifest(tier0.book, tier0.chunks, noEdges, tier0.storyComposition);
-    // Precondition: the old raw-id render trips the 8000-token guard; the aliased render does not.
-    expect(Math.ceil(renderChunkOrderManifest(manifest).length / 4)).toBeGreaterThan(8000);
+    return { tier0, manifest, input, noEdges };
+  }
+
+  // Regression for the review's finding #1: the size guard must measure the aliased text the model
+  // receives, not the raw-id rendering. Long ids blow past the limit raw but fit once aliased.
+  test('the size guard measures the aliased prompt, not the raw ids', async () => {
+    const { tier0, manifest, input, noEdges } = deepPathBook(200, 40);
+    // Precondition: the raw-id render trips the guard; the aliased render does not.
+    expect(Math.ceil(renderChunkOrderManifest(manifest).length / 4)).toBeGreaterThan(MANIFEST_TOKEN_LIMIT);
 
     const composition = tier0.storyComposition.flat().map((_, i) => [`c${i + 1}`]);
     let invoked = false;
@@ -250,13 +255,33 @@ describe('runChapterOrderJob (#77)', () => {
       ...chapterBase,
       book: tier0.book,
       chunks: tier0.chunks,
-      graph: longInput.graph,
-      input: longInput,
+      graph: input.graph,
+      input,
       chunkGraph: noEdges,
       storyComposition: tier0.storyComposition,
       invoke: async () => ((invoked = true), chapterEnvelope(composition)),
     });
     expect(invoked).toBe(true);
     expect(overlay.version).toBe(2);
+  });
+
+  // A truly huge range still refuses (#116): the raised limit widens what runs, it doesn't remove
+  // the guard — an over-limit aliased prompt costs real money for a book that reads fine in tier-0.
+  test('an aliased prompt over the limit refuses without invoking the model', async () => {
+    const { tier0, input, noEdges } = deepPathBook(300, 50);
+    let invoked = false;
+    await expect(
+      runChapterOrderJob({
+        ...chapterBase,
+        book: tier0.book,
+        chunks: tier0.chunks,
+        graph: input.graph,
+        input,
+        chunkGraph: noEdges,
+        storyComposition: tier0.storyComposition,
+        invoke: async () => ((invoked = true), chapterEnvelope([['c1']])),
+      }),
+    ).rejects.toMatchObject({ failure: 'refused' });
+    expect(invoked).toBe(false);
   });
 });
