@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="128" height="128">
+  <!-- Candidate A: an open book whose pages carry diff lines (left = unchanged ink, right = +/− change) -->
+  <g stroke-linejoin="round" stroke-linecap="round">
+    <path d="M 8 16 C 16 11.5, 26 11.5, 32 16 L 32 50 C 26 45.5, 16 45.5, 8 50 Z"
+          fill="#fffdf9" stroke="#2b2822" stroke-width="3"/>
+    <path d="M 56 16 C 48 11.5, 38 11.5, 32 16 L 32 50 C 38 45.5, 48 45.5, 56 50 Z"
+          fill="#fffdf9" stroke="#2b2822" stroke-width="3"/>
+    <line x1="32" y1="16" x2="32" y2="50" stroke="#2b2822" stroke-width="3"/>
+  </g>
+  <g>
+    <rect x="13" y="23" width="14" height="4" rx="2" fill="#8d8779"/>
+    <rect x="13" y="31" width="11" height="4" rx="2" fill="#8d8779"/>
+    <rect x="37" y="23" width="14" height="4" rx="2" fill="#3fa661"/>
+    <rect x="40" y="31" width="11" height="4" rx="2" fill="#b3261e"/>
+  </g>
+</svg>

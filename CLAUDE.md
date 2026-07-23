@@ -505,15 +505,41 @@ FW Lite per-worktree on random ports; browser-pane screenshots still hang hidden
 read_page/JS instead; books served from the code-story worktree dist, state under
 `~/.code-story/languageforge-lexbox-32093c12aded/`. Costs ledgered: 2468 book $1.69/11 calls,
 2470 $2.43/17 calls (opus).
-Next (verify freshness on wake): **the feedback-round PR to main closes #115 + #120–#128;
-#54 closed by R-055 (Tim: "I definitely want narration")**. The next input is Tim driving
-the new UX (auto-read+confirm, pieces menu, defer, badges, segmented bar) and his answer on
-the glue spend policy (asked in the closing report: no ceiling but ledger+display, vs a cap).
-G2's named fast-follow: per-chunk rubric eval (register + faithfulness floor) on two dogfood
-subjects — revisit default-on if the floor fails. Evidence-gated watches: #100, #21, #27,
-#58 (now partially addressed by narration-chunk-1's point-don't-assert — re-evidence before
-acting), #92, #107, #112, #116 (+ the review doc's MED/LOWs). Standing guidance holds: keep
-options open (R-025); Tim scopes milestones; PR-versions (R-038–R-041) deferred.
+**Tenth window (2026-07-23 evening, Tim live): diff-display bug round + the beauty/flow
+mandate — specs done, builds killed by quota, handoff prepared.** Tim dogfooded the 2468 book
+and reported 5 display bugs; all fixed and merged (PR #133): def-panel contradiction killed
+(`visibleDefinitions` filters defs that are book chunks), **colour-consistency invariant**
+(Tim verbatim: "Everything new or edited must be correctly colour marked in all places it is
+shown") enforced via core `changedLinesByFile` + `unifiedChunkLines` 4th param (boundary
+context rows landing on ANY of the file's changed lines get add/del colouring), chips lost
+the misleading call-site line number (`→ calls Deploy` + `new` pill when the callee chunk is
+pure insertion; moved-code callees honestly read "changed"), file labels dedupe to
+transitions (sticky bar covers mid-run), outline chapters show `+N files` + cross-file child
+basenames. Then Tim's second input (verbatim addendum
+`docs/vision/addendum-2026-07-23-beauty-and-review-flow.md`, **R-061–R-066**): chip
+review-state markers, make-it-beautiful (theme/texture/logo/fonts), partial-chunk deferral,
+ask-AI progress feedback, no bare "+2", gist forefront — plus "work long and hard, impress
+me" (hit the NEXT 5h quota window, not the current one). Issues **#134–#140** filed. Four
+parallel ux consults + logo round produced APPROVED build contracts, all persisted in
+**`docs/design/2026-07-23-ux-round/`** (READ ITS README FIRST — it is the handoff hub with
+per-issue build state, salvaged agent learnings, sequencing plan, live-daemon bounce facts).
+The 6-agent build wave died on the session limit mid-flight; salvage pushed as
+`claude/134-chip-states` (glyph module + WIP strip changes, tests not green) and
+`claude/chunk-narration-eval` (tool skeleton). #112's audit completed before death: only
+`cursor` + `backStack` are stale flat indices; server cursor is already a chunk id. Logo
+verdict: bookmark-diff concept wins; 2-row mini-diff payload; separately drawn 16px favicon.
+Key sequencing: theme (#135) builds LAST of the CSS-heavy set; #138 after #137 (same files);
+7468 bounce after all merges. Ops: session limits kill subagents mid-flight — push WIP
+branches EARLY; two of six isolated agents left no worktree at all (isolation is
+best-effort); Windows dynamic import of dist needs `pathToFileURL`.
+Next (verify freshness on wake): **execute `docs/design/2026-07-23-ux-round/README.md`'s
+sequencing plan** — finish #134/#139/#140 from the pushed WIP branch, then #137 → #138,
+#112 (audit already done), theme #135, logo #136, narration eval, then rebuild + bounce
+7468 (PID/args in the README) and drive the real 2468 book. Tim's open answers: glue spend
+policy (no ceiling + ledger vs cap) and the move/split-aware diffing question (asked
+2026-07-23). Evidence-gated watches: #100, #21, #27, #58, #92, #107, #116, #130, #132.
+Standing guidance holds: keep options open (R-025); Tim scopes milestones; PR-versions
+(R-038–R-041) deferred.
 Dogfood target: languageforge/lexbox (C# + Svelte/TS); repo-agnostic (R-025). lexbox clone
 lives at /home/user/lexbox this container (refs pr-2309, pr-2357 fetched; ranges
 c0448522..pr-2309, 277e418d8~1..277e418d8, 8dd70ba~1..8dd70ba).
