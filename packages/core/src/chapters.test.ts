@@ -100,6 +100,69 @@ describe('compileChapterBook', () => {
     expect(flat(book)).toEqual(['a', 'b', 'c']);
   });
 
+  it('#100 coalesces a file\'s call-silent chunks into one chapter', () => {
+    const files = [fileDiff('big.ts', 1, 6)];
+    const chunks = [
+      chunk('big.ts', 'x1', ['a'], 1, 2),
+      chunk('big.ts', 'x2', ['b'], 3, 2),
+      chunk('big.ts', 'x3', ['c'], 5, 2),
+    ];
+    // No calls edges between them — the graph is silent, so they'd fragment into three singletons.
+    const { book } = compileChapterBook(
+      { files, chunks, graph: importGraph(), chunkGraph: chunkGraph(), headSha: 'h' },
+      DEFAULT_STORY_CONFIG,
+    );
+    const storySections = book.sections.filter((s) => s.id.startsWith('chapter:'));
+    expect(storySections).toHaveLength(1);
+    expect(flat(book)).toEqual(['x1', 'x2', 'x3']);
+  });
+
+  it('#100 preserves cross-file call chapters while coalescing silent same-file siblings', () => {
+    const files = [fileDiff('consumer.ts', 1, 2), fileDiff('dep.ts', 1, 2), fileDiff('lib.ts', 1, 4)];
+    const chunks = [
+      chunk('consumer.ts', 'c1', ['use'], 1, 2),
+      chunk('dep.ts', 'd1', ['dep'], 1, 2),
+      chunk('lib.ts', 'l1', ['l1'], 1, 2),
+      chunk('lib.ts', 'l2', ['l2'], 3, 2),
+    ];
+    // c1 calls d1 (cross-file); lib.ts has no call edges at all.
+    const cg = chunkGraph(cedge('c1', 'd1'));
+    const compiled = compileChapterBook(
+      { files, chunks, graph: importGraph(), chunkGraph: cg, headSha: 'h' },
+      DEFAULT_STORY_CONFIG,
+    );
+    const storySections = compiled.book.sections.filter((s) => s.id.startsWith('chapter:'));
+    // The genuine cross-file chapter (c1→d1) survives, lib.ts's two silent chunks group.
+    expect(storySections.map((s) => s.occurrences.map((o) => o.chunkId))).toEqual([['c1', 'd1'], ['l1', 'l2']]);
+    expect(checkOrder(compiled.book, importGraph(), compiled.chunks, { config: DEFAULT_STORY_CONFIG, chunkGraph: cg })).toMatchObject({
+      ok: true,
+      importInversions: [],
+      testBeforeImpl: [],
+    });
+  });
+
+  it('#100 coalescing keeps direction and test-placement gates green both ways', () => {
+    const files = [fileDiff('a.ts', 1, 4), fileDiff('b.ts', 1, 2), fileDiff('a.test.ts', 1, 2)];
+    const chunks = [
+      chunk('a.ts', 'a1', ['a1'], 1, 2), // calls b1 (cross-file)
+      chunk('a.ts', 'a2', ['a2'], 3, 2), // silent same-file sibling
+      chunk('b.ts', 'b1', ['b1'], 1, 2),
+      chunk('a.test.ts', 't', ['aTest'], 1, 2), // exercises a1
+    ];
+    const cg = chunkGraph(cedge('a1', 'b1'), cedge('t', 'a1', 'exercises'));
+    for (const config of [
+      { direction: 'consumer-first', testPlacement: 'before' },
+      { direction: 'dependency-first', testPlacement: 'after' },
+    ] as StoryConfig[]) {
+      const compiled = compileChapterBook({ files, chunks, graph: importGraph(), chunkGraph: cg, headSha: 'h' }, config);
+      expect(checkOrder(compiled.book, importGraph(), compiled.chunks, { config, chunkGraph: cg })).toMatchObject({
+        ok: true,
+        importInversions: [],
+        testBeforeImpl: [],
+      });
+    }
+  });
+
   it('routes/pages anchor before other impl', () => {
     const files = [fileDiff('lib/util.ts', 1, 2), fileDiff('routes/+page.svelte', 1, 2)];
     const chunks = [chunk('lib/util.ts', 'u', ['u'], 1, 2), chunk('routes/+page.svelte', 'p', ['p'], 1, 2)];

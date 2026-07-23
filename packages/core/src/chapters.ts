@@ -177,7 +177,14 @@ function anchorPriority(chunk: Chunk, roles: Map<string, FileRole>): number {
  * Kahn topological sort (every node emitted only once all its precedence-predecessors are) whose
  * tie-break still follows call sites, keeping each call path locally contiguous. A new chapter
  * opens whenever the sort starts a fresh entry point (an anchor, routes-first then git) rather than
- * continuing a call path. Cycles are broken deterministically at a source SCC's git-earliest member
+ * continuing a call path — *unless* that entry point is the same file as the chunk just emitted, in
+ * which case it joins the running chapter. That same-file coalescing (#100) is the grouping pass:
+ * where the call graph is silent between a file's chunks they still read as one chapter, instead of
+ * fragmenting into a singleton per chunk. It never reorders — the linear emission is untouched, so
+ * `checkOrder` and the direction/test gates are unaffected — and it can't blanket-partition a file,
+ * because a chunk pulled into a cross-file call path stays there (its silent same-file siblings
+ * simply group among themselves).
+ * Cycles are broken deterministically at a source SCC's git-earliest member
  * (the one same-cycle inversion checkOrder then reports informationally). Deterministic.
  */
 function buildSpine(
@@ -236,7 +243,8 @@ function buildSpine(
       .filter((id) => !emitted.has(id) && indeg.get(id) === 0)
       .sort((a, b) => anchorPriority(chunkById.get(a)!, roles) - anchorPriority(chunkById.get(b)!, roles) || gitRank.get(a)! - gitRank.get(b)!);
     const seed = anchors[0] ?? cycleBreakSeed([...storyIds].filter((id) => !emitted.has(id)), next, gitRank);
-    emit(seed, true);
+    const sameFileAsLast = last !== undefined && chunkById.get(seed)!.file === chunkById.get(last)!.file;
+    emit(seed, !sameFileAsLast);
     last = seed;
   }
 
