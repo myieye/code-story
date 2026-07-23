@@ -53,6 +53,7 @@ import {
   sectionLabel,
   segmentModel,
 } from './progress-logic.js';
+import { remapBackStack, remapCursor } from './cursor-remap.js';
 import { chunkSize, chunkTitle, DEFERRED_SECTION_ID, flattenBook, type Row } from './rows.js';
 import { ShortcutOverlay } from './ShortcutOverlay.js';
 import { affordanceLabel, type PayloadState, visibleDefinitions } from './context-panel-logic.js';
@@ -709,23 +710,43 @@ export function BookPage({
       .finally(() => setReordering(false));
   };
 
-  // After a reorder lands, the cursor's index and the neighbor back-stack are order-specific: reset
-  // the cursor to the first unreviewed chunk in the new order and drop the stale back-stack.
+  // The cursor and back-stack are flat indices, so any reorder of the book invalidates them. Two
+  // reorders reach this effect through `flat` changing:
+  //  - a manual reading-order flip (`pendingReorder`): a deliberate fresh start — jump to the first
+  //    unreviewed chunk and drop the back-stack;
+  //  - the AI order overlay landing mid-review (or any other recompile): keep the reviewer on the
+  //    chunk they were reading by remapping cursor + back-stack through their occurrence keys (#112).
+  // Deferral injects and narration updates also rebuild `flat` but keep the order, so the remap is a
+  // no-op there.
+  const prevFlat = useRef(flat);
   useEffect(() => {
-    if (!pendingReorder.current) return;
-    pendingReorder.current = false;
-    setBackStack([]);
-    const jumpTarget = pendingJumpChunk.current;
-    pendingJumpChunk.current = undefined;
-    const jumpIndex = jumpTarget ? flat.firstIndexByChunkId.get(jumpTarget) : undefined;
-    if (jumpIndex !== undefined) {
-      moveCursor(jumpIndex);
-    } else {
-      const first = findUnreviewed(flat, review.stateOf, 0, 1);
-      moveCursor(first ? first.index : 0);
+    const prev = prevFlat.current;
+    prevFlat.current = flat;
+    if (prev === flat) return;
+
+    if (pendingReorder.current) {
+      pendingReorder.current = false;
+      setBackStack([]);
+      const jumpTarget = pendingJumpChunk.current;
+      pendingJumpChunk.current = undefined;
+      const jumpIndex = jumpTarget ? flat.firstIndexByChunkId.get(jumpTarget) : undefined;
+      if (jumpIndex !== undefined) {
+        moveCursor(jumpIndex);
+      } else {
+        const first = findUnreviewed(flat, review.stateOf, 0, 1);
+        moveCursor(first ? first.index : 0);
+      }
+      say(`Reading order: ${configSummary(bookResponse.config)}.`);
+      return;
     }
-    say(`Reading order: ${configSummary(bookResponse.config)}.`);
-  }, [bookResponse]);
+
+    const remapped = remapCursor(prev, flat, cursor);
+    if (remapped !== cursor) moveCursor(remapped);
+    setBackStack((s) => {
+      const next = remapBackStack(prev, flat, s);
+      return next.length === s.length && next.every((v, i) => v === s[i]) ? s : next;
+    });
+  }, [flat]);
 
   // View toggle: Files → the file-mode config (all a file's changes grouped); Story → the remembered
   // chapter config. A no-op if already there (changeConfig guards on config equality).
