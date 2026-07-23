@@ -71,7 +71,8 @@ export type AnyOrderOverlay = OrderOverlay | OrderOverlayV2;
 /**
  * Digest over the book's derived identity: head + CORE_VERSION + each section's occurrence
  * chunk ids in order. Chunk ids already embed content fingerprints, so this changes whenever
- * section membership, chunk content, or section order changes — not just the head.
+ * section membership, chunk content, or section order changes — not just the head. This is the
+ * v1 (file-mode) overlay freshness key.
  */
 export function bookFingerprint(book: Book): string {
   const parts = [book.headSha, CORE_VERSION];
@@ -81,8 +82,33 @@ export function bookFingerprint(book: Book): string {
   return fnv1a(parts.join('\0'));
 }
 
-/** A persisted overlay (v1 or v2) is only usable against the exact book it was computed for. */
-export function isOverlayFresh(book: Book, overlay: AnyOrderOverlay): boolean {
+/**
+ * The v2 (chapter-mode) overlay freshness key: head + CORE_VERSION + the tier-0 story composition
+ * (ordered chapters of story chunk ids). This is exactly what the ordering model is shown and
+ * regroups — it deliberately excludes the woven-in tests, so flipping `testPlacement`
+ * (before/after/end) leaves the key unchanged and reuses the overlay (#130; the prompt never sees
+ * testPlacement anyway). It still changes on a direction flip (the spine reorders the composition),
+ * a chunk-set or content change (ids embed content fingerprints), and any ordering-logic change
+ * (CORE_VERSION).
+ */
+export function chapterOrderFingerprint(headSha: string, storyComposition: string[][]): string {
+  const parts = [headSha, CORE_VERSION, 'chapter'];
+  for (const chapter of storyComposition) parts.push('|', ...chapter);
+  return fnv1a(parts.join('\0'));
+}
+
+/**
+ * Whether a persisted overlay still matches the current derived inputs. v1 keys off the file-mode
+ * book shape; v2 keys off the tier-0 story composition (`storyComposition`, required for a v2
+ * verdict). A version/mode mismatch reads stale by construction: a v2 overlay with no composition,
+ * or a v1 overlay checked against a chapter book, never matches — so switching chapter⇄file mode
+ * invalidates as it must. An overlay whose stored key predates this scheme reads stale (regenerated);
+ * it can never wrongly read fresh.
+ */
+export function isOverlayFresh(book: Book, overlay: AnyOrderOverlay, storyComposition?: string[][]): boolean {
+  if (overlay.version === 2) {
+    return storyComposition !== undefined && overlay.bookFingerprint === chapterOrderFingerprint(book.headSha, storyComposition);
+  }
   return overlay.bookFingerprint === bookFingerprint(book);
 }
 
@@ -201,7 +227,7 @@ export function applyOrderOverlay(book: Book, graph: ImportGraph, chunks: Chunk[
 }
 
 export interface ChunkOrderManifest {
-  /** Fingerprint of the tier-0 chapter book — the freshness key the resulting overlay carries. */
+  /** The tier-0 story-composition freshness key (`chapterOrderFingerprint`) the resulting overlay carries. */
   bookFingerprint: string;
   /** Story chunks in tier-0 order — the chunks the model may regroup. Tests/low-signal/leftovers omitted. */
   chunks: { id: string; title: string; kind: ChunkKind; lines: number; file: string }[];
@@ -235,7 +261,12 @@ export function buildChunkOrderManifest(
     .filter((e) => storyIdSet.has(e.from) && storyIdSet.has(e.to) && e.from !== e.to)
     .map((e) => ({ fromId: e.from, toId: e.to, fromLine: e.fromLines[0]?.start ?? 0 }));
 
-  return { bookFingerprint: bookFingerprint(book), chunks: manifestChunks, calls, tier0Chapters: storyComposition };
+  return {
+    bookFingerprint: chapterOrderFingerprint(book.headSha, storyComposition),
+    chunks: manifestChunks,
+    calls,
+    tier0Chapters: storyComposition,
+  };
 }
 
 /**
@@ -266,7 +297,7 @@ export function applyChapterOverlay(
   overlay: OrderOverlayV2,
 ): CompiledBook | undefined {
   const tier0 = compileChapterBook(input, config);
-  if (!isOverlayFresh(tier0.book, overlay)) return undefined;
+  if (!isOverlayFresh(tier0.book, overlay, tier0.storyComposition)) return undefined;
   if (!validateChapterComposition(tier0.storyComposition.flat(), overlay.chapters).ok) return undefined;
   return compileChapterBook(input, config, { chapters: overlay.chapters } satisfies ChapterComposition);
 }
