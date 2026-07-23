@@ -943,7 +943,7 @@ export function BookPage({
     aiItems.push({
       key: 'frontier',
       className: 'frontier-indicator',
-      label: `${frontier} cross-chunk interaction${frontier === 1 ? '' : 's'} still open`,
+      label: `${frontier} open cross-chunk interaction${frontier === 1 ? '' : 's'} right now`,
       title: 'Edges linking a reviewed chunk to an unreviewed one. Surfacing only — nothing is blocked, and no interaction is verified.',
     });
   }
