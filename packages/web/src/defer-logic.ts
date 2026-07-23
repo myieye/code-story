@@ -101,6 +101,76 @@ export function splitButtonModel(text: string): SplitButtonModel {
   };
 }
 
+export type DeferScope = 'whole' | 'slice';
+
+/**
+ * The span of a chunk's changed (add/del) lines in the same `head ?? base` coordinate
+ * `selectionLineRange` reports, so the two are comparable. `undefined` when nothing changed.
+ */
+export function chunkHeadSpan(lines: readonly UnifiedLine[]): LineRange | undefined {
+  let start: number | undefined;
+  let end: number | undefined;
+  for (const l of lines) {
+    if (l.type !== 'add' && l.type !== 'del') continue;
+    const n = l.head ?? l.base;
+    if (n === undefined) continue;
+    if (start === undefined || n < start) start = n;
+    if (end === undefined || n > end) end = n;
+  }
+  return start !== undefined && end !== undefined ? { start, end } : undefined;
+}
+
+/** No selection, or a selection covering the whole changed span → 'whole'; a strict subset → 'slice'. */
+export function deferScope(range: LineRange | undefined, span: LineRange | undefined): DeferScope {
+  if (!range || !span) return 'whole';
+  return range.start <= span.start && range.end >= span.end ? 'whole' : 'slice';
+}
+
+/** The consequence line shown in the popover before submit (the auto-mark is the load-bearing part). */
+export function deferConsequenceCopy(scope: DeferScope, range: LineRange | undefined): string {
+  if (scope === 'slice' && range) return `Defer lines ${range.start}–${range.end} — the rest of this chunk is marked reviewed`;
+  return 'Defer this whole chunk to the end — resolve it later';
+}
+
+export interface DeferredSliceSummary {
+  count: number;
+  firstRange?: LineRange;
+}
+
+/** The parent header pill's figures for a chunk's deferred (non-inline) deferrals. */
+export function deferredSliceSummary(chunkDeferrals: readonly Deferral[]): DeferredSliceSummary {
+  const firstRange = chunkDeferrals.find((d) => d.lineRange)?.lineRange;
+  return { count: chunkDeferrals.length, ...(firstRange ? { firstRange } : {}) };
+}
+
+/**
+ * The rows of `lines` within `context` lines either side of `range`, in the `head ?? base`
+ * coordinate. A gap marker that sits between two kept runs survives (collapsed to one); leading and
+ * trailing gaps are dropped. This is the slice preview shown eagerly on a DeferredCard.
+ */
+export function sliceLinesToRange(lines: readonly UnifiedLine[], range: LineRange, context = 3): UnifiedLine[] {
+  const lo = range.start - context;
+  const hi = range.end + context;
+  const out: UnifiedLine[] = [];
+  let pendingGap = false;
+  let kept = false;
+  for (const l of lines) {
+    if (l.type === 'gap') {
+      if (kept) pendingGap = true;
+      continue;
+    }
+    const n = l.head ?? l.base;
+    if (n === undefined || n < lo || n > hi) continue;
+    if (pendingGap) {
+      out.push({ type: 'gap', text: '' });
+      pendingGap = false;
+    }
+    out.push(l);
+    kept = true;
+  }
+  return out;
+}
+
 /**
  * Map a CM6 selection (1-based doc-line numbers) to the head/base line range it covers, using the
  * chunk's rendered rows. Gap rows carry no line number and are skipped; `undefined` when the
