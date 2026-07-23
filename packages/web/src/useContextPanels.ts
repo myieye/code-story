@@ -1,6 +1,7 @@
+import type { Chunk } from '@code-story/core';
 import { useCallback, useRef, useState } from 'react';
 import { fetchContext } from './api.js';
-import { hasDefinitions, type PayloadState, shouldExpandOnArrival, type ToggleOutcome, toggleInSet } from './context-panel-logic.js';
+import { type PayloadState, shouldExpandOnArrival, type ToggleOutcome, toggleInSet, visibleDefinitions } from './context-panel-logic.js';
 
 export interface ContextPanelsState {
   /** `undefined` until fetched, `null` when fetched-but-empty, else the payload (spec 04). */
@@ -20,7 +21,10 @@ export interface ContextPanelsState {
  * `onDeferredExpand` fires when a `toggle` made before the fetch landed later auto-expands the panel,
  * so the page can focus + announce on arrival exactly as it does for a synchronous expand.
  */
-export function useContextPanels(onDeferredExpand?: (chunkId: string, payload: PayloadState) => void): ContextPanelsState {
+export function useContextPanels(
+  chunks: readonly Chunk[],
+  onDeferredExpand?: (chunkId: string, payload: PayloadState) => void,
+): ContextPanelsState {
   const [cache, setCache] = useState<ReadonlyMap<string, PayloadState>>(new Map());
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
   const inFlight = useRef(new Set<string>());
@@ -38,7 +42,7 @@ export function useContextPanels(onDeferredExpand?: (chunkId: string, payload: P
     void fetchContext(chunkId)
       .then((res) => {
         setCache((prev) => new Map(prev).set(chunkId, res.payload));
-        if (shouldExpandOnArrival(wantExpand.current.delete(chunkId), res.payload)) {
+        if (shouldExpandOnArrival(wantExpand.current.delete(chunkId), visibleDefinitions(res.payload, chunks))) {
           setExpanded((prev) => new Set(prev).add(chunkId));
           deferredRef.current?.(chunkId, res.payload);
         }
@@ -49,7 +53,7 @@ export function useContextPanels(onDeferredExpand?: (chunkId: string, payload: P
         wantExpand.current.delete(chunkId);
       })
       .finally(() => inFlight.current.delete(chunkId));
-  }, []);
+  }, [chunks]);
 
   const toggle = useCallback(
     (chunkId: string): ToggleOutcome => {
@@ -59,12 +63,12 @@ export function useContextPanels(onDeferredExpand?: (chunkId: string, payload: P
         ensureFetched(chunkId);
         return 'none';
       }
-      if (!hasDefinitions(payload)) return 'none';
+      if (visibleDefinitions(payload, chunks).length === 0) return 'none';
       const willExpand = !expanded.has(chunkId);
       setExpanded((prev) => toggleInSet(prev, chunkId));
       return willExpand ? 'expanded' : 'collapsed';
     },
-    [ensureFetched, expanded],
+    [ensureFetched, expanded, chunks],
   );
 
   return {

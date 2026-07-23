@@ -169,16 +169,23 @@ export function computeNeighborChips(
   return chips;
 }
 
-/** The chip's visible text (glyph carries state/behind separately in the DOM). */
+/**
+ * The chip's visible text (glyph carries state/behind separately in the DOM). The call-site line
+ * leads the relation ("L119 calls Deploy") so it reads as the caller — a trailing "(L119)" after the
+ * target name misreads as the target's own location (it's the line in THIS chunk, not Deploy's).
+ */
 export function chipText(chip: NeighborChip): string {
-  return `${chip.arrow} ${chip.relation} ${chip.name}${chip.line !== undefined ? ` (L${chip.line})` : ''}`;
+  const lead = chip.line !== undefined ? `L${chip.line} ` : '';
+  return `${chip.arrow} ${lead}${chip.relation} ${chip.name}`;
 }
 
 /** Full-sentence accessible name — direction, relation, state, and the behind hint spelled out. */
 export function chipAriaLabel(chip: NeighborChip): string {
-  const parts = [`${chip.relation} ${chip.name}`];
+  // Mirror the visible order (line leads the relation) so the accessible name matches the label
+  // (WCAG 2.5.3) and can't be misread as the target's location.
+  const head = chip.line !== undefined ? `line ${chip.line} ${chip.relation} ${chip.name}` : `${chip.relation} ${chip.name}`;
+  const parts = [head];
   if (chip.fileLevel) parts.push('(file-level)');
-  if (chip.line !== undefined) parts.push(`at line ${chip.line}`);
   // A reveal chip opens a panel rather than navigating, so the target chunk's review state is not
   // meaningful; say what it does instead.
   if (chip.action === 'reveal') {

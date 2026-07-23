@@ -5,6 +5,11 @@ export { chunkTitle } from '@code-story/core';
 /** The web-only synthetic Deferred section (spec 06 slice 6): injected after compile, never in core. */
 export const DEFERRED_SECTION_ID = DEFERRED_WEB_SECTION_ID;
 
+/** Last path segment — the file label shown on every chunk header (full path lives in its `title`). */
+export function fileBasename(file: string): string {
+  return file.split('/').pop() ?? file;
+}
+
 export type Row =
   | { kind: 'section'; id: string; title: string; chunkCount: number }
   | {

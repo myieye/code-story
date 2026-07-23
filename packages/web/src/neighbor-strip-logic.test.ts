@@ -97,12 +97,12 @@ describe('computeNeighborChips', () => {
 describe('chip text + aria', () => {
   const chips = computeNeighborChips(graph, 'a', chunksById, stateOf, inBook);
   it('renders visible text with arrow, relation, name, and line', () => {
-    expect(chipText(chip(chips, 'b'))).toBe('→ calls bFn (L10)');
+    expect(chipText(chip(chips, 'b'))).toBe('→ L10 calls bFn');
     expect(chipText(chip(chips, 'z'))).toBe('← called by zFn');
   });
   it('spells out the accessible name including state, boundary, and behind', () => {
     // Focus 'a' is unreviewed, 'b' reviewed → the calls edge is a review boundary.
-    expect(chipAriaLabel(chip(chips, 'b'))).toBe('calls bFn, at line 10, reviewed, review boundary, 1 more unreviewed behind');
+    expect(chipAriaLabel(chip(chips, 'b'))).toBe('line 10 calls bFn, reviewed, review boundary, 1 more unreviewed behind');
     expect(chipAriaLabel(chip(chips, 'f'))).toBe('imports from helper.ts, (file-level), unreviewed');
   });
 });
