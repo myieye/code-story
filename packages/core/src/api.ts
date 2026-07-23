@@ -40,6 +40,16 @@ export interface BookResponse {
    * mode and whenever no fresh v2 overlay exists.
    */
   aiBook?: Book;
+  /**
+   * Book-level links supplied at daemon launch — the PR page, GitHub's Files-changed tab, and a
+   * locally running build of the PR's app. Config-independent (same across every direction/
+   * testPlacement recompile); absent when the launcher passed no link flags.
+   */
+  links?: {
+    pr?: string;
+    filesChanged?: string;
+    app?: { url: string; label?: string };
+  };
 }
 
 /** `GET /api/order`: the persisted AI order overlay (null when absent or stale) + job state. */

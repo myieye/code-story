@@ -164,6 +164,11 @@ export interface ServerOptions {
   contextStoreCapBytes?: number;
   /** Test seam: replaces the raw `claude -p` spawn the glue invoker drives. */
   glueInvoke?: GlueSpawn;
+  /**
+   * Book-level links (PR page, Files-changed tab, running app) surfaced in the UI. Config-independent
+   * launch metadata: attached to every `/api/book` response, absent when the launcher passed none.
+   */
+  links?: BookResponse['links'];
 }
 
 export interface RunningServer {
@@ -516,6 +521,7 @@ export function startServer(options: ServerOptions, requestedPort = 0): Promise<
       graph,
       chunkGraph: built.chunkGraph ?? { edges: [] },
       config: requestConfig,
+      ...(options.links ? { links: options.links } : {}),
     };
     // The AI order overlay was generated under the launch config, so its fingerprint matches only
     // the launch chapter book — apply it only for that config (recomposed per request in ms; the

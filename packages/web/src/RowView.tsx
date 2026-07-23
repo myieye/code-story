@@ -242,6 +242,11 @@ export function RowView({
               })}
             </tbody>
           </table>
+          {data.links?.pr && (
+            <a className="export" href={data.links.pr} target="_blank" rel="noreferrer">
+              Open the pull request ↗
+            </a>
+          )}
           <a className="export" href="/api/export.md" target="_blank" rel="noreferrer">
             Export
           </a>

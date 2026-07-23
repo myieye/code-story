@@ -40,6 +40,7 @@ import { computeNeighborChips } from './neighbor-strip-logic.js';
 import { FilePiecesMenu } from './FilePiecesMenu.js';
 import { fileOrderIndex, pieceMenuModel, stepPieceTarget } from './piece-nav-logic.js';
 import { frontierCount, interactionCount } from './frontier-logic.js';
+import { linkHost } from './links-logic.js';
 import { batchableSections, cursorAfterMark, findUnreviewed, pendingStubCount } from './review-logic.js';
 import { estimateRowHeight, RowView, type SectionAck } from './RowView.js';
 import { AnchoredPopover } from './AnchoredPopover.js';
@@ -893,9 +894,33 @@ export function BookPage({
     <div className="app">
       <header className="top-bar" ref={headerRef}>
         <h1>code-story</h1>
-        <span className="range" title={`${data.base}..${data.head}`}>
-          {data.base.slice(0, 8)}..{data.head.slice(0, 8)}
-        </span>
+        {bookResponse.links?.pr ? (
+          <a
+            className="range range-link"
+            href={bookResponse.links.pr}
+            target="_blank"
+            rel="noreferrer"
+            title={`${data.base}..${data.head} — open the pull request on GitHub (new tab)`}
+          >
+            {data.base.slice(0, 8)}..{data.head.slice(0, 8)} <span aria-hidden="true">↗</span>
+          </a>
+        ) : (
+          <span className="range" title={`${data.base}..${data.head}`}>
+            {data.base.slice(0, 8)}..{data.head.slice(0, 8)}
+          </span>
+        )}
+        {bookResponse.links?.app && (
+          <a
+            className="app-link"
+            href={bookResponse.links.app.url}
+            target="_blank"
+            rel="noreferrer"
+            title={`The app built from this PR, running at ${linkHost(bookResponse.links.app.url)}. Opens in a new tab — if it doesn't load, the dev server may have stopped.`}
+            aria-label="Try the app — opens in a new tab"
+          >
+            <span aria-hidden="true">▶</span> <span className="app-link-label">{bookResponse.links.app.label ?? 'Try the app'}</span>
+          </a>
+        )}
         <span className="progress-cluster">
           <span className={done ? 'progress-text done' : 'progress-text'}>
             {done ? (
@@ -1018,6 +1043,17 @@ export function BookPage({
               fileView={grouping === 'files'}
               onChange={changeConfig}
             />
+            {bookResponse.links?.filesChanged && (
+              <a
+                className="export"
+                href={bookResponse.links.filesChanged}
+                target="_blank"
+                rel="noreferrer"
+                title="This diff on GitHub, in the Files changed tab (new tab)"
+              >
+                Files changed ↗
+              </a>
+            )}
             <a className="export" href="/api/export.md" target="_blank" rel="noreferrer">
               Export
             </a>
@@ -1227,6 +1263,17 @@ export function BookPage({
             fileView={grouping === 'files'}
             onChange={changeConfig}
           />
+          {bookResponse.links?.filesChanged && (
+            <a
+              className="export"
+              href={bookResponse.links.filesChanged}
+              target="_blank"
+              rel="noreferrer"
+              title="This diff on GitHub, in the Files changed tab (new tab)"
+            >
+              Files changed ↗
+            </a>
+          )}
           <a className="export" href="/api/export.md" target="_blank" rel="noreferrer">
             Export
           </a>
