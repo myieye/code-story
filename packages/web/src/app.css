@@ -140,6 +140,20 @@ body {
   margin: 0;
 }
 
+/* Mark + wordmark lockup: the bookmark body inherits the wordmark ink (currentColor), the diff rows
+   knock out in --surface (set inside the SVG). */
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.brand-mark {
+  height: 1.3em;
+  width: auto;
+  flex: none;
+}
+
 .top-bar .range {
   font-family: var(--font-mono);
   font-size: 12px;

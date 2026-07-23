@@ -50,6 +50,7 @@ import { linkHost } from './links-logic.js';
 import { batchableSections, cursorAfterMark, findUnreviewed, pendingStubCount } from './review-logic.js';
 import { estimateRowHeight, RowView, type SectionAck } from './RowView.js';
 import { AnchoredPopover } from './AnchoredPopover.js';
+import { BrandMark } from './BrandMark.js';
 import { whyThisOrderCopy } from './order-explain-logic.js';
 import {
   chaptersRemaining,
@@ -1009,7 +1010,10 @@ export function BookPage({
   return (
     <div className="app">
       <header className="top-bar" ref={headerRef}>
-        <h1>code-story</h1>
+        <h1 className="brand">
+          <BrandMark className="brand-mark" />
+          code-story
+        </h1>
         {bookResponse.links?.pr ? (
           <a
             className="range range-link"
