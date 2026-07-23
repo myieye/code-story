@@ -4,7 +4,7 @@ import { type Hunk } from './diff.js';
 // milestone-0 subset (spec 00).
 
 /** Bump whenever chunking or ordering logic changes — bookFingerprint bakes it in, so a bump invalidates persisted order overlays. */
-export const CORE_VERSION = '0.0.6';
+export const CORE_VERSION = '0.0.7';
 
 export type ChunkKind = 'method' | 'method-fragment' | 'markup-region' | 'config' | 'other';
 
