@@ -2,6 +2,7 @@ import {
   buildChunkNarrationBatch,
   checkBadgeText,
   checkNarrationText,
+  checkReviewNote,
   type Chunk,
   chunkNarrationFingerprint,
   type FileContents,
@@ -129,11 +130,18 @@ export function createChunkNarrationTask(deps: ChunkNarrationTaskDeps): GlueTask
           if (fails.length === 0) badge = raw.badge;
           else gateFailures.push(...fails.map((f) => `badge: ${f}`));
         }
+        let reviewNote: string | undefined;
+        if (raw?.note !== undefined) {
+          const fails = checkReviewNote(raw.note);
+          if (fails.length === 0) reviewNote = raw.note.trim();
+          else gateFailures.push(...fails.map((f) => `note: ${f}`));
+        }
         produced[member.id] = {
           fingerprint: chunkNarrationFingerprint(deps.headSha, member.id),
           generatedAt,
           ...(line !== undefined ? { line } : {}),
           ...(badge !== undefined ? { badge } : {}),
+          ...(reviewNote !== undefined ? { reviewNote } : {}),
           ...(gateFailures.length > 0 ? { gateFailures } : {}),
         };
       }
@@ -153,7 +161,7 @@ export function createChunkNarrationTask(deps: ChunkNarrationTaskDeps): GlueTask
 }
 
 type AskResult =
-  | { entries: Record<string, { line?: string; badge?: string }> }
+  | { entries: Record<string, { line?: string; badge?: string; note?: string }> }
   | { failure: { status: 'transient' | 'invalid-output'; error: string } };
 
 /** One invoke → extract → parse. A spawn throw is transient (scheduler backs off); a bad reply is invalid-output. */
@@ -181,10 +189,11 @@ async function ask(
   return { entries: parsed.entries };
 }
 
-function collectLineFailures(entries: Record<string, { line?: string; badge?: string }>): string[] {
+function collectLineFailures(entries: Record<string, { line?: string; badge?: string; note?: string }>): string[] {
   const failures: string[] = [];
-  for (const [id, { line }] of Object.entries(entries)) {
+  for (const [id, { line, note }] of Object.entries(entries)) {
     if (line !== undefined) failures.push(...checkNarrationText('chunkLine', line).map((f) => `${id}: ${f}`));
+    if (note !== undefined) failures.push(...checkReviewNote(note).map((f) => `${id} (note): ${f}`));
   }
   return failures;
 }

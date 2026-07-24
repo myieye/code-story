@@ -5,7 +5,9 @@ import {
   BANNED_PHRASES,
   checkBadgeText,
   checkNarrationText,
+  checkReviewNote,
   chunkNarrationFingerprint,
+  REVIEW_NOTE_MAX_CHARS,
   filterFreshNarration,
   filterFreshNarrationV2,
   fleschScore,
@@ -243,5 +245,27 @@ describe('checkBadgeText placeholders', () => {
   });
   it('accepts real badges', () => {
     expect(checkBadgeText('Minor refactor')).toEqual([]);
+  });
+});
+
+describe('checkReviewNote (R-068)', () => {
+  it('passes a short pointing note of a few sentences', () => {
+    const note =
+      'The two switches must stay in sync. Cross-check the added case here against the resolver below.';
+    expect(checkReviewNote(note)).toEqual([]);
+  });
+
+  it('rejects reassurance — the same BANNED_PHRASES the register gate uses', () => {
+    expect(checkReviewNote('This looks good and is correct.').some((f) => f.includes('judgmental'))).toBe(true);
+    expect(checkReviewNote('Safe to merge as is.').some((f) => f.includes('judgmental'))).toBe(true);
+  });
+
+  it('enforces the char cap and rejects a present-but-empty note', () => {
+    expect(checkReviewNote('a'.repeat(REVIEW_NOTE_MAX_CHARS + 1)).some((f) => f.includes('chars'))).toBe(true);
+    expect(checkReviewNote('   ')).toEqual(['review note is empty']);
+  });
+
+  it('rejects an essay: more than three sentences', () => {
+    expect(checkReviewNote('One. Two. Three. Four.').some((f) => f.includes('sentences'))).toBe(true);
   });
 });

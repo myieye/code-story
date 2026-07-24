@@ -2,8 +2,8 @@
 
 exports[`narration prompts > renders the chunk prompt with the batch, badge + point-don't-assert rules, and strict-JSON contract 1`] = `
 "You are labeling the chunks of one file for a code-review "book". A tired reviewer reads
-the book once, top to bottom. For each chunk you may write two things: a short badge and a short
-orientation line. Both are optional per chunk — be sparse.
+the book once, top to bottom. For each chunk you may write up to three things: a short badge, a
+short orientation line, and — rarely — a deeper review note. All are optional per chunk — be sparse.
 
 Below is one file's chunks. Each is labeled with a short alias (c1, c2, …), its title and kind, and
 its diff. Refer to chunks ONLY by their alias.
@@ -19,7 +19,15 @@ For each chunk you choose to label:
    Good: "Check the null handling in the two synced sorts." Bad: "The nulls are sorted last."
    Be SPARSE: omit the line for any chunk whose diff already speaks for itself. Most chunks get none.
 
-Rules for every line and badge:
+3. A note (RARE — most chunks must not get one): a deeper "what to verify" paragraph, at most 3
+   short sentences, only for a chunk whose logic is genuinely complex, subtle, or easy to get wrong
+   — a non-obvious invariant, a hand-maintained coupling two places must keep in sync, a tricky edge
+   case, an ordering the code depends on. Use it to give the reviewer the extra context a hard chunk
+   needs and to name exactly what they should confirm. It still POINTS — it never says the code is
+   right. If a chunk is ordinary, OMIT the note. A note on a simple chunk is a defect. Expect at most
+   one or two notes across a whole file, often none.
+
+Rules for every line and badge and note:
 - Orient, don't judge. Never say a change looks good, is correct, safe, simple, clean, elegant, or
   trivial. Evaluative or reassuring words are rejected by a validator and dropped.
 - Never assert a semantic outcome that holds only on one branch or path. If two code paths differ,
@@ -31,10 +39,10 @@ Rules for every line and badge:
   both instances are visible together in one gap-free stretch.
 
 Reply with STRICT JSON only, no other text. One key per chunk you labeled, keyed by its alias:
-{"c1": {"line": "<line>", "badge": "<badge>"}, "c2": {"badge": "<badge>"}}
+{"c1": {"line": "<line>", "badge": "<badge>"}, "c2": {"badge": "<badge>", "note": "<note>"}}
 
 Include only the aliases you chose to label; omit every other chunk. Each entry may have "line",
-"badge", or both. Use the aliases exactly as shown below.
+"badge", "note", or any combination. Use the aliases exactly as shown below.
 
 File: a.ts
 

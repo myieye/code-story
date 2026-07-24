@@ -6,7 +6,9 @@ addenda ([2026-07-16](../vision/addendum-2026-07-16.md),
 [editor features](../vision/addendum-2026-07-16-editor-features.md),
 [ordering preferences](../vision/addendum-2026-07-17-ordering-preferences.md),
 [review-UX feedback](../vision/addendum-2026-07-20-review-ux-feedback.md),
-[AI pipeline](../vision/addendum-2026-07-20-ai-pipeline.md)), numbered for traceability. Future passes over the
+[AI pipeline](../vision/addendum-2026-07-20-ai-pipeline.md),
+[beauty & review-flow](../vision/addendum-2026-07-23-beauty-and-review-flow.md),
+[narration depth](../vision/addendum-2026-07-24-narration-depth.md)), numbered for traceability. Future passes over the
 prompts should check each tidbit against this list and against the implementation. Each entry: the requirement, its source in the prompt (paraphrased quote), and
 open questions to resolve during spec work.
 
@@ -533,3 +535,24 @@ faces a noisy diff.
 > "The brief 2-word summary of a chunk should get more forefront placement. It help a
 > reviewer ground themself before even looking at what could be an immensly noisy diff. It's
 > very helpful knowing the main theme in 2 words."
+
+## P. Narration depth, 2026-07-24 ([verbatim source](../vision/addendum-2026-07-24-narration-depth.md))
+
+### R-067 — Adaptive narration depth (deeper for complex code, terse by default)
+Narration should scale its depth to the code's complexity: most chunks stay terse (the current
+register), but a genuinely complex or subtle chunk earns more explanation — "a bit more in this
+direction" toward the richly-narrated exemplar, without making the whole book verbose. Verbosity
+uniformly applied is a non-goal; depth *where it's earned* is the goal.
+> "significantly more narrated than anything I've seen from this product. … it's too verbose,
+> but I do think we should go a bit more in this direction as needed to explain more complex
+> code."
+Status: specced
+
+### R-068 — Reviewer-verification notes ("what to check", not "looks fine")
+Learned from the exemplar (design doc `2026-07-24-narrated-exemplar-learnings.md`): the most
+on-thesis device is a per-chunk note that tells the reviewer *what could actually be wrong and
+where to look* — the "Check" callout — rather than orienting alone. This is R-026 (make critique
+easy) and the reviewer-side-intelligence moat made concrete. Sourced from Tim's "what can we
+learn from it?" plus the moat/anchoring gates already in play; graduate or amend once dogfooded.
+> "what can we learn from it?" (+ R-026 anchoring gate; landscape moat = reviewer-side intelligence)
+Status: specced
