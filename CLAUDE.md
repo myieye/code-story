@@ -563,14 +563,18 @@ author its costNote as free when spec 08 builds). Suite 551 → **578** (core 25
 web 163). Ops learned: a ~7h container suspension killed two agents mid-flight — push-early
 paid off again (both branches were already on origin; SendMessage resume finished them);
 quota-status is unreadable in this container (no .credentials.json — token is fd-only).
-#116 (manifest guard → 32k aliased tokens + a real large-range validation run) was in flight
-at window close — check `claude/116-manifest-limit` on origin for its state before redoing.
-Next (verify freshness on wake): (1) merge/land #116 if the branch validates; (2) Tim drives
+#153 = #116 manifest guard 8k → 32k aliased tokens, validated with a REAL run on a synthesized
+127-file code-story range (~25–31k aliased): opus returned a valid 95-chapter composition
+first try, checkOrder pre-gate passed, $0.84 / ~3 min; 43k+ ranges still refuse; compaction
+(candidate b) stays evidence-gated for the 32–60k band. Harvest → **#154**: the chunk-graph
+build intermittently stalls on large ranges (>25 min, no output, no CPU — grab a stack before
+killing next time).
+Next (verify freshness on wake): (1) Tim drives
 the new UI on a real book — rebuild + bounce his 7468 daemon (Windows: build in a worktree,
 kill PID via netstat -ano | findstr 7468, relaunch same args from new dist; review state
-survives) — the theme/logo/defer-slice/ask-AI feedback all want his eyes; (3) Tim's open
+survives) — the theme/logo/defer-slice/ask-AI feedback all want his eyes; (2) Tim's open
 answers: glue spend policy (no ceiling + ledger vs cap) and move/split-aware diffing (asked
-2026-07-23). Evidence-gated watches: #21, #27, #58, #92, #109 (Tim read), #132, #148.
+2026-07-23). Evidence-gated watches: #21, #27, #58, #92, #109 (Tim read), #132, #148, #154.
 Standing guidance holds: keep options open (R-025); Tim scopes milestones; PR-versions
 (R-038–R-041) deferred.
 Dogfood target: languageforge/lexbox (C# + Svelte/TS); repo-agnostic (R-025). lexbox is NOT
