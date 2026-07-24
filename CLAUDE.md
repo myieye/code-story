@@ -64,6 +64,12 @@ BYO-agent threads whose code changes are verifiable patches.
   — commit history carries the traceability) once tests are green and the slice is verified.
   Claude creates and merges its own PRs; no waiting for review (vibe mode). Doc-only
   housekeeping may go straight to main. Proven end-to-end on PR #29 (M1+M2, 56 commits).
+- **Show the result ON the PR (Tim, 2026-07-24)**: whenever a PR includes an interesting
+  change, put evidence of it on the PR itself — a screenshot for UI, or (when hosting an image
+  is awkward, e.g. this repo merge-commits so the image blob would land in main) a markdown
+  comment / artifact showing a REAL result. Chat-only isn't enough; the PR is the record. But
+  keep it **cost-proportionate**: don't burn a lot of tokens to showcase a small change — the
+  spend must match the value. A cheap markdown paste of real output beats an expensive capture.
 - **Scheduler ops (Tim, 2026-07-16)**: `delete_trigger` blocks on Tim's approval — it breaks
   autonomy, don't rely on it. Instead make triggers that never need deleting: schedule one-shot
   continuations late in the window, keep the message THIN ("continue per CLAUDE.md's Next
