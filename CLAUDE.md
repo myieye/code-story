@@ -569,6 +569,33 @@ first try, checkOrder pre-gate passed, $0.84 / ~3 min; 43k+ ranges still refuse;
 (candidate b) stays evidence-gated for the 32–60k band. Harvest → **#154**: the chunk-graph
 build intermittently stalls on large ranges (>25 min, no output, no CPU — grab a stack before
 killing next time).
+**Twelfth window (2026-07-24, Tim live: a richly-narrated exemplar + "go a bit more in this
+direction as needed for complex code, but it's too verbose").** Tim shared a Claude-generated
+"code story" (a narrated reading of lexbox's `ActivityChangeInfoResolver.cs`) far deeper than
+anything we ship. Learnings persisted (`docs/design/2026-07-24-narrated-exemplar-learnings.md`;
+verbatim steer in `addendum-2026-07-24-narration-depth.md`; **R-067** adaptive depth, **R-068**
+reviewer-verification "Check" notes). Key insight: the exemplar's most on-thesis device is the
+**"Check" callout** (what to verify, not "looks fine") — R-026/moat made concrete; its "Safe"
+reassurance register is exactly what our `BANNED_PHRASES` gate rightly forbids, so we imported
+the Check register only. **Shipped (this branch, all tests green): complexity-gated review notes
+on chunk narration v2.** `NarrationEntryV2.reviewNote?` (optional), gated by new core
+`checkReviewNote` (richer caps — 340 chars / 3 sentences — but same BANNED_PHRASES point-don't-
+assert); prompt `narration-chunk-1`→**`narration-chunk-2`** instructs a RARE note only for
+genuinely complex/subtle/risky chunks ("a note on a simple chunk is a defect"); parsed/gated/
+persisted in the task (dropped independently of line/badge, folded into the re-ask), projected
+through `/api/narration`, rendered as an indigo "AI · Worth checking" callout under the terse
+gist line (own affordance, `.chunk-review-note`). Separation is the design: **line = orientation
+(every chunk, terse); reviewNote = what-to-verify (complex chunks only, richer)** — depth where
+earned, terse everywhere (Tim's "too verbose" guard). No CORE_VERSION bump (optional field; old
+overlays stay valid, just note-less) — only promptVersion moved. **Dogfooded live** on the
+Kahn/Tarjan chapter linearizer commit (`7071ea2~1..7071ea2`, opus): **3 of 73 chunks (4%)** got a
+note — landing exactly on the topo-sort loop, the property-test invariants, and the chunk-order
+comparison; every note POINTS ("Confirm…/Check…/Trace…"), zero reassurance leaked. Screenshot
+verified in real chromium (badge → AI line → callout → diff). Suite core 258 / server 166 /
+web 165 = 589. Deferred follow-up filed: the epilogue **punch list** (roll every chunk's
+reviewNote into the done-banner as the reviewer's takeaway). `estimateRowHeight` doesn't yet
+account for note height — measureElement self-corrects (as with def-panel/deferred-card); fine
+while notes are sparse.
 Next (verify freshness on wake): (1) Tim drives
 the new UI on a real book — rebuild + bounce his 7468 daemon (Windows: build in a worktree,
 kill PID via netstat -ano | findstr 7468, relaunch same args from new dist; review state

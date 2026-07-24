@@ -56,6 +56,7 @@ export function RowView({
   sectionAiLine,
   chunkAiLine,
   chunkBadge,
+  chunkReviewNote,
   onMarkSection,
   onUndoBatch,
   state,
@@ -124,6 +125,8 @@ export function RowView({
   chunkAiLine: string | undefined;
   /** This chunk's 2–4-word AI badge (spec 06 slice 5); undefined for none and for low-signal stubs. */
   chunkBadge: string | undefined;
+  /** A deeper "what to verify" note for a complex chunk (R-068); undefined for ordinary chunks. */
+  chunkReviewNote: string | undefined;
   onMarkSection: (sectionId: string) => void;
   onUndoBatch: () => void;
   state: ChunkReviewState;
@@ -541,6 +544,20 @@ export function RowView({
           {chunkAiLine && (
             <div className="chunk-ai-line">
               <span className="badge ai-badge">AI</span> {chunkAiLine}
+            </div>
+          )}
+          {/* Adaptive-depth review note (R-068): a deeper "what to verify" callout, present only for a
+              chunk the model judged complex. Its own affordance, visually apart from the terse gist line
+              — this is where the book earns a bit more prose for hard code. */}
+          {chunkReviewNote && !lowSignal && (
+            <div className="chunk-review-note" role="note">
+              <span className="review-note-label">
+                <span className="badge ai-badge" aria-hidden="true">
+                  AI
+                </span>{' '}
+                Worth checking
+              </span>
+              <p className="review-note-body">{chunkReviewNote}</p>
             </div>
           )}
           {collapsed ? (

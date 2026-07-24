@@ -1,6 +1,14 @@
 import type { NarrationOverlay, NarrationSectionEntry } from '@code-story/core';
 import { describe, expect, it } from 'vitest';
-import { chunkAiLine, chunkBadge, chunkLineV2, chunkNarrationIndicator, narrationIndicator, sectionAiLine } from './narration-logic.js';
+import {
+  chunkAiLine,
+  chunkBadge,
+  chunkLineV2,
+  chunkNarrationIndicator,
+  chunkReviewNote,
+  narrationIndicator,
+  sectionAiLine,
+} from './narration-logic.js';
 
 function entry(fields: Partial<NarrationSectionEntry> = {}): NarrationSectionEntry {
   return { fingerprint: 'fp', intro: '', chunks: {}, generatedAt: '2026-07-17T00:00:00Z', ...fields };
@@ -89,6 +97,20 @@ describe('chunkBadge', () => {
     expect(chunkBadge('c1', { c1: { line: 'x' } })).toBeUndefined();
     expect(chunkBadge('c1', { c1: { badge: '   ' } })).toBeUndefined();
     expect(chunkBadge('c1', undefined)).toBeUndefined();
+  });
+});
+
+describe('chunkReviewNote (R-068)', () => {
+  it('returns a trimmed review note from the v2 overlay', () => {
+    expect(chunkReviewNote('c1', { c1: { reviewNote: '  Check the two synced sorts.  ' } })).toBe(
+      'Check the two synced sorts.',
+    );
+  });
+
+  it('is undefined for an ordinary chunk with no note', () => {
+    expect(chunkReviewNote('c1', { c1: { line: 'x', badge: 'Refactor' } })).toBeUndefined();
+    expect(chunkReviewNote('c1', { c1: { reviewNote: '   ' } })).toBeUndefined();
+    expect(chunkReviewNote('c1', undefined)).toBeUndefined();
   });
 });
 

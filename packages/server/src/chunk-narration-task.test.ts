@@ -143,6 +143,35 @@ describe('chunk-narration task — run', () => {
     expect(entry.gateFailures?.some((f) => f.startsWith('badge:'))).toBe(true);
   });
 
+  test('a clean review note persists (R-068)', async () => {
+    const a = fileChunk('a.ts');
+    const file = await overlayFile();
+    const task = await makeTask([a.chunk], new Map([['a.ts', a.contents]]), file);
+    const [unit] = await task.plan();
+    const note = 'The two switches must agree; cross-check the added case against the resolver below.';
+    const invoke: GlueInvoke = async () => env({ c1: { badge: 'New guard', note } });
+
+    await task.run(unit!, invoke);
+    const entry = (await readOverlay(file)).chunks[a.chunk.id]!;
+    expect(entry.reviewNote).toBe(note);
+    expect(entry.badge).toBe('New guard');
+  });
+
+  test('a reassuring review note is dropped and recorded, but the badge survives', async () => {
+    const a = fileChunk('a.ts');
+    const file = await overlayFile();
+    const task = await makeTask([a.chunk], new Map([['a.ts', a.contents]]), file);
+    const [unit] = await task.plan();
+    // "correctly" is a banned phrase; the re-ask returns the same, so the note is dropped.
+    const invoke: GlueInvoke = async () => env({ c1: { badge: 'Minor refactor', note: 'This handles nulls correctly.' } });
+
+    await task.run(unit!, invoke);
+    const entry = (await readOverlay(file)).chunks[a.chunk.id]!;
+    expect(entry.reviewNote).toBeUndefined();
+    expect(entry.badge).toBe('Minor refactor');
+    expect(entry.gateFailures?.some((f) => f.startsWith('note:'))).toBe(true);
+  });
+
   test('a foreign alias rejects the whole reply as invalid-output', async () => {
     const a = fileChunk('a.ts');
     const task = await makeTask([a.chunk], new Map([['a.ts', a.contents]]));

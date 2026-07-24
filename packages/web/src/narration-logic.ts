@@ -29,8 +29,8 @@ export function chunkAiLine(sectionId: string, chunkId: string, overlay: Narrati
   return line && line.trim().length > 0 ? line : undefined;
 }
 
-/** One chunk's v2 line + badge (spec 06 slice 5), keyed order-independently by chunk id. */
-export type ChunkEntries = Record<string, { line?: string; badge?: string }>;
+/** One chunk's v2 line + badge + optional deeper review note, keyed order-independently by chunk id. */
+export type ChunkEntries = Record<string, { line?: string; badge?: string; reviewNote?: string }>;
 
 /**
  * The chunk's AI line preferring the order-independent v2 entry (chapter mode), falling back to the
@@ -46,6 +46,15 @@ export function chunkLineV2(chunkId: string, chunkEntries: ChunkEntries | undefi
 export function chunkBadge(chunkId: string, chunkEntries: ChunkEntries | undefined): string | undefined {
   const badge = chunkEntries?.[chunkId]?.badge;
   return badge && badge.trim().length > 0 ? badge.trim() : undefined;
+}
+
+/**
+ * The chunk's deeper review note (R-068) — present only for complex chunks the model chose to flag.
+ * Absent when none or blank; this is the adaptive-depth valve, sparse by design.
+ */
+export function chunkReviewNote(chunkId: string, chunkEntries: ChunkEntries | undefined): string | undefined {
+  const note = chunkEntries?.[chunkId]?.reviewNote;
+  return note && note.trim().length > 0 ? note.trim() : undefined;
 }
 
 /**

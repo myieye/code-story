@@ -7,6 +7,7 @@ import {
   type ChunkEntries,
   chunkLineV2,
   chunkNarrationIndicator,
+  chunkReviewNote,
   narrationIndicator,
   type NarrationIndicator,
   type SectionAiLine,
@@ -26,6 +27,8 @@ export interface NarrationState {
   chunkLine: (sectionId: string, chunkId: string) => string | undefined;
   /** The chunk's 2–4-word AI badge (v2 only); undefined when none. */
   chunkBadge: (chunkId: string) => string | undefined;
+  /** The chunk's deeper "what to verify" note (R-068); undefined for ordinary chunks. */
+  chunkReviewNote: (chunkId: string) => string | undefined;
 }
 
 /**
@@ -58,6 +61,7 @@ export function useNarration(
       sectionLine: (sectionId) => sectionAiLine(sectionId, overlay, rationales),
       chunkLine: (sectionId, chunkId) => chunkLineV2(chunkId, chunkEntries, chunkAiLine(sectionId, chunkId, overlay)),
       chunkBadge: (chunkId) => chunkBadge(chunkId, chunkEntries),
+      chunkReviewNote: (chunkId) => chunkReviewNote(chunkId, chunkEntries),
     }),
     [overlay, chunkEntries, job, rationales, narratableIds, narratableChunkIds],
   );

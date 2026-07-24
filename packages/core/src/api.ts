@@ -114,10 +114,11 @@ export interface OrderPatch {
 export interface NarrationResponse {
   overlay: NarrationOverlay | null;
   /**
-   * Chunk narration v2 (spec 06 slice 5): per-chunk line + badge, fresh-filtered from the separate
-   * v2 overlay. Absent when no v2 overlay exists — the v1 `overlay` fields are unchanged.
+   * Chunk narration v2 (spec 06 slice 5): per-chunk line + badge, plus an optional deeper reviewNote
+   * for complex chunks (R-067/R-068). Fresh-filtered from the separate v2 overlay. Absent when no v2
+   * overlay exists — the v1 `overlay` fields are unchanged.
    */
-  chunkEntries?: Record<string, { line?: string; badge?: string }>;
+  chunkEntries?: Record<string, { line?: string; badge?: string; reviewNote?: string }>;
   job: {
     status: 'running' | 'done' | 'failed';
     model: string;

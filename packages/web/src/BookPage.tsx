@@ -1284,6 +1284,7 @@ export function BookPage({
                       sectionAiLine={row.kind === 'section' ? narration.sectionLine(row.id)?.text : undefined}
                       chunkAiLine={row.kind === 'chunk' ? narration.chunkLine(row.sectionId, row.chunk.id) : undefined}
                       chunkBadge={row.kind === 'chunk' ? narration.chunkBadge(row.chunk.id) : undefined}
+                      chunkReviewNote={row.kind === 'chunk' ? narration.chunkReviewNote(row.chunk.id) : undefined}
                       onMarkSection={markSection}
                       onUndoBatch={undoBatch}
                       state={row.kind === 'chunk' ? review.stateOf(row.chunk.id) : 'unseen'}
