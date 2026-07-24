@@ -630,7 +630,11 @@ export function startServer(options: ServerOptions, requestedPort = 0): Promise<
       ? Object.fromEntries(
           Object.entries(filterFreshNarrationV2(options.range.head, chunkOverlay).chunks).map(([id, e]) => [
             id,
-            { ...(e.line !== undefined ? { line: e.line } : {}), ...(e.badge !== undefined ? { badge: e.badge } : {}) },
+            {
+              ...(e.line !== undefined ? { line: e.line } : {}),
+              ...(e.badge !== undefined ? { badge: e.badge } : {}),
+              ...(e.reviewNote !== undefined ? { reviewNote: e.reviewNote } : {}),
+            },
           ]),
         )
       : undefined;

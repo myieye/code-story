@@ -279,15 +279,23 @@ describe('parseChunkNarrationReply', () => {
     if (r.ok) expect(Object.values(r.entries)[0]).toEqual({ badge: 'Test update' });
   });
 
+  it('keeps an optional review note alongside line + badge (R-068)', () => {
+    const note = 'The two switches must agree; cross-check the added case against the resolver.';
+    const r = parseChunkNarrationReply(batch, { c1: { line: 'Check the guard.', badge: 'New guard', note } });
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.entries[firstId]).toEqual({ line: 'Check the guard.', badge: 'New guard', note });
+  });
+
   it('rejects a foreign alias', () => {
     const r = parseChunkNarrationReply(batch, { c9: { line: 'nope' } });
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.error).toContain('unknown chunk alias');
   });
 
-  it('rejects a non-string line or badge', () => {
+  it('rejects a non-string line, badge, or note', () => {
     expect(parseChunkNarrationReply(batch, { c1: { line: 5 } }).ok).toBe(false);
     expect(parseChunkNarrationReply(batch, { c1: { badge: {} } }).ok).toBe(false);
+    expect(parseChunkNarrationReply(batch, { c1: { note: 7 } }).ok).toBe(false);
     expect(parseChunkNarrationReply(batch, { c1: 'not-an-object' }).ok).toBe(false);
   });
 });

@@ -687,6 +687,37 @@ body.resizing-outline {
   color: var(--ink-muted);
 }
 
+/* Adaptive-depth review note (R-068): the terse gist line's deeper sibling, shown only on a complex
+   chunk. Left-bordered callout in the AI/indigo voice — a deepening of the AI line, not the amber
+   deferred family — so it reads as "the AI is saying more here, look closer". */
+.chunk-review-note {
+  margin: 0 0 9px;
+  padding: 9px 13px 10px;
+  border: 1px solid var(--accent-line-soft);
+  border-left: 3px solid var(--accent-line);
+  border-radius: 4px;
+  background: var(--accent-wash);
+}
+.review-note-label {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  font-family: var(--font-ui);
+  font-size: 10.5px;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  font-weight: 600;
+  color: var(--accent-deep);
+}
+.review-note-body {
+  margin: 5px 0 0;
+  font-family: var(--font-voice);
+  font-optical-sizing: auto;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--ink);
+}
+
 .book-opener {
   display: flex;
   align-items: baseline;

@@ -144,6 +144,42 @@ export function checkNarrationText(kind: NarrationKind, text: string): string[] 
   return failures;
 }
 
+/** A review note is richer than a chunk line but still bounded — a short paragraph, not an essay. */
+export const REVIEW_NOTE_MAX_CHARS = 340;
+export const REVIEW_NOTE_MAX_SENTENCES = 3;
+
+/**
+ * Review-note gate (R-068): the adaptive-depth valve for complex chunks. Richer caps than a chunk
+ * line, but it must POINT rather than reassure — the same BANNED_PHRASES the register gate rejects,
+ * so the exemplar's soothing "Safe" register can never sneak in (design doc 2026-07-24). A failing
+ * note is dropped independently of the chunk's line/badge ("faithful or silent"). A present-but-blank
+ * note is a failure: the model must omit the field, not send "".
+ */
+export function checkReviewNote(text: string): string[] {
+  const trimmed = text.trim();
+  if (trimmed.length === 0) return ['review note is empty'];
+  const failures: string[] = [];
+
+  if (trimmed.length > REVIEW_NOTE_MAX_CHARS) {
+    failures.push(`review note is ${trimmed.length} chars (max ${REVIEW_NOTE_MAX_CHARS})`);
+  }
+
+  const sentences = splitSentences(trimmed);
+  if (sentences.length > REVIEW_NOTE_MAX_SENTENCES) {
+    failures.push(`review note has ${sentences.length} sentences (max ${REVIEW_NOTE_MAX_SENTENCES})`);
+  }
+  for (const sentence of sentences) {
+    const words = countWords(sentence);
+    if (words > MAX_SENTENCE_WORDS) failures.push(`review note sentence has ${words} words (max ${MAX_SENTENCE_WORDS})`);
+  }
+
+  for (const phrase of BANNED_PHRASES) {
+    if (bannedRegex(phrase).test(trimmed)) failures.push(`judgmental phrase "${phrase}"`);
+  }
+
+  return failures;
+}
+
 function countSyllables(word: string): number {
   const w = word.toLowerCase().replace(/[^a-z]/g, '');
   if (w.length === 0) return 0;
@@ -364,6 +400,11 @@ export interface NarrationEntryV2 {
   line?: string;
   /** Usually 2 words, never more than 4; sentence-case. Absent when the badge gate dropped it. */
   badge?: string;
+  /**
+   * A deeper "what to verify" note (R-068), present only for a genuinely complex/subtle/risky chunk
+   * — the adaptive-depth valve (R-067). Points at what to check, never reassures; absent otherwise.
+   */
+  reviewNote?: string;
   generatedAt: string;
   /** Register/badge-gate failures or a budget omission; presence still counts the chunk "handled" on resume. */
   gateFailures?: string[];
@@ -570,18 +611,25 @@ export function renderChunkNarrationBatch(batch: ChunkNarrationBatch): string {
 export function parseChunkNarrationReply(
   batch: ChunkNarrationBatch,
   json: unknown,
-): { ok: true; entries: Record<string, { line?: string; badge?: string }> } | { ok: false; error: string } {
+):
+  | { ok: true; entries: Record<string, { line?: string; badge?: string; note?: string }> }
+  | { ok: false; error: string } {
   if (typeof json !== 'object' || json === null) return { ok: false, error: 'reply is not an object' };
   const idOf = new Map(batch.chunks.map((c) => [c.alias, c.id]));
-  const entries: Record<string, { line?: string; badge?: string }> = {};
+  const entries: Record<string, { line?: string; badge?: string; note?: string }> = {};
   for (const [alias, value] of Object.entries(json as Record<string, unknown>)) {
     const id = idOf.get(alias);
     if (id === undefined) return { ok: false, error: `unknown chunk alias in reply: ${alias}` };
     if (typeof value !== 'object' || value === null) return { ok: false, error: `entry for ${alias} is not an object` };
-    const { line, badge } = value as { line?: unknown; badge?: unknown };
+    const { line, badge, note } = value as { line?: unknown; badge?: unknown; note?: unknown };
     if (line !== undefined && typeof line !== 'string') return { ok: false, error: `line for ${alias} is not a string` };
     if (badge !== undefined && typeof badge !== 'string') return { ok: false, error: `badge for ${alias} is not a string` };
-    entries[id] = { ...(line !== undefined ? { line } : {}), ...(badge !== undefined ? { badge } : {}) };
+    if (note !== undefined && typeof note !== 'string') return { ok: false, error: `note for ${alias} is not a string` };
+    entries[id] = {
+      ...(line !== undefined ? { line } : {}),
+      ...(badge !== undefined ? { badge } : {}),
+      ...(note !== undefined ? { note } : {}),
+    };
   }
   return { ok: true, entries };
 }

@@ -30,7 +30,7 @@ describe('narration prompts', () => {
   });
 
   it('carries a distinct chunk-narration version constant', () => {
-    expect(CHUNK_NARRATION_PROMPT_VERSION).toBe('narration-chunk-1');
+    expect(CHUNK_NARRATION_PROMPT_VERSION).toBe('narration-chunk-2');
     expect(CHUNK_NARRATION_PROMPT_VERSION).not.toBe(NARRATION_PROMPT_VERSION);
   });
 
@@ -45,5 +45,13 @@ describe('narration prompts', () => {
     expect(prompt).toContain('POINT the reviewer at what to check');
     expect(prompt).toContain('never more than 4');
     expect(prompt).toMatchSnapshot();
+  });
+
+  it('asks for a rare, complex-chunks-only review note (R-068)', () => {
+    const prompt = chunkNarrationPrompt('File: a.ts\n\nc1 — foo (method, ~3 lines)\n+added');
+    expect(prompt).toContain('"note"');
+    expect(prompt).toContain('RARE');
+    // The note must POINT like the line, not reassure — and be sparse by construction.
+    expect(prompt).toContain('A note on a simple chunk is a defect');
   });
 });
