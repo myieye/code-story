@@ -27,7 +27,7 @@ const theme = EditorView.theme({
 
 type SelectionHandler = (docLines: { from: number; to: number } | undefined) => void;
 
-function buildState(file: string, lines: UnifiedLine[], onSelectionChange?: SelectionHandler): EditorState {
+function buildState(file: string, lines: UnifiedLine[]): EditorState {
   const doc = lines.map((l) => (l.type === 'gap' ? '⋯' : l.text)).join('\n');
   const state = EditorState.create({ doc });
 
@@ -37,20 +37,6 @@ function buildState(file: string, lines: UnifiedLine[], onSelectionChange?: Sele
     const from = state.doc.line(i + 1).from;
     builder.add(from, from, Decoration.line({ class: `cm-line-${l.type}` }));
   });
-
-  const selectionListener = onSelectionChange
-    ? [
-        EditorView.updateListener.of((update) => {
-          if (!update.selectionSet) return;
-          const sel = update.state.selection.main;
-          if (sel.empty) {
-            onSelectionChange(undefined);
-            return;
-          }
-          onSelectionChange({ from: update.state.doc.lineAt(sel.from).number, to: update.state.doc.lineAt(sel.to).number });
-        }),
-      ]
-    : [];
 
   return EditorState.create({
     doc,
@@ -64,11 +50,42 @@ function buildState(file: string, lines: UnifiedLine[], onSelectionChange?: Sele
         },
       }),
       EditorView.decorations.of(builder.finish()),
-      ...selectionListener,
       languageFor(file),
       theme,
     ],
   });
+}
+
+// With `editable: false` a mouse drag is a NATIVE browser selection — CM6's state selection never
+// changes, so an updateListener on `selectionSet` never fires. Watch document selectionchange and
+// map the native range back through posAtDOM instead.
+function watchNativeSelection(view: EditorView, onSelectionChange: SelectionHandler): () => void {
+  const handler = () => {
+    const sel = document.getSelection();
+    if (
+      !sel ||
+      sel.rangeCount === 0 ||
+      sel.isCollapsed ||
+      !sel.anchorNode ||
+      !sel.focusNode ||
+      !view.dom.contains(sel.anchorNode) ||
+      !view.dom.contains(sel.focusNode)
+    ) {
+      onSelectionChange(undefined);
+      return;
+    }
+    const a = view.posAtDOM(sel.anchorNode, sel.anchorOffset);
+    const f = view.posAtDOM(sel.focusNode, sel.focusOffset);
+    const from = Math.min(a, f);
+    const to = Math.max(a, f);
+    if (from === to) {
+      onSelectionChange(undefined);
+      return;
+    }
+    onSelectionChange({ from: view.state.doc.lineAt(from).number, to: view.state.doc.lineAt(to).number });
+  };
+  document.addEventListener('selectionchange', handler);
+  return () => document.removeEventListener('selectionchange', handler);
 }
 
 export const DiffView = memo(function DiffView({
@@ -88,9 +105,11 @@ export const DiffView = memo(function DiffView({
 
   useEffect(() => {
     if (!host.current) return;
-    const view = new EditorView({ state: buildState(file, lines, onSelectionChange), parent: host.current });
+    const view = new EditorView({ state: buildState(file, lines), parent: host.current });
     onViewReady?.(view);
+    const unwatch = onSelectionChange ? watchNativeSelection(view, onSelectionChange) : undefined;
     return () => {
+      unwatch?.();
       onViewReady?.(null);
       view.destroy();
     };
