@@ -59,17 +59,20 @@ BYO-agent threads whose code changes are verifiable patches.
   mode). Issue/PR bodies open with the *[Claude, autonomous]* line; `[claude]`/`[vibe]` title
   prefixes are dropped as pure noise in an all-Claude repo. (Specializes Tim's global tagging
   rule — Tim can veto.)
-- **Per-issue PR flow (Tim, 2026-07-16)**: work lands incrementally — one short-lived branch
-  per issue (`claude/<issue>-<slug>`), PR against main, self-merged (merge commit, not squash
-  — commit history carries the traceability) once tests are green and the slice is verified.
-  Claude creates and merges its own PRs; no waiting for review (vibe mode). Doc-only
-  housekeeping may go straight to main. Proven end-to-end on PR #29 (M1+M2, 56 commits).
+- **Per-issue PR flow (Tim, 2026-07-16; squash-only 2026-07-24)**: work lands incrementally —
+  one short-lived branch per issue (`claude/<issue>-<slug>`), PR against main, self-merged once
+  tests are green and the slice is verified. **The repo now allows SQUASH merges only** (Tim
+  flipped the setting 2026-07-24) — self-merge with `merge_method: "squash"`; a plain merge is
+  rejected. Traceability lives in the inventory/specs/PR bodies (R-numbers), not per-commit, so
+  squash loses nothing that matters; bonus, it orphans the ephemeral screenshot commits so a
+  pushed image never lands in main. Claude creates and merges its own PRs; no waiting for review
+  (vibe mode). Doc-only housekeeping may go straight to main.
 - **Show the result ON the PR (Tim, 2026-07-24)**: whenever a PR includes an interesting
-  change, put evidence of it on the PR itself — a screenshot for UI, or (when hosting an image
-  is awkward, e.g. this repo merge-commits so the image blob would land in main) a markdown
-  comment / artifact showing a REAL result. Chat-only isn't enough; the PR is the record. But
-  keep it **cost-proportionate**: don't burn a lot of tokens to showcase a small change — the
-  spend must match the value. A cheap markdown paste of real output beats an expensive capture.
+  change, put evidence of it on the PR itself. For UI changes, **push a screenshot — it's worth
+  it**; don't skip it over image-hosting friction or worrying where the blob lands (Tim: "just
+  ignore that"). When a screenshot doesn't fit, a markdown comment / artifact showing a REAL
+  result works too. Chat-only isn't enough; the PR is the record. Still keep it
+  **cost-proportionate** — don't burn a lot of tokens to showcase a small change.
 - **Scheduler ops (Tim, 2026-07-16)**: `delete_trigger` blocks on Tim's approval — it breaks
   autonomy, don't rely on it. Instead make triggers that never need deleting: schedule one-shot
   continuations late in the window, keep the message THIN ("continue per CLAUDE.md's Next
