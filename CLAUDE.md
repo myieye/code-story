@@ -532,14 +532,48 @@ Key sequencing: theme (#135) builds LAST of the CSS-heavy set; #138 after #137 (
 7468 bounce after all merges. Ops: session limits kill subagents mid-flight — push WIP
 branches EARLY; two of six isolated agents left no worktree at all (isolation is
 best-effort); Windows dynamic import of dist needs `pathToFileURL`.
-Next (verify freshness on wake): **execute `docs/design/2026-07-23-ux-round/README.md`'s
-sequencing plan** — finish #134/#139/#140 from the pushed WIP branch, then #137 → #138,
-#112 (audit already done), theme #135, logo #136, narration eval, then rebuild + bounce
-7468 (PID/args in the README) and drive the real 2468 book. Tim's open answers: glue spend
-policy (no ceiling + ledger vs cap) and the move/split-aware diffing question (asked
-2026-07-23). Evidence-gated watches: #100, #21, #27, #58, #92, #107, #116, #130, #132.
+**Eleventh window (2026-07-24, remote container, "hit the quota, impress me"): the ENTIRE
+2026-07-23 ux-round executed + the evidence-gated backlog cleared — 11 PRs (#141–#147,
+#149–#152), all root-reviewed, CI-green, self-merged.** UX round: #141 = #112 remap (new web
+`cursor-remap.ts`, occurrence keys across reorders; manual config flips keep their deliberate
+jump-to-first-unreviewed, only involuntary reorders remap); #142 = #134/#139/#140 (shared
+`review-glyph-logic.ts` — outline + chips speak ○ • ◑ ✓; "+N unreviewed" pill; AI gist leads
+the chunk header in serif); #144 = #137 partial-chunk deferral (select lines → floating
+"Defer lines N–M" pill, slice defers mark the parent reviewed, per-slice card previews +
+✓ Resolve; header Defer is whole-chunk only); #149 = #138 ask-AI live progress (1s count-up
+in a self-contained component, adaptive 3s/8s/stop poll, failures now visible in stub +
+cluster + announce — was silent); #150 = #135 beauty pass (`:root` token layer over all ~79
+hexes, self-hosted IBM Plex Sans/Mono + Fraunces variable via @fontsource — 13 woff2, no CDN
+— feTurbulence paper grain on body only, CM6 reads the same tokens, scripted AA check);
+#151 = #136 logo (`BrandMark.tsx` bookmark-diff lockup, hand-tuned 16px `favicon.svg` with
+embedded light/dark flip). **#152 (found by ROOT live-driving the merged build): with
+`EditorView.editable(false)` a mouse drag is a NATIVE selection — CM6 `selectionSet` never
+fires, so #137's pill could never appear; DiffView now watches document `selectionchange` →
+`posAtDOM`. Lesson re-proven: unit-green interaction code still needs one real browser drive;
+the pre-installed Playwright chromium works via executablePath /opt/pw-browsers/chromium-1194
+(never channel:'chrome' here).** Backlog: #143 = chunk-narration rubric eval
+(`tools/chunk-narration-eval.mjs`, resumable sidecar, sonnet judge vs opus generator; verdict
+register 5 / grounding 4 / faithfulness floor holds → **default-on stands**, single-subject
+caveat; grounding-1 tail on bare generic badges → #148 watch); #145 = #107 frontier copy;
+#146 = #100 same-file coalescing in the tier-0 chapter linearizer (boundary-flag only, emission
+order byte-identical; smoke subject 14→5 sections; **CORE_VERSION → 0.0.7**); #147 = #130
+order-overlay freshness keyed off the tier-0 story composition (testPlacement flips now reuse
+the paid overlay; the issue's `config-explain.ts` reference was unlanded spec-08 material —
+author its costNote as free when spec 08 builds). Suite 551 → **578** (core 253 / server 162 /
+web 163). Ops learned: a ~7h container suspension killed two agents mid-flight — push-early
+paid off again (both branches were already on origin; SendMessage resume finished them);
+quota-status is unreadable in this container (no .credentials.json — token is fd-only).
+#116 (manifest guard → 32k aliased tokens + a real large-range validation run) was in flight
+at window close — check `claude/116-manifest-limit` on origin for its state before redoing.
+Next (verify freshness on wake): (1) merge/land #116 if the branch validates; (2) Tim drives
+the new UI on a real book — rebuild + bounce his 7468 daemon (Windows: build in a worktree,
+kill PID via netstat -ano | findstr 7468, relaunch same args from new dist; review state
+survives) — the theme/logo/defer-slice/ask-AI feedback all want his eyes; (3) Tim's open
+answers: glue spend policy (no ceiling + ledger vs cap) and move/split-aware diffing (asked
+2026-07-23). Evidence-gated watches: #21, #27, #58, #92, #109 (Tim read), #132, #148.
 Standing guidance holds: keep options open (R-025); Tim scopes milestones; PR-versions
 (R-038–R-041) deferred.
-Dogfood target: languageforge/lexbox (C# + Svelte/TS); repo-agnostic (R-025). lexbox clone
-lives at /home/user/lexbox this container (refs pr-2309, pr-2357 fetched; ranges
-c0448522..pr-2309, 277e418d8~1..277e418d8, 8dd70ba~1..8dd70ba).
+Dogfood target: languageforge/lexbox (C# + Svelte/TS); repo-agnostic (R-025). lexbox is NOT
+cloneable from remote containers (proxy serves only myieye/code-story) — standing no-lexbox
+smoke subject is code-story's own `a53e79f~1..a53e79f`; on Tim's Windows machine lexbox lives
+at D:\code\languageforge-lexbox.
