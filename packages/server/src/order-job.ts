@@ -21,7 +21,11 @@ import {
 import { extractJsonBlock } from './claude-cli.js';
 import { CHAPTER_ORDER_PROMPT_VERSION, chapterOrderPrompt, ORDER_PROMPT_VERSION, orderPrompt } from './order-prompt.js';
 
-const MANIFEST_TOKEN_LIMIT = 8000;
+// Ceiling on the aliased prompt the model receives (#116). Big diffs are exactly where narrative
+// ordering earns its keep, so we don't refuse them — 32k aliased tokens is comfortable for a modern
+// context window. The guard only stops a truly huge range from spawning a call that would cost real
+// money for a book that already reads fine in tier-0.
+export const MANIFEST_TOKEN_LIMIT = 32000;
 
 export type OrderJobFailure =
   /** Size guard or other precondition — retrying cannot help. */
