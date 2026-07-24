@@ -161,8 +161,10 @@ the free mechanical gate only.
   record carries the model id so cheaper experiments are possible.
 - **Size guard**: gate on estimated manifest size, not section count (a 100-file PR with 3
   chunks/file and one with 500 chunks/file are different jobs): refuse with a reason when the
-  rendered manifest exceeds ~8k estimated tokens (nobody story-reads a 5k-chunk range; the
-  manifest would be wasteful tokens against R-024).
+  rendered (aliased) manifest exceeds ~32k estimated tokens. Raised from 8k under #116 — big
+  diffs are exactly where narrative ordering earns its keep, so refusing them was backwards, and
+  32k sits comfortably inside a modern context window. The guard still stops a truly huge range
+  from spawning a costly call for a book that reads fine in tier-0.
 - **UI**: the book renders tier 0 immediately, always. When an overlay lands: if the review has
   no explicit marks yet — defined precisely as **no chunk with `state === 'reviewed'`**;
   `seen` and `cursor` don't count, because seen-tracking writes within a second of merely
